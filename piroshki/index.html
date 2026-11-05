@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Words for Piroshki</title>
+<meta name="description" content="A NaNoWriMo word tracker. 50,000 words in November earns a tray of piroshki.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fbf6ec;
+    --card: #ffffff;
+    --ink: #2b2118;
+    --muted: #7a6a58;
+    --line: #eadfca;
+    --accent: #b5652a;
+    --accent-ink: #ffffff;
+    --dough: #f1e4c6;
+    --dough-edge: #d9c49b;
+    --baked: #c8843a;
+    --baked-edge: #8f5520;
+    --good: #3f7d4e;
+    --warn: #b0562f;
+    --bar: #e3c48f;
+    --bar-today: #b5652a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1712;
+      --card: #26201a;
+      --ink: #f3eadc;
+      --muted: #b3a38e;
+      --line: #3a3128;
+      --accent: #e08a48;
+      --accent-ink: #1c1712;
+      --dough: #4a4033;
+      --dough-edge: #6a5c48;
+      --baked: #d8954a;
+      --baked-edge: #9c5f24;
+      --good: #7cc48d;
+      --warn: #ee9a70;
+      --bar: #6d5638;
+      --bar-today: #e08a48;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1c1712; --card: #26201a; --ink: #f3eadc; --muted: #b3a38e; --line: #3a3128;
+    --accent: #e08a48; --accent-ink: #1c1712; --dough: #4a4033; --dough-edge: #6a5c48;
+    --baked: #d8954a; --baked-edge: #9c5f24; --good: #7cc48d; --warn: #ee9a70;
+    --bar: #6d5638; --bar-today: #e08a48;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 Inter, system-ui, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1, h2 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; }
+  h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.1; }
+  h2 { font-size: 20px; margin-bottom: 12px; }
+  .sub { color: var(--muted); margin: 8px 0 0; }
+  .sub em { font-style: normal; text-decoration: line-through; opacity: .7; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 20px; }
+
+  .tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px 10px; margin: 4px 0 14px; }
+  .pk { width: 100%; height: auto; display: block; }
+  .pk .raw { fill: var(--dough); stroke: var(--dough-edge); stroke-width: 2; }
+  .pk .baked { fill: var(--baked); stroke: var(--baked-edge); stroke-width: 2; }
+  .pk .seam { fill: none; stroke: var(--dough-edge); stroke-width: 2.5; stroke-linecap: round; }
+  .pk.done .seam { stroke: var(--baked-edge); }
+  .pk.done { animation: pop .5s ease-out; }
+  @keyframes pop { 0% { transform: scale(.85); } 70% { transform: scale(1.06); } 100% { transform: scale(1); } }
+
+  .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .big strong { font-family: Fraunces, Georgia, serif; font-size: 40px; line-height: 1; }
+  .big span { color: var(--muted); }
+  .meter { height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 12px 0 4px; position: relative; }
+  .meter > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+  .meter .par { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .5; }
+  .meter-legend { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--muted); font-size: 13px; }
+  .ahead { color: var(--good); } .behind { color: var(--warn); }
+
+  form { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+  input, select, button { font: inherit; color: inherit; }
+  input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btns { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+  button { cursor: pointer; border-radius: 10px; padding: 10px 16px; border: 1px solid var(--line); background: var(--bg); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+
+  .chart { display: grid; grid-template-columns: repeat(30, 1fr); align-items: end; gap: 2px; height: 120px; position: relative; border-bottom: 1px solid var(--line); }
+  .chart .b { background: var(--bar); border-radius: 3px 3px 0 0; min-height: 0; }
+  .chart .b.today { background: var(--bar-today); }
+  .chart .daily { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--muted); opacity: .7; }
+  .chart-x { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .log { list-style: none; padding: 0; margin: 0; }
+  .log li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .log li:first-child { border-top: 0; }
+  .log button { padding: 2px 10px; font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); margin: 0; }
+
+  .win { display: none; text-align: center; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .win.show { display: block; }
+  .win h2 { font-size: 28px; margin: 0 0 4px; }
+  .win p { margin: 0; }
+
+  footer { margin-top: 28px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  footer a { color: inherit; }
+  footer button { padding: 4px 10px; font-size: 13px; }
+  @media (max-width: 480px) { .tray { grid-template-columns: repeat(4, 1fr); } form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Words for Piroshki</h1>
+    <p class="sub">Write <span id="goalText">50,000</span> words this November, get a tray of piroshki. Piroshki. Not <em>pierogi</em>.</p>
+  </header>
+
+  <section class="win" id="win" aria-live="polite">
+    <h2>Piroshki are coming!</h2>
+    <p>You wrote the whole novel. The oven is warming up.</p>
+  </section>
+
+  <section aria-labelledby="trayH">
+    <h2 id="trayH">The tray</h2>
+    <div class="tray" id="tray"></div>
+    <div class="big"><strong id="total">0</strong><span id="totalOf">of 50,000 words</span></div>
+    <div class="meter" aria-hidden="true"><div id="bar" style="width:0"></div><span class="par" id="parMark"></span></div>
+    <div class="meter-legend"><span id="pct">0%</span><span id="parLabel">line = where you'd be at par today</span></div>
+  </section>
+
+  <section aria-labelledby="logH">
+    <h2 id="logH">Log some words</h2>
+    <form id="form">
+      <div>
+        <label for="words">Words</label>
+        <input id="words" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 1700" required>
+      </div>
+      <div>
+        <label for="day">Day</label>
+        <select id="day"></select>
+      </div>
+      <div class="btns">
+        <button class="primary" type="submit" data-mode="add">Add to this day</button>
+        <button type="submit" data-mode="set">My total is now this</button>
+      </div>
+    </form>
+    <p class="hint">“Add” is for a session's words. “My total is now this” takes the count from your document and works out the difference for the chosen day.</p>
+  </section>
+
+  <section aria-labelledby="statsH">
+    <h2 id="statsH">How it's going</h2>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section aria-labelledby="chartH">
+    <h2 id="chartH">Every day in November</h2>
+    <div class="chart" id="chart"><span class="daily" id="dailyLine"></span></div>
+    <div class="chart-x"><span>Nov 1</span><span>Nov 15</span><span>Nov 30</span></div>
+  </section>
+
+  <section aria-labelledby="daysH">
+    <h2 id="daysH">Your days</h2>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <footer>
+    <span>Saved in a cookie in this browser only, so use the same phone or laptop each time.</span>
+    <span><button type="button" id="goalBtn">Change goal</button> <a href="../">Junk drawer</a></span>
+  </footer>
+</main>
+
+<script>
+(function () {
+  const TRAY = 12;
+  const now = new Date();
+  const YEAR = now.getFullYear();
+  const KEY = 'piroshki_' + YEAR;
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+
+  // Day of November we're on: 0 before it starts, 30 after it ends.
+  function novDay() {
+    if (now.getMonth() < 10) return 0;
+    if (now.getMonth() > 10) return 30;
+    return now.getDate();
+  }
+  const TODAY = novDay();
+
+  // ---- storage: a cookie, mirrored to localStorage in case the cookie gets cleared ----
+  function readCookie() {
+    const hit = document.cookie.split('; ').find(c => c.startsWith(KEY + '='));
+    return hit ? decodeURIComponent(hit.slice(KEY.length + 1)) : null;
+  }
+  function load() {
+    let raw = null;
+    try { raw = readCookie(); } catch (e) {}
+    if (!raw) { try { raw = localStorage.getItem(KEY); } catch (e) {} }
+    try {
+      const d = JSON.parse(raw);
+      if (d && typeof d.days === 'object') return { goal: d.goal || 50000, days: d.days };
+    } catch (e) {}
+    return { goal: 50000, days: {} };
+  }
+  function save() {
+    const raw = JSON.stringify(state);
+    try {
+      document.cookie = KEY + '=' + encodeURIComponent(raw) +
+        '; max-age=' + 60 * 60 * 24 * 400 + '; path=/; SameSite=Lax' +
+        (location.protocol === 'https:' ? '; Secure' : '');
+    } catch (e) {}
+    try { localStorage.setItem(KEY, raw); } catch (e) {}
+  }
+  const state = load();
+
+  // ---- piroshok drawing ----
+  const SHAPE = 'M8 38 C8 18 30 9 50 9 C70 9 92 18 92 38 C92 50 72 55 50 55 C28 55 8 50 8 38 Z';
+  const SEAM = 'M15 31 Q20 23 26 27 Q32 18 38 24 Q44 15 50 21 Q56 15 62 24 Q68 18 74 27 Q80 23 85 31';
+  function piroshok(i, frac) {
+    const label = frac >= 1 ? 'baked piroshok' : frac > 0 ? 'piroshok in the oven' : 'raw piroshok';
+    return '<svg class="pk' + (frac >= 1 ? ' done' : '') + '" viewBox="0 0 100 62" role="img" aria-label="' + label + '">' +
+      '<defs><clipPath id="c' + i + '"><rect x="0" y="0" height="62" width="' + (100 * Math.min(frac, 1)) + '"/></clipPath></defs>' +
+      '<path class="raw" d="' + SHAPE + '"/>' +
+      '<g clip-path="url(#c' + i + ')"><path class="baked" d="' + SHAPE + '"/></g>' +
+      '<path class="seam" d="' + SEAM + '"/></svg>';
+  }
+
+  // ---- numbers ----
+  function wordsOn(d) { return state.days[d] || 0; }
+  function total() { return Object.values(state.days).reduce((a, b) => a + b, 0); }
+  function streak() {
+    let d = TODAY;
+    if (d >= 1 && !wordsOn(d)) d--;          // today isn't over yet
+    let n = 0;
+    while (d >= 1 && wordsOn(d) > 0) { n++; d--; }
+    return n;
+  }
+
+  let lastBaked = -1;
+  function render() {
+    const goal = state.goal;
+    const tot = total();
+    const per = goal / TRAY;
+    const baked = Math.floor(tot / per);
+
+    document.getElementById('goalText').textContent = fmt(goal);
+    let tray = '';
+    for (let i = 0; i < TRAY; i++) tray += piroshok(i, Math.max(0, Math.min(1, (tot - i * per) / per)));
+    document.getElementById('tray').innerHTML = tray;
+    // only animate newly baked ones
+    document.querySelectorAll('.pk.done').forEach((el, i) => { if (lastBaked < 0 || i < lastBaked) el.style.animation = 'none'; });
+    lastBaked = baked;
+
+    document.getElementById('total').textContent = fmt(tot);
+    document.getElementById('totalOf').textContent = 'of ' + fmt(goal) + ' words · ' +
+      Math.min(baked, TRAY) + ' of ' + TRAY + ' piroshki baked';
+    const pct = Math.min(100, tot / goal * 100);
+    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('pct').textContent = (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
+    const parNow = goal * TODAY / 30;
+    document.getElementById('parMark').style.left = 'calc(' + (TODAY / 30 * 100) + '% - 1px)';
+    document.getElementById('parMark').style.display = TODAY ? '' : 'none';
+    document.getElementById('win').classList.toggle('show', tot >= goal);
+
+    // stats
+    const left = Math.max(0, goal - tot);
+    const daysLeft = 30 - Math.max(TODAY, 1) + 1;          // today counts
+    const diff = tot - parNow;
+    const daysSoFar = Math.max(TODAY, 1);
+    const projected = tot / daysSoFar * 30;
+    const best = Math.max(0, ...Object.values(state.days));
+    const stats = [
+      ['Today', fmt(wordsOn(TODAY)), TODAY ? 'Nov ' + TODAY : 'November hasn’t started'],
+      tot >= goal
+        ? ['Done!', '🎉', 'Goal reached']
+        : ['Per day to finish', fmt(Math.ceil(left / daysLeft)), fmt(left) + ' left over ' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's')],
+      ['Versus par', '<span class="' + (diff >= 0 ? 'ahead' : 'behind') + '">' + (diff >= 0 ? '+' : '−') + fmt(Math.abs(diff)) + '</span>',
+        diff >= 0 ? 'ahead of ' + fmt(parNow) : 'behind ' + fmt(parNow)],
+      ['Streak', streak() + ' day' + (streak() === 1 ? '' : 's'), 'writing every day'],
+      ['On this pace', fmt(projected), projected >= goal ? 'by Nov 30: piroshki' : 'by Nov 30'],
+      ['Best day', fmt(best), best ? 'Nov ' + Object.keys(state.days).find(k => state.days[k] === best) : 'not yet'],
+    ];
+    document.getElementById('stats').innerHTML = stats.map(s =>
+      '<div class="stat"><small>' + s[0] + '</small><b>' + s[1] + '</b><small>' + s[2] + '</small></div>').join('');
+
+    // chart
+    const daily = goal / 30;
+    const top = Math.max(daily * 1.5, best) || 1;
+    let bars = '';
+    for (let d = 1; d <= 30; d++) {
+      const w = wordsOn(d);
+      bars += '<div class="b' + (d === TODAY ? ' today' : '') + '" style="height:' + (w / top * 100) + '%" title="Nov ' + d + ': ' + fmt(w) + ' words"></div>';
+    }
+    const chart = document.getElementById('chart');
+    chart.innerHTML = bars + '<span class="daily" style="bottom:' + (daily / top * 100) + '%" title="' + fmt(daily) + ' a day keeps you on par"></span>';
+
+    // log
+    const days = Object.keys(state.days).map(Number).sort((a, b) => b - a);
+    document.getElementById('log').innerHTML = days.length
+      ? days.map(d => '<li><span>Nov ' + d + '</span><span>' + fmt(state.days[d]) +
+          ' words <button type="button" data-del="' + d + '" aria-label="Clear Nov ' + d + '">clear</button></span></li>').join('')
+      : '<li><p class="empty">Nothing logged yet. The dough is waiting.</p></li>';
+  }
+
+  // ---- day picker ----
+  const daySel = document.getElementById('day');
+  for (let d = 1; d <= 30; d++) {
+    const o = document.createElement('option');
+    o.value = d; o.textContent = 'Nov ' + d + (d === TODAY ? ' (today)' : '');
+    daySel.appendChild(o);
+  }
+  daySel.value = Math.max(TODAY, 1);
+
+  // ---- events ----
+  const form = document.getElementById('form');
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const mode = (e.submitter && e.submitter.dataset.mode) || 'add';
+    const n = Math.floor(Number(document.getElementById('words').value));
+    if (!(n >= 0)) return;
+    const d = Number(daySel.value);
+    if (mode === 'set') {
+      const others = total() - wordsOn(d);
+      const v = n - others;
+      if (v < 0) { alert('That total is lower than your other days add up to (' + fmt(others) + '). Clear a day first?'); return; }
+      state.days[d] = v;
+    } else {
+      state.days[d] = wordsOn(d) + n;
+    }
+    if (!state.days[d]) delete state.days[d];
+    save(); render();
+    form.reset(); daySel.value = d;
+  });
+  document.getElementById('log').addEventListener('click', e => {
+    const d = e.target.dataset && e.target.dataset.del;
+    if (!d || !confirm('Clear the words logged for Nov ' + d + '?')) return;
+    delete state.days[d]; save(); render();
+  });
+  document.getElementById('goalBtn').addEventListener('click', () => {
+    const v = Math.floor(Number(prompt('Word goal for November:', state.goal)));
+    if (v > 0) { state.goal = v; save(); render(); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
