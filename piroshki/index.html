@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Words for Piroshki</title>
-<meta name="description" content="A NaNoWriMo word tracker for two stories. Hit both goals in November and earn a tray of piroshki.">
+<meta name="description" content="A NaNoWriMo word tracker for up to five stories. Hit every goal in November and earn a tray of piroshki.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -16,28 +16,32 @@
     --line: #eadfca;
     --accent: #b5652a;
     --accent-ink: #ffffff;
-    --s1: #c4702f;
-    --s2: #4f7f8c;
     --dough: #f1e4c6;
     --dough-edge: #d9c49b;
     --baked: #c8843a;
     --baked-edge: #8f5520;
     --good: #3f7d4e;
     --warn: #b0562f;
+    --s1: #c4702f; --s2: #4f7f8c; --s3: #8a63b5; --s4: #5a8a3c; --s5: #c24d6b;
+    --s6: #a8841f; --s7: #3e6db5; --s8: #8f5a3a; --s9: #3a9384; --s10: #9a5a8c;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #1c1712; --card: #26201a; --ink: #f3eadc; --muted: #b3a38e; --line: #3a3128;
-      --accent: #e08a48; --accent-ink: #1c1712; --s1: #e08a48; --s2: #7fb3c1;
+      --accent: #e08a48; --accent-ink: #1c1712;
       --dough: #4a4033; --dough-edge: #6a5c48; --baked: #d8954a; --baked-edge: #9c5f24;
       --good: #7cc48d; --warn: #ee9a70;
+      --s1: #e08a48; --s2: #7fb3c1; --s3: #b596dc; --s4: #8fc06c; --s5: #ea7d97;
+      --s6: #d8b34a; --s7: #7aa3e6; --s8: #c58c66; --s9: #6cc4b4; --s10: #c98cbc;
     }
   }
   :root[data-theme="dark"] {
     --bg: #1c1712; --card: #26201a; --ink: #f3eadc; --muted: #b3a38e; --line: #3a3128;
-    --accent: #e08a48; --accent-ink: #1c1712; --s1: #e08a48; --s2: #7fb3c1;
+    --accent: #e08a48; --accent-ink: #1c1712;
     --dough: #4a4033; --dough-edge: #6a5c48; --baked: #d8954a; --baked-edge: #9c5f24;
     --good: #7cc48d; --warn: #ee9a70;
+    --s1: #e08a48; --s2: #7fb3c1; --s3: #b596dc; --s4: #8fc06c; --s5: #ea7d97;
+    --s6: #d8b34a; --s7: #7aa3e6; --s8: #c58c66; --s9: #6cc4b4; --s10: #c98cbc;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
@@ -45,11 +49,12 @@
   h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; }
   h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.1; }
   h2 { font-size: 20px; margin-bottom: 12px; }
-  h3 { font-size: 17px; }
+  h3 { font-size: 17px; overflow-wrap: anywhere; }
   .sub { color: var(--muted); margin: 8px 0 0; }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 20px; }
   .first { order: -1; border-color: var(--accent); }
   header { order: -2; }
+  [hidden] { display: none !important; }
 
   .tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px 10px; margin: 4px 0 14px; }
   .pk { width: 100%; height: auto; display: block; }
@@ -66,11 +71,10 @@
   .meter { height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; position: relative; }
   .meter > div { height: 100%; border-radius: 99px; transition: width .4s; background: var(--accent); }
   .meter .par { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .5; }
-  .legend { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .legend { display: flex; justify-content: space-between; gap: 6px 14px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 
-  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
-  .c1 { background: var(--s1); } .c2 { background: var(--s2); }
-  .stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; flex: none; }
+  .stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
   .story { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
   .story .nums { font-variant-numeric: tabular-nums; margin-top: 4px; }
   .story .nums b { font-size: 22px; }
@@ -89,11 +93,15 @@
   input, select, button { font: inherit; color: inherit; }
   input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
   input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   button { cursor: pointer; border-radius: 10px; padding: 10px 16px; border: 1px solid var(--line); background: var(--bg); }
+  button:disabled { cursor: default; opacity: .45; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
-  .saved { font-size: 13px; color: var(--good); align-self: center; }
+  .saved { font-size: 13px; color: var(--good); }
+
+  .goalrow { display: grid; grid-template-columns: 1fr 150px auto; gap: 10px; align-items: end; margin-bottom: 12px; }
+  .goalrow label { display: flex; align-items: center; }
 
   .chart { display: grid; grid-template-columns: repeat(30, 1fr); align-items: end; gap: 2px; height: 120px; position: relative; border-bottom: 1px solid var(--line); }
   .chart .b { display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; }
@@ -105,6 +113,8 @@
   .log { list-style: none; padding: 0; margin: 0; }
   .log li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
   .log li:first-child { border-top: 0; }
+  .log li > span:first-child { display: flex; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+  .log li > span:last-child { white-space: nowrap; }
   .log button { padding: 2px 10px; font-size: 13px; color: var(--muted); }
   .empty { color: var(--muted); margin: 0; }
 
@@ -115,19 +125,24 @@
 
   footer { margin-top: 28px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   footer a { color: inherit; }
-  @media (max-width: 480px) { .tray { grid-template-columns: repeat(4, 1fr); } .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) {
+    .tray { grid-template-columns: repeat(4, 1fr); }
+    .grid { grid-template-columns: 1fr; }
+    .goalrow { grid-template-columns: 1fr 1fr; }
+    .goalrow button { grid-column: 1 / -1; }
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Words for Piroshki</h1>
-    <p class="sub">Two stories, one November. Hit both goals and a tray of piroshki is yours.</p>
+    <p class="sub">Every story you're writing this November. Hit all your goals and a tray of piroshki is yours.</p>
   </header>
 
   <section class="win" id="win" aria-live="polite">
     <h2>Piroshki are coming!</h2>
-    <p>Both stories, done. The oven is warming up.</p>
+    <p>Every goal, done. The oven is warming up.</p>
   </section>
 
   <section aria-labelledby="trayH">
@@ -146,7 +161,7 @@
   <section aria-labelledby="logH">
     <h2 id="logH">Log some words</h2>
     <form id="logForm" class="grid">
-      <div class="full">
+      <div class="full" id="storyPick">
         <label for="story">Story</label>
         <select id="story"></select>
       </div>
@@ -175,7 +190,7 @@
     <h2 id="chartH">Every day in November</h2>
     <div class="chart" id="chart"></div>
     <div class="chart-x"><span>Nov 1</span><span>Nov 15</span><span>Nov 30</span></div>
-    <div class="legend" id="chartLegend" style="margin-top:8px"></div>
+    <div class="legend" id="chartLegend" style="margin-top:8px; justify-content:flex-start"></div>
   </section>
 
   <section aria-labelledby="daysH">
@@ -185,13 +200,14 @@
 
   <section id="goalsSec" aria-labelledby="goalsH">
     <h2 id="goalsH">Goals</h2>
-    <p class="hint" id="goalsIntro" style="margin:0 0 12px">Name your two stories and pick a word goal for each.</p>
-    <form id="goalForm" class="grid">
-      <div><label for="n0">First story</label><input id="n0" maxlength="40" required></div>
-      <div><label for="g0">Goal (words)</label><input id="g0" type="number" inputmode="numeric" min="1" step="1" required></div>
-      <div><label for="n1">Second story</label><input id="n1" maxlength="40" required></div>
-      <div><label for="g1">Goal (words)</label><input id="g1" type="number" inputmode="numeric" min="1" step="1" required></div>
-      <div class="btns full"><button class="primary" type="submit">Save goals</button><span class="saved" id="savedMsg" hidden>Saved</span></div>
+    <p class="hint" id="goalsIntro" style="margin:0 0 12px">Name each story you're writing and give it a word goal. You can have up to five; the tray needs all of them added together.</p>
+    <form id="goalForm">
+      <div id="goalRows"></div>
+      <div class="btns">
+        <button type="button" id="addStory">Add a story</button>
+        <button class="primary" type="submit">Save goals</button>
+        <span class="saved" id="savedMsg" hidden>Saved</span>
+      </div>
     </form>
   </section>
 
@@ -204,59 +220,79 @@
 <script>
 (function () {
   const TRAY = 12;
+  const MAX = 5;     // the cookie format has room for 10 if this ever goes up
   const now = new Date();
   const KEY = 'piroshki_' + now.getFullYear();
   const fmt = n => Math.round(n).toLocaleString('en-US');
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = id => document.getElementById(id);
+  const col = i => 'var(--s' + (i + 1) + ')';
+  const dot = i => '<span class="dot" style="background:' + col(i) + '"></span>';
 
   // Day of November we're on: 0 before it starts, 30 after it ends.
   const TODAY = now.getMonth() < 10 ? 0 : now.getMonth() > 10 ? 30 : now.getDate();
 
-  // ---- storage: a cookie, mirrored to localStorage in case the cookie gets cleared ----
-  function blank() {
-    return { setup: false, stories: [
-      { name: 'Story one', goal: 25000, days: {} },
-      { name: 'Story two', goal: 25000, days: {} },
-    ] };
+  // ---- storage ----
+  // The cookie uses a compact text format so even ten stories x 30 days stays well under the ~4 KB cookie limit:
+  //   v2!<setup 0|1>!<name>~<goal>~<day1>.<day2>...|<next story>   (numbers in base 36, names URI-encoded)
+  // localStorage keeps a JSON copy as a backup in case the cookie is cleared.
+  function encode(st) {
+    return 'v2!' + (st.setup ? 1 : 0) + '!' + st.stories.map(s => {
+      const days = [];
+      for (let d = 1; d <= 30; d++) days.push(s.days[d] ? s.days[d].toString(36) : '');
+      return encodeURIComponent(s.name).replace(/~/g, '%7E') + '~' + s.goal.toString(36) + '~' + days.join('.').replace(/\.+$/, '');
+    }).join('|');
+  }
+  function decode(v) {
+    const m = /^v2!([01])!(.*)$/.exec(v);
+    if (!m) return null;
+    return { setup: m[1] === '1', stories: m[2].split('|').map(part => {
+      const [name, goal, days = ''] = part.split('~');
+      const out = { name: decodeURIComponent(name), goal: parseInt(goal, 36), days: {} };
+      days.split('.').forEach((w, i) => { const n = parseInt(w, 36); if (n > 0) out.days[i + 1] = n; });
+      return out;
+    }) };
+  }
+  function tidy(d) {
+    if (d && Array.isArray(d.stories) && d.stories.length) {
+      return { setup: !!d.setup, stories: d.stories.slice(0, MAX).map((s, i) => ({
+        name: String(s.name || 'Story ' + (i + 1)).slice(0, 40),
+        goal: s.goal > 0 ? Math.floor(s.goal) : 25000,
+        days: s.days && typeof s.days === 'object' ? s.days : {},
+      })) };
+    }
+    if (d && d.days && typeof d.days === 'object') {
+      // the very first, single-goal version
+      return { setup: false, stories: [{ name: 'My novel', goal: d.goal || 50000, days: d.days }] };
+    }
+    return null;
   }
   function load() {
-    let raw = null;
+    let d = null;
     try {
       const hit = document.cookie.split('; ').find(c => c.startsWith(KEY + '='));
-      if (hit) raw = decodeURIComponent(hit.slice(KEY.length + 1));
+      if (hit) {
+        const v = hit.slice(KEY.length + 1);
+        d = v.startsWith('v2!') ? decode(v) : JSON.parse(decodeURIComponent(v));
+      }
     } catch (e) {}
-    if (!raw) { try { raw = localStorage.getItem(KEY); } catch (e) {} }
-    let d = null;
-    try { d = JSON.parse(raw); } catch (e) {}
-    const s = blank();
-    if (d && Array.isArray(d.stories)) {
-      d.stories.slice(0, 2).forEach((st, i) => {
-        s.stories[i] = { name: String(st.name || s.stories[i].name), goal: st.goal > 0 ? st.goal : 25000, days: st.days || {} };
-      });
-      s.setup = !!d.setup;
-    } else if (d && typeof d.days === 'object') {
-      // single-goal version: keep whatever was logged as the first story
-      s.stories[0].days = d.days;
-    }
-    return s;
+    if (!tidy(d)) { try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {} }
+    return tidy(d) || { setup: false, stories: [{ name: 'My novel', goal: 50000, days: {} }] };
   }
   function save() {
-    const raw = JSON.stringify(state);
     try {
-      document.cookie = KEY + '=' + encodeURIComponent(raw) +
+      document.cookie = KEY + '=' + encode(state) +
         '; max-age=' + 60 * 60 * 24 * 400 + '; path=/; SameSite=Lax' +
         (location.protocol === 'https:' ? '; Secure' : '');
     } catch (e) {}
-    try { localStorage.setItem(KEY, raw); } catch (e) {}
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
   }
   const state = load();
-  const S = state.stories;
 
   // ---- numbers ----
   const on = (s, d) => s.days[d] || 0;
   const sum = s => Object.values(s.days).reduce((a, b) => a + b, 0);
-  const dayTotal = d => S.reduce((a, s) => a + on(s, d), 0);
+  const dayTotal = d => state.stories.reduce((a, s) => a + on(s, d), 0);
   const daysLeft = 30 - Math.max(TODAY, 1) + 1;   // today counts
   function streak() {
     let d = TODAY;
@@ -280,11 +316,13 @@
 
   let lastBaked = -1;
   function render() {
-    // The tray counts each story only up to its own goal, so racing ahead on one can't cover for the other.
-    const goal = S[0].goal + S[1].goal;
+    const S = state.stories;
+    // The tray's goal is every story's goal added up. Each story counts only up to its own goal,
+    // so racing ahead on one can't cover for another that's still short.
+    const goal = S.reduce((a, s) => a + s.goal, 0);
     const tots = S.map(sum);
     const counted = S.reduce((a, s, i) => a + Math.min(tots[i], s.goal), 0);
-    const all = tots[0] + tots[1];
+    const all = tots.reduce((a, b) => a + b, 0);
     const per = goal / TRAY;
     const baked = Math.floor(counted / per + 1e-9);
     const won = S.every((s, i) => tots[i] >= s.goal);
@@ -296,7 +334,8 @@
     lastBaked = baked;
 
     $('total').textContent = fmt(counted);
-    $('totalOf').textContent = 'of ' + fmt(goal) + ' words · ' + Math.min(baked, TRAY) + ' of ' + TRAY + ' piroshki baked';
+    $('totalOf').textContent = 'of ' + fmt(goal) + ' words' + (S.length > 1 ? ' across ' + S.length + ' stories' : '') +
+      ' · ' + Math.min(baked, TRAY) + ' of ' + TRAY + ' piroshki baked';
     const pct = Math.min(100, counted / goal * 100);
     $('bar').style.width = pct + '%';
     $('pct').textContent = (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
@@ -309,26 +348,27 @@
       const t = tots[i], par = s.goal * TODAY / 30, diff = t - par, left = s.goal - t;
       const p = Math.min(100, t / s.goal * 100);
       const line = left <= 0
-        ? '<span class="ahead">Done! ' + (t > s.goal ? fmt(t - s.goal) + ' over goal.' : '') + '</span>'
+        ? '<span class="ahead">Done!' + (t > s.goal ? ' ' + fmt(t - s.goal) + ' over goal.' : '') + '</span>'
         : fmt(Math.ceil(left / daysLeft)) + ' a day to finish · ' + (TODAY
           ? '<span class="' + (diff >= 0 ? 'ahead' : 'behind') + '">' + fmt(Math.abs(diff)) + (diff >= 0 ? ' ahead' : ' behind') + '</span>'
           : 'starts Nov 1');
-      return '<div class="story"><h3><span class="dot c' + (i + 1) + '"></span>' + esc(s.name) + '</h3>' +
+      return '<div class="story"><h3>' + dot(i) + esc(s.name) + '</h3>' +
         '<div class="nums"><b>' + fmt(t) + '</b> <span>of ' + fmt(s.goal) + ' · ' + Math.floor(p) + '%</span></div>' +
-        '<div class="meter" aria-hidden="true"><div style="width:' + p + '%;background:var(--s' + (i + 1) + ')"></div>' +
+        '<div class="meter" aria-hidden="true"><div style="width:' + p + '%;background:' + col(i) + '"></div>' +
         (TODAY ? '<span class="par" style="left:calc(' + (TODAY / 30 * 100) + '% - 1px)"></span>' : '') + '</div>' +
         '<p>' + line + '</p></div>';
     }).join('');
 
-    // shared stats
+    // shared stats: each day's words are summed across every story
     const projected = all / Math.max(TODAY, 1) * 30;
     let best = 0, bestDay = 0;
     for (let d = 1; d <= 30; d++) if (dayTotal(d) > best) { best = dayTotal(d); bestDay = d; }
     const st = streak();
+    const scope = S.length > 1 ? 'all stories' : '';
     const stats = [
-      ['Today', fmt(dayTotal(TODAY)), TODAY ? 'both stories, Nov ' + TODAY : 'November hasn’t started'],
+      ['Today', fmt(dayTotal(TODAY)), TODAY ? (scope ? scope + ', ' : '') + 'Nov ' + TODAY : 'November hasn’t started'],
       ['Streak', st + ' day' + (st === 1 ? '' : 's'), 'writing every day'],
-      ['On this pace', fmt(projected), 'words by Nov 30'],
+      ['On this pace', fmt(projected), 'words by Nov 30, of ' + fmt(goal)],
       ['Best day', fmt(best), best ? 'Nov ' + bestDay : 'not yet'],
     ];
     $('stats').innerHTML = stats.map(s =>
@@ -340,35 +380,79 @@
     let bars = '';
     for (let d = 1; d <= 30; d++) {
       const t = dayTotal(d);
-      bars += '<div class="b' + (d === TODAY ? ' today' : '') + '" style="height:' + (t / top * 100) + '%" title="Nov ' + d + ': ' +
-        S.map(s => esc(s.name) + ' ' + fmt(on(s, d))).join(', ') + '">' +
-        S.map((s, i) => '<i class="c' + (i + 1) + '" style="height:' + (t ? on(s, d) / t * 100 : 0) + '%"></i>').join('') + '</div>';
+      bars += '<div class="b' + (d === TODAY ? ' today' : '') + '" style="height:' + (t / top * 100) + '%" title="Nov ' + d + ': ' + fmt(t) +
+        (S.length > 1 && t ? ' (' + S.filter(s => on(s, d)).map(s => esc(s.name) + ' ' + fmt(on(s, d))).join(', ') + ')' : '') + '">' +
+        S.map((s, i) => '<i style="background:' + col(i) + ';height:' + (t ? on(s, d) / t * 100 : 0) + '%"></i>').join('') + '</div>';
     }
     $('chart').innerHTML = bars + '<span class="daily" style="bottom:' + (daily / top * 100) + '%" title="' + fmt(daily) + ' a day keeps you on pace"></span>';
-    $('chartLegend').innerHTML = S.map((s, i) => '<span><span class="dot c' + (i + 1) + '"></span>' + esc(s.name) + '</span>').join('') +
+    $('chartLegend').innerHTML = (S.length > 1 ? S.map((s, i) => '<span>' + dot(i) + esc(s.name) + '</span>').join('') : '') +
       '<span>dashed line = ' + fmt(daily) + ' a day</span>';
 
     // log
     const rows = [];
     for (let d = 30; d >= 1; d--) S.forEach((s, i) => { if (on(s, d)) rows.push([d, i]); });
     $('log').innerHTML = rows.length
-      ? rows.map(([d, i]) => '<li><span>Nov ' + d + ' · <span class="dot c' + (i + 1) + '"></span>' + esc(S[i].name) + '</span><span>' +
+      ? rows.map(([d, i]) => '<li><span>Nov ' + d + (S.length > 1 ? '&nbsp;·&nbsp;' + dot(i) + esc(S[i].name) : '') + '</span><span>' +
           fmt(on(S[i], d)) + ' words <button type="button" data-day="' + d + '" data-story="' + i + '">clear</button></span></li>').join('')
       : '<li><p class="empty">Nothing logged yet. The dough is waiting.</p></li>';
 
-    // story picker keeps its selection across re-renders
-    const sel = $('story'), keep = sel.value || '0';
+    // story picker keeps its selection across re-renders; hidden when there's only one
+    const sel = $('story'), keep = sel.value;
     sel.innerHTML = S.map((s, i) => '<option value="' + i + '">' + esc(s.name) + '</option>').join('');
-    sel.value = keep;
+    sel.value = keep && keep < S.length ? keep : '0';
+    $('storyPick').hidden = S.length < 2;
 
-    // goals: up top until they've been set once
+    // goals: up top until they've been saved once
     $('goalsSec').classList.toggle('first', !state.setup);
     $('goalsIntro').hidden = state.setup;
   }
 
-  function fillGoalForm() {
-    S.forEach((s, i) => { $('n' + i).value = s.name; $('g' + i).value = s.goal; });
+  // ---- goals editor (edits a draft; nothing changes until Save) ----
+  let draft;
+  function resetDraft() { draft = state.stories.map((s, i) => ({ name: s.name, goal: s.goal, src: i })); drawGoals(); }
+  function drawGoals() {
+    $('goalRows').innerHTML = draft.map((g, i) =>
+      '<div class="goalrow">' +
+        '<div><label for="n' + i + '">' + dot(i) + 'Story ' + (i + 1) + '</label>' +
+          '<input id="n' + i + '" data-i="' + i + '" data-k="name" maxlength="40" required value="' + esc(g.name) + '"></div>' +
+        '<div><label for="g' + i + '">Goal (words)</label>' +
+          '<input id="g' + i + '" data-i="' + i + '" data-k="goal" type="number" inputmode="numeric" min="1" step="1" required value="' + g.goal + '"></div>' +
+        '<button type="button" data-rm="' + i + '"' + (draft.length < 2 ? ' disabled' : '') + ' aria-label="Remove ' + esc(g.name) + '">Remove</button>' +
+      '</div>').join('');
+    $('addStory').disabled = draft.length >= MAX;
+    $('addStory').textContent = draft.length >= MAX ? 'Five is the most' : 'Add a story';
   }
+  $('goalRows').addEventListener('input', e => {
+    const k = e.target.dataset.k;
+    if (k) draft[e.target.dataset.i][k] = k === 'goal' ? Math.floor(Number(e.target.value)) : e.target.value;
+  });
+  $('goalRows').addEventListener('click', e => {
+    const b = e.target.closest('button[data-rm]');
+    if (!b) return;
+    draft.splice(Number(b.dataset.rm), 1);
+    drawGoals();
+  });
+  $('addStory').addEventListener('click', () => {
+    if (draft.length >= MAX) return;
+    draft.push({ name: 'Story ' + (draft.length + 1), goal: 25000, src: -1 });
+    drawGoals();
+    const inp = $('n' + (draft.length - 1)); inp.focus(); inp.select();
+  });
+  $('goalForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const kept = new Set(draft.map(g => g.src));
+    const lost = state.stories.filter((s, i) => !kept.has(i) && sum(s) > 0);
+    if (lost.length && !confirm('Removing ' + lost.map(s => s.name + ' (' + fmt(sum(s)) + ' words)').join(' and ') +
+        ' also deletes the words logged for it. Go ahead?')) return;
+    state.stories = draft.map((g, i) => ({
+      name: String(g.name).trim().slice(0, 40) || 'Story ' + (i + 1),
+      goal: g.goal > 0 ? g.goal : 25000,
+      days: g.src >= 0 ? state.stories[g.src].days : {},
+    }));
+    state.setup = true;
+    save(); render(); resetDraft();
+    const m = $('savedMsg'); m.hidden = false; setTimeout(() => { m.hidden = true; }, 1500);
+  });
 
   // ---- day picker ----
   const daySel = $('day');
@@ -379,13 +463,13 @@
   }
   daySel.value = Math.max(TODAY, 1);
 
-  // ---- events ----
+  // ---- logging ----
   $('logForm').addEventListener('submit', e => {
     e.preventDefault();
     const mode = (e.submitter && e.submitter.dataset.mode) || 'add';
     const n = Math.floor(Number($('words').value));
     if (!(n >= 0)) return;
-    const s = S[Number($('story').value)];
+    const s = state.stories[Number($('story').value)];
     const d = Number(daySel.value);
     if (mode === 'set') {
       const others = sum(s) - on(s, d);
@@ -401,23 +485,12 @@
   $('log').addEventListener('click', e => {
     const b = e.target.closest('button[data-day]');
     if (!b) return;
-    const s = S[b.dataset.story], d = b.dataset.day;
+    const s = state.stories[b.dataset.story], d = b.dataset.day;
     if (!confirm('Clear ' + s.name + ' for Nov ' + d + '?')) return;
     delete s.days[d]; save(); render();
   });
-  $('goalForm').addEventListener('submit', e => {
-    e.preventDefault();
-    S.forEach((s, i) => {
-      s.name = $('n' + i).value.trim() || s.name;
-      const g = Math.floor(Number($('g' + i).value));
-      if (g > 0) s.goal = g;
-    });
-    state.setup = true;
-    save(); render(); fillGoalForm();
-    const m = $('savedMsg'); m.hidden = false; setTimeout(() => { m.hidden = true; }, 1500);
-  });
 
-  fillGoalForm();
+  resetDraft();
   render();
 })();
 </script>

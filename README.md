@@ -4,4 +4,4 @@ Little static tools, served with GitHub Pages. Each tool lives in its own folder
 
 | Tool | What it does |
 | --- | --- |
-| [piroshki](piroshki/) | NaNoWriMo word tracker for two stories, each with its own goal. Log words per story per day and watch a tray of 12 piroshki bake as both goals fill. Data stays in a cookie in the browser. |
+| [piroshki](piroshki/) | NaNoWriMo word tracker for up to five stories, each with its own goal. Log words per story per day; a tray of 12 piroshki bakes toward all the goals added together. Data stays in a compact cookie in the browser. |
