@@ -123,6 +123,13 @@
   .win h2 { font-size: 28px; margin: 0 0 4px; }
   .win p { margin: 0; }
 
+  dialog { border: 1px solid var(--line); border-radius: 18px; padding: 18px; background: var(--card); color: var(--ink); width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+  dialog::backdrop { background: rgba(20, 14, 8, .55); }
+  .dlg-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .dlg-head h2 { margin: 0; }
+  .dlg-head button { padding: 4px 12px; }
+  #shareImg { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); }
+
   footer { margin-top: 28px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   footer a { color: inherit; }
   @media (max-width: 480px) {
@@ -151,7 +158,20 @@
     <div class="big"><strong id="total">0</strong><span id="totalOf"></span></div>
     <div class="meter" aria-hidden="true"><div id="bar" style="width:0"></div><span class="par" id="parMark"></span></div>
     <div class="legend"><span id="pct">0%</span><span>line = where you'd be at an even pace today</span></div>
+    <div class="btns" style="margin-top:16px"><button type="button" class="primary" id="shareBtn">Share progress</button></div>
   </section>
+
+  <dialog id="shareDlg" aria-labelledby="shareH">
+    <div class="dlg-head"><h2 id="shareH">Your progress card</h2><button type="button" id="shareClose" aria-label="Close">✕</button></div>
+    <img id="shareImg" alt="">
+    <div class="btns" style="margin-top:14px">
+      <button type="button" class="primary" id="shareSend" hidden>Send…</button>
+      <button type="button" id="shareCopyImg" hidden>Copy image</button>
+      <button type="button" id="shareSave">Save image</button>
+      <button type="button" id="shareText">Copy as text</button>
+    </div>
+    <p class="hint" id="shareMsg">Or just screenshot it.</p>
+  </dialog>
 
   <section aria-labelledby="storiesH">
     <h2 id="storiesH">Your stories</h2>
@@ -488,6 +508,187 @@
     const s = state.stories[b.dataset.story], d = b.dataset.day;
     if (!confirm('Clear ' + s.name + ' for Nov ' + d + '?')) return;
     delete s.days[d]; save(); render();
+  });
+
+  // ---- share card ----
+  // Drawn on a canvas in fixed, light bakery colours so it looks the same whoever opens it.
+  const CARD = { bg: '#fbf6ec', panel: '#ffffff', ink: '#2b2118', muted: '#7a6a58', line: '#eadfca', accent: '#b5652a',
+    dough: '#f1e4c6', doughEdge: '#d9c49b', baked: '#c8843a', bakedEdge: '#8f5520', good: '#3f7d4e', warn: '#b0562f',
+    story: ['#c4702f', '#4f7f8c', '#8a63b5', '#5a8a3c', '#c24d6b'] };
+  const SERIF = 'Fraunces, Georgia, serif', SANS = 'Inter, system-ui, sans-serif';
+  function summary() {
+    const S = state.stories;
+    const goal = S.reduce((a, s) => a + s.goal, 0);
+    const tots = S.map(sum);
+    const counted = S.reduce((a, s, i) => a + Math.min(tots[i], s.goal), 0);
+    const all = tots.reduce((a, b) => a + b, 0);
+    let best = 0;
+    for (let d = 1; d <= 30; d++) best = Math.max(best, dayTotal(d));
+    return {
+      S, goal, tots, counted, all, best,
+      baked: Math.min(TRAY, Math.floor(counted / (goal / TRAY) + 1e-9)),
+      pct: Math.min(100, counted / goal * 100),
+      diff: counted - goal * TODAY / 30,
+      won: S.every((s, i) => tots[i] >= s.goal),
+      today: dayTotal(TODAY), streak: streak(), projected: all / Math.max(TODAY, 1) * 30,
+      date: TODAY ? 'Nov ' + TODAY : now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    };
+  }
+  function roundRect(c, x, y, w, h, r) { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); }
+  function fitText(c, text, max) {
+    if (c.measureText(text).width <= max) return text;
+    while (text.length > 1 && c.measureText(text + '…').width > max) text = text.slice(0, -1);
+    return text + '…';
+  }
+  async function drawCard() {
+    try { await Promise.all([document.fonts.load('700 100px Fraunces'), document.fonts.load('600 30px Inter'), document.fonts.load('400 30px Inter')]); } catch (e) {}
+    const m = summary();
+    const W = 1080, P = 72, inner = W - 2 * P;
+    const storyH = 92, rows = m.S.length;
+    const H = 1000 + rows * storyH;   // generous; trimmed to what was drawn at the end
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c = cv.getContext('2d');
+    c.fillStyle = CARD.bg; c.fillRect(0, 0, W, H);
+    c.textBaseline = 'alphabetic';
+
+    // header
+    let y = P + 26;
+    c.fillStyle = CARD.accent; c.font = '600 28px ' + SANS;
+    c.fillText('WORDS FOR PIROSHKI', P, y);
+    c.fillStyle = CARD.muted; c.textAlign = 'right'; c.fillText(m.date, W - P, y); c.textAlign = 'left';
+
+    // big number
+    y += 120;
+    c.fillStyle = CARD.ink; c.font = '700 116px ' + SERIF;
+    const big = fmt(m.counted);
+    c.fillText(big, P, y);
+    const bw = c.measureText(big).width;
+    c.fillStyle = CARD.muted; c.font = '400 34px ' + SANS;
+    c.fillText('of ' + fmt(m.goal) + ' words', P + bw + 22, y - 44);
+    c.fillStyle = CARD.ink; c.font = '600 34px ' + SANS;
+    c.fillText((m.pct < 10 ? m.pct.toFixed(1) : Math.floor(m.pct)) + '%', P + bw + 22, y);
+
+    // tray
+    y += 48;
+    const cols = 6, gap = 18, cw = (inner - (cols - 1) * gap) / cols, ch = cw * 0.62;
+    const shape = new Path2D(SHAPE), seam = new Path2D(SEAM), per = m.goal / TRAY;
+    for (let i = 0; i < TRAY; i++) {
+      const x = P + (i % cols) * (cw + gap), ty = y + Math.floor(i / cols) * (ch + gap);
+      const frac = Math.max(0, Math.min(1, (m.counted - i * per) / per));
+      c.save(); c.translate(x, ty); c.scale(cw / 100, ch / 62);
+      c.lineWidth = 2.2;
+      c.fillStyle = CARD.dough; c.strokeStyle = CARD.doughEdge; c.fill(shape); c.stroke(shape);
+      if (frac > 0) {
+        c.save(); c.beginPath(); c.rect(0, 0, 100 * frac, 62); c.clip();
+        c.fillStyle = CARD.baked; c.strokeStyle = CARD.bakedEdge; c.fill(shape); c.stroke(shape);
+        c.restore();
+      }
+      c.lineWidth = 2.6; c.lineCap = 'round'; c.strokeStyle = frac >= 1 ? CARD.bakedEdge : CARD.doughEdge; c.stroke(seam);
+      c.restore();
+    }
+    y += 2 * ch + gap + 64;
+
+    // headline
+    c.fillStyle = CARD.ink; c.font = '700 46px ' + SERIF;
+    c.fillText(m.won ? 'Piroshki are coming!' : m.baked + ' of ' + TRAY + ' piroshki baked', P, y);
+    if (!m.won && TODAY) {
+      c.font = '600 30px ' + SANS; c.textAlign = 'right';
+      c.fillStyle = m.diff >= 0 ? CARD.good : CARD.warn;
+      c.fillText(fmt(Math.abs(m.diff)) + (m.diff >= 0 ? ' ahead of pace' : ' behind pace'), W - P, y);
+      c.textAlign = 'left';
+    }
+    y += 40;
+
+    // stories
+    c.strokeStyle = CARD.line; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(P, y); c.lineTo(W - P, y); c.stroke();
+    y += 22;
+    m.S.forEach((s, i) => {
+      const t = m.tots[i], col = CARD.story[i % CARD.story.length];
+      y += 36;
+      c.fillStyle = col; c.beginPath(); c.arc(P + 9, y - 11, 9, 0, Math.PI * 2); c.fill();
+      c.font = '600 30px ' + SANS; c.fillStyle = CARD.ink;
+      const right = fmt(t) + ' / ' + fmt(s.goal) + (t >= s.goal ? '  ✓' : '');
+      c.textAlign = 'right'; c.fillText(right, W - P, y);
+      const rw = c.measureText(right).width;
+      c.textAlign = 'left'; c.fillText(fitText(c, s.name, inner - rw - 60), P + 30, y);
+      y += 20;
+      c.fillStyle = CARD.line; roundRect(c, P, y, inner, 14, 7); c.fill();
+      c.fillStyle = col; roundRect(c, P, y, Math.max(14, inner * Math.min(1, t / s.goal)), 14, 7); c.fill();
+      y += storyH - 56;
+    });
+    y += 30;
+
+    // stats strip
+    const stats = [['Today', fmt(m.today)], ['Streak', m.streak + (m.streak === 1 ? ' day' : ' days')], ['On pace for', fmt(m.projected)]];
+    const sw = inner / 3;
+    c.fillStyle = CARD.panel; roundRect(c, P, y, inner, 150, 24); c.fill();
+    c.strokeStyle = CARD.line; c.lineWidth = 2; c.stroke();
+    stats.forEach(([label, value], i) => {
+      const x = P + i * sw + 32;
+      c.fillStyle = CARD.muted; c.font = '400 26px ' + SANS; c.fillText(label, x, y + 52);
+      c.fillStyle = CARD.ink; c.font = '700 48px ' + SERIF; c.fillText(value, x, y + 110);
+    });
+    y += 150 + 56;
+
+    // footer
+    c.fillStyle = CARD.muted; c.font = '400 26px ' + SANS;
+    c.fillText(m.won ? 'NaNoWriMo, done. Time to start the dough.' : 'NaNoWriMo · ' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + ' to go', P, y);
+
+    // trim to what was drawn
+    const out = document.createElement('canvas');
+    out.width = W; out.height = Math.ceil(y + P - 20);
+    const oc = out.getContext('2d');
+    oc.drawImage(cv, 0, 0);
+    return out;
+  }
+  function shareText() {
+    const m = summary();
+    return 'Words for Piroshki, ' + m.date + ': ' + fmt(m.counted) + ' of ' + fmt(m.goal) + ' words (' + Math.floor(m.pct) + '%). ' +
+      (m.won ? 'Every goal done, piroshki are coming! 🥟' : m.baked + ' of ' + TRAY + ' piroshki baked' +
+        (TODAY ? ', ' + fmt(Math.abs(m.diff)) + (m.diff >= 0 ? ' ahead of pace.' : ' behind pace.') : '.')) +
+      (m.S.length > 1 ? ' ' + m.S.map((s, i) => s.name + ' ' + fmt(m.tots[i]) + '/' + fmt(s.goal)).join(', ') + '.' : '');
+  }
+  let cardBlob = null;
+  const fileName = () => 'piroshki-progress-' + (TODAY ? 'nov-' + TODAY : 'today') + '.png';
+  function shareMsg(t) { $('shareMsg').textContent = t; }
+  $('shareBtn').addEventListener('click', async () => {
+    const dlg = $('shareDlg');
+    shareMsg('Making your card…');
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    const cv = await drawCard();
+    $('shareImg').src = cv.toDataURL('image/png');
+    $('shareImg').alt = shareText();
+    cardBlob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    const file = cardBlob && new File([cardBlob], fileName(), { type: 'image/png' });
+    let canSendFile = false;
+    try { canSendFile = !!(file && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) {}
+    $('shareSend').hidden = !canSendFile;
+    $('shareCopyImg').hidden = !(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) || canSendFile;
+    shareMsg('Or just screenshot it.');
+  });
+  $('shareClose').addEventListener('click', () => $('shareDlg').close());
+  $('shareDlg').addEventListener('click', e => { if (e.target === $('shareDlg')) $('shareDlg').close(); });   // tap outside to close
+  $('shareSend').addEventListener('click', async () => {
+    try { await navigator.share({ files: [new File([cardBlob], fileName(), { type: 'image/png' })], text: shareText() }); shareMsg('Sent.'); }
+    catch (e) { if (e && e.name !== 'AbortError') shareMsg('Couldn’t open sharing. Save the image instead.'); }
+  });
+  $('shareCopyImg').addEventListener('click', async () => {
+    try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': cardBlob })]); shareMsg('Image copied. Paste it into a message.'); }
+    catch (e) { shareMsg('Couldn’t copy the image here. Save it instead.'); }
+  });
+  $('shareSave').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(cardBlob); a.download = fileName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    shareMsg('Saved.');
+  });
+  $('shareText').addEventListener('click', () => {
+    const t = shareText();
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject())
+      .then(() => shareMsg('Copied: ' + t), () => prompt('Copy this:', t));
   });
 
   resetDraft();
