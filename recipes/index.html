@@ -94,6 +94,7 @@
   .ing li.done::before { background: var(--done); border-color: var(--done); }
   .qty { font-weight: 600; }
   .scaled .qty { background: var(--mark); border-radius: 4px; padding: 0 3px; }
+  .qty.conv { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
   ol.steps { counter-reset: step; }
   .steps li { counter-increment: step; display: grid; grid-template-columns: 34px 1fr; gap: 10px; padding: 10px 6px; }
   .steps li::before { content: counter(step); font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 20px; color: var(--accent); line-height: 1.3; }
@@ -214,10 +215,105 @@
   const WORDS = { cup: 'cups', tablespoon: 'tablespoons', teaspoon: 'teaspoons', pound: 'pounds', ounce: 'ounces', clove: 'cloves',
     can: 'cans', pinch: 'pinches', stick: 'sticks', slice: 'slices', quart: 'quarts', pint: 'pints', gallon: 'gallons', liter: 'liters',
     litre: 'litres', bunch: 'bunches', head: 'heads', sprig: 'sprigs', package: 'packages', jar: 'jars', handful: 'handfuls',
-    dash: 'dashes', piece: 'pieces', bag: 'bags', box: 'boxes', bottle: 'bottles', sheet: 'sheets', envelope: 'envelopes' };
+    dash: 'dashes', piece: 'pieces', bag: 'bags', box: 'boxes', bottle: 'bottles', sheet: 'sheets', envelope: 'envelopes',
+    gram: 'grams', kilogram: 'kilograms', milliliter: 'milliliters', millilitre: 'millilitres' };
   const PLURAL_TO_WORD = Object.fromEntries(Object.entries(WORDS).map(([s, p]) => [p, s]));
-  const ABBR = { tbsp: 'tbsp', tbs: 'tbsp', tsp: 'tsp', lb: 'lb', lbs: 'lb', oz: 'oz', g: 'g', kg: 'kg', ml: 'ml', l: 'l', qt: 'qt', pt: 'pt' };
-  const CANON = { tablespoon: 'tbsp', teaspoon: 'tsp', pound: 'lb', ounce: 'oz', quart: 'qt', pint: 'pt', liter: 'l', litre: 'l' };
+  const ABBR = { tbsp: 'tbsp', tbs: 'tbsp', tsp: 'tsp', lb: 'lb', lbs: 'lb', oz: 'oz', g: 'g', kg: 'kg', ml: 'ml', l: 'l', qt: 'qt', pt: 'pt', gal: 'gal', floz: 'floz' };
+  const CANON = { tablespoon: 'tbsp', teaspoon: 'tsp', pound: 'lb', ounce: 'oz', quart: 'qt', pint: 'pt', liter: 'l', litre: 'l',
+    gallon: 'gal', gram: 'g', kilogram: 'kg', milliliter: 'ml', millilitre: 'ml' };
+
+  // ---- conversions ----
+  // Exact sizes (US customary), in millilitres and grams.
+  const ML = { tsp: 4.92892, tbsp: 14.7868, cup: 236.588, floz: 29.5735, pt: 473.176, qt: 946.353, gal: 3785.41, stick: 118.294, ml: 1, l: 1000 };
+  const G = { oz: 28.3495, lb: 453.592, g: 1, kg: 1000 };
+  const METRIC = new Set(['ml', 'l', 'g', 'kg']);
+  // Grams per US cup, mostly from King Arthur's ingredient weight chart. This is what lets
+  // "1 cup flour" become grams; it's always approximate, so converted amounts are marked.
+  // Longest name wins, and 0 means "a liquid, leave it as volume" (so buttermilk isn't butter).
+  const DENSITY = Object.entries({
+    'flour': 120, 'all-purpose flour': 120, 'bread flour': 120, 'whole wheat flour': 113, 'cake flour': 120, 'almond flour': 96,
+    'sugar': 198, 'brown sugar': 213, 'powdered sugar': 113, "confectioners' sugar": 113, 'icing sugar': 113,
+    'butter': 227, 'peanut butter': 270, 'buttermilk': 0, 'cocoa': 84, 'oats': 89, 'chocolate chips': 170,
+    'honey': 336, 'maple syrup': 312, 'molasses': 337, 'cornstarch': 112, 'rice': 185, 'rice vinegar': 0, 'rice wine': 0,
+    'lentils': 192, 'oat milk': 0, 'almond milk': 0, 'coconut milk': 0, 'shredded cheese': 113, 'parmesan': 100,
+  }).sort((a, b) => b[0].length - a[0].length);
+  function density(name) {
+    const n = name.toLowerCase();
+    const hit = DENSITY.find(([k]) => n.includes(k));
+    return hit ? hit[1] : 0;
+  }
+  // Which unit reads best for an amount: standard cup sizes, else spoons; metric switches to ml/g
+  // but keeps spoons for small amounts, since teaspoons and tablespoons are used everywhere.
+  const STD_CUPS = [1/4, 1/3, 1/2, 2/3, 3/4];
+  function pickUnit(dim, base, target) {
+    if (dim === 'wt') return target === 'metric' ? (base >= 1000 ? 'kg' : 'g') : (base / G.oz >= 16 ? 'lb' : 'oz');
+    if (target === 'metric' && base >= 45) return base >= 1000 ? 'l' : 'ml';
+    const cups = base / ML.cup;
+    if (cups >= 0.75 || STD_CUPS.some(s => Math.abs(cups - s) < 0.02)) return 'cup';
+    return base / ML.tbsp >= 0.99 ? 'tbsp' : 'tsp';
+  }
+  function unitNum(n, unit) {
+    if (unit === 'l' || unit === 'kg') return String(Math.round(n * 100) / 100);
+    if (unit === 'ml' || unit === 'g') {
+      const step = n < 5 ? 0.5 : n < 20 ? 1 : n < 250 ? 5 : 10;
+      return String(Math.max(step, Math.round(n / step) * step));
+    }
+    return niceNum(n);
+  }
+  const UNIT_NAME = { cup: ['cup', 'cups'], tbsp: ['tbsp', 'tbsp'], tsp: ['tsp', 'tsp'], oz: ['oz', 'oz'], lb: ['lb', 'lb'],
+    g: ['g', 'g'], kg: ['kg', 'kg'], ml: ['ml', 'ml'], l: ['L', 'L'] };
+  // Re-express an amount (base = ml or g) for a target system. With cross set it may switch
+  // between volume and weight using the ingredient's weight per cup.
+  function measure(dim, lo, hi, target, name, cross) {
+    let approx = false;
+    const d = cross ? density(name) : 0;
+    const big = hi == null ? lo : hi;
+    if (d && target === 'metric' && dim === 'vol' && big >= 29) {        // 2 tbsp and up go to grams
+      lo = lo / ML.cup * d; if (hi != null) hi = hi / ML.cup * d; dim = 'wt'; approx = true;
+    } else if (d && target === 'us' && dim === 'wt') {
+      lo = lo / d * ML.cup; if (hi != null) hi = hi / d * ML.cup; dim = 'vol'; approx = true;
+    }
+    const top = hi == null ? lo : hi;
+    const unit = pickUnit(dim, top, target);
+    const per = dim === 'wt' ? G[unit] : ML[unit];
+    const a = unitNum(lo / per, unit), b = hi == null ? null : unitNum(hi / per, unit);
+    return { text: a + (b != null && b !== a ? '–' + b : '') + ' ' + UNIT_NAME[unit][top / per > 1.01 ? 1 : 0], unit, approx };
+  }
+  const isMeasure = p => p.info && !p.pre && (ML[p.info.canon] || G[p.info.canon]);
+  const sysOf = canon => METRIC.has(canon) ? 'metric' : 'us';
+  let units = store.get('units', 'orig');   // 'orig' (as written), 'us' or 'metric'
+  if (!['orig', 'us', 'metric'].includes(units)) units = 'orig';
+  function setUnits(u) {
+    units = u; store.set('units', u);
+    document.querySelectorAll('[data-units]').forEach(b => b.setAttribute('aria-pressed', b.dataset.units === u));
+  }
+  const unitsToggle = () => '<span class="scale" role="group" aria-label="Units">' +
+    [['orig', 'As written'], ['us', 'US'], ['metric', 'Metric']].map(([k, l]) =>
+      '<button type="button" data-units="' + k + '" aria-pressed="' + (units === k) + '">' + l + '</button>').join('') + '</span>';
+
+  // Oven temperatures and pan sizes inside steps and notes.
+  const f2c = f => Math.round((f - 32) * 5 / 9 / 5) * 5;
+  const c2f = c => Math.round((c * 9 / 5 + 32) / 5) * 5;
+  const inCm = x => { const c = x * 2.54; return c < 3 ? Math.round(c * 2) / 2 : Math.round(c); };
+  const LEN = '(\\d+(?:\\.\\d+)?|\\d*[½¼¾])';
+  function convertText(text) {
+    if (units === 'orig') return text;
+    const want = units === 'metric' ? 'C' : 'F';
+    // "375°F (190°C)": keep whichever one is wanted
+    text = text.replace(/(\d{2,3})\s*°\s*([FC])\s*\(\s*(\d{2,3})\s*°\s*([FC])\s*\)/gi,
+      (m, a, ua, b, ub) => ua.toUpperCase() === want ? a + '°' + want : ub.toUpperCase() === want ? b + '°' + want : m);
+    text = text.replace(/(\d{2,3})\s*(?:°\s*|degrees\s+)([FC])\b/gi, (m, n, u) =>
+      u.toUpperCase() === want ? m : (want === 'C' ? f2c(+n) : c2f(+n)) + '°' + want);
+    if (units === 'metric') {
+      text = text.replace(new RegExp(LEN + '\\s*[x×]\\s*' + LEN + '(?:\\s*|-)inch(?:es)?\\b', 'gi'), (m, a, b) => inCm(parseNum(a)) + '×' + inCm(parseNum(b)) + ' cm');
+      text = text.replace(new RegExp(LEN + '(?:\\s*|-)inch(?:es)?\\b', 'gi'), (m, a) => inCm(parseNum(a)) + ' cm');
+    } else {
+      text = text.replace(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*cm\b/gi, (m, a, b) => Math.round(a / 2.54) + '×' + Math.round(b / 2.54) + '-inch');
+      text = text.replace(/(\d+(?:\.\d+)?)\s*cm\b/gi, (m, a) => niceNum(Math.round(a / 2.54 * 4) / 4) + '-inch');
+    }
+    // the number changed, so "an 8-inch pan" may now need to be "a 20 cm pan"
+    return text.replace(/\b([Aa])n? (\d+)/g, (m, a, n) => a + (/^(8|11|18|8\d)$/.test(n) || /^8\d\d$/.test(n) ? 'n ' : ' ') + n);
+  }
   const SHOW = { cup: ['cup', 'cups'], tbsp: ['tbsp', 'tbsp'], tsp: ['tsp', 'tsp'], lb: ['lb', 'lb'], oz: ['oz', 'oz'], g: ['g', 'g'], kg: ['kg', 'kg'],
     ml: ['ml', 'ml'], l: ['l', 'l'], qt: ['qt', 'qt'], pt: ['pt', 'pt'] };
   function unitInfo(word) {
@@ -253,8 +349,10 @@
     let rest = line.slice(m[0].length).replace(/^\s+/, '');
     let unitRaw = '', info = null, pre = '';
     // a size in brackets before the unit belongs with it: "1 (14 oz) can tomatoes"
+    const fl = /^(fl\.?\s?oz)\.?(?=\s|$|,)/i.exec(rest);
     const u = /^(\([^)]*\)\s*)?([A-Za-z]+)\.?(?=\s|$|,)/.exec(rest);
-    if (u && (info = unitInfo(u[2]))) { pre = u[1] || ''; unitRaw = u[2]; rest = rest.slice(u[0].length).replace(/^\s+/, ''); }
+    if (fl) { info = { canon: 'floz', word: null }; unitRaw = fl[1]; rest = rest.slice(fl[0].length).replace(/^\s+/, ''); }
+    else if (u && (info = unitInfo(u[2]))) { pre = u[1] || ''; unitRaw = u[2]; rest = rest.slice(u[0].length).replace(/^\s+/, ''); }
     return { line, q1, q2, unitRaw, info, pre, name: rest };
   }
   // A noun with no unit ("1½ egg") gets pluralised when there's more than one.
@@ -267,6 +365,16 @@
   function ingredientHTML(line, factor) {
     const p = parseIng(line);
     if (p.q1 == null) return esc(line);
+    if (isMeasure(p)) {
+      const src = sysOf(p.info.canon), target = units === 'orig' ? src : units;
+      if (factor !== 1 || target !== src) {
+        const per = ML[p.info.canon] || G[p.info.canon], dim = ML[p.info.canon] ? 'vol' : 'wt';
+        const m = measure(dim, p.q1 * factor * per, p.q2 != null ? p.q2 * factor * per : null, target, p.name, target !== src);
+        const changed = m.unit !== p.info.canon || m.approx;
+        return '<span class="qty' + (changed ? ' conv" title="' + esc('As written: ' + line + (m.approx ? ' (converted by weight per cup, so roughly)' : '')) : '') + '">' +
+          esc((m.approx ? '≈' : '') + m.text) + '</span> ' + esc(p.name);
+      }
+    }
     const a = p.q1 * factor, b = p.q2 != null ? p.q2 * factor : null;
     const top = b != null ? b : a;
     const qty = niceNum(a) + (b != null ? '–' + niceNum(b) : '');
@@ -544,6 +652,7 @@
         (base
           ? '<span class="scale" aria-label="Servings"><button type="button" data-step="-1" aria-label="Fewer">−</button><output id="count"></output><button type="button" data-step="1" aria-label="More">+</button></span>'
           : '<span class="scale" role="group" aria-label="Batch size">' + [0.5, 1, 2, 3].map(f => '<button type="button" data-factor="' + f + '" aria-pressed="' + (f === factor) + '">' + (f === 0.5 ? '½' : f) + '×</button>').join('') + '</span>') +
+        unitsToggle() +
         '<button type="button" id="pick"></button>' +
         '<button type="button" id="timer">⏱ Timer</button>' +
         ('wakeLock' in navigator ? '<button type="button" id="wake" aria-pressed="false" title="Stops your screen going dark while you cook">Keep screen on</button>' : '') +
@@ -554,11 +663,10 @@
       (video ? '<div class="video"><iframe src="' + esc(video) + '" title="Video: ' + esc(r.title) + '" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>' : '') +
       '<div class="cols">' +
         '<div class="panel" id="ingPanel"><h2>Ingredients</h2><div id="ings"></div><p class="hint">Tap things off as you go.</p></div>' +
-        '<div class="panel"><h2>Method</h2><ol class="steps" id="steps">' +
-          (r.steps || []).map(s => '<li>' + stepHTML(s) + '</li>').join('') + '</ol>' +
+        '<div class="panel"><h2>Method</h2><ol class="steps" id="steps"></ol>' +
           (/class="tmr"/.test((r.steps || []).map(stepHTML).join('')) ? '<p class="hint">Tap a ⏱ time to start a timer.</p>' : '') + '</div>' +
       '</div>' +
-      (r.notes ? '<div class="notes"><p><strong>Notes.</strong> ' + esc(r.notes) + '</p></div>' : '') +
+      (r.notes ? '<div class="notes"><p><strong>Notes.</strong> <span id="notes"></span></p></div>' : '') +
       (r.tags && r.tags.length ? '<div class="tags r-tags">' + r.tags.map(t => '<a class="tag" href="#/" data-tag="' + esc(t) + '">' + esc(t) + '</a>').join('') + '</div>' : '') +
       '<footer><span>' + esc(r.family.name) + (r.family.about ? ' · ' + esc(r.family.about) : '') + '</span><a href="../">Junk drawer</a></footer>';
 
@@ -579,6 +687,12 @@
       if (c) c.textContent = count + ' ' + (r.unit || (count === 1 ? 'serving' : 'servings'));
       if (basket[r.key]) { basket[r.key] = factor; saveBasket(); }
     }
+    function drawText() {
+      document.getElementById('steps').innerHTML = (r.steps || []).map(s => '<li><span>' + stepHTML(convertText(s)) + '</span></li>').join('');
+      const n = document.getElementById('notes');
+      if (n) n.textContent = convertText(r.notes);
+      syncSteps();
+    }
     function syncSteps() {
       let nextMarked = false;
       document.querySelectorAll('#steps li').forEach((li, i) => {
@@ -588,11 +702,13 @@
       });
       document.getElementById('reset').hidden = ticked.size === 0;
     }
-    drawIngs(); syncSteps(); syncPick();
+    drawIngs(); drawText(); syncPick();
 
     app.querySelector('.tools').addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
-      if (b.dataset.step) {
+      if (b.dataset.units) {
+        setUnits(b.dataset.units); drawIngs(); drawText();
+      } else if (b.dataset.step) {
         count = Math.max(1, count + Number(b.dataset.step));
         factor = count / base; drawIngs();
       } else if (b.dataset.factor) {
@@ -655,6 +771,22 @@
           e.from.add(r.title); loose.set(name, e);
           continue;
         }
+        if (isMeasure(p)) {
+          // add up in ml or g, so "6 tbsp" and "½ cup" of the same thing combine; things with a known
+          // weight per cup are added by weight, so cups and grams of flour combine too
+          const per = ML[p.info.canon] || G[p.info.canon];
+          let dim = ML[p.info.canon] ? 'vol' : 'wt', lo = p.q1 * factor * per, hi = (p.q2 != null ? p.q2 : p.q1) * factor * per;
+          const d = density(base);
+          if (d && dim === 'vol') { lo = lo / ML.cup * d; hi = hi / ML.cup * d; dim = 'wt'; }
+          const id = 'm' + dim + '|' + name;
+          const e = lines.get(id) || { measure: true, dim, lo: 0, hi: 0, ranged: false, src: sysOf(p.info.canon), anyVol: false, text: base, from: new Set() };
+          e.lo += lo; e.hi += hi;
+          e.ranged = e.ranged || p.q2 != null;
+          e.anyVol = e.anyVol || !!ML[p.info.canon];
+          e.from.add(r.title);
+          lines.set(id, e);
+          continue;
+        }
         const id = (p.info ? p.pre + p.info.canon : '') + '|' + name;
         const e = lines.get(id) || { lo: 0, hi: 0, ranged: false, info: p.info, pre: p.pre, unitRaw: p.unitRaw, text: base, from: new Set() };
         e.lo += p.q1 * factor;
@@ -666,6 +798,13 @@
     }
     const out = [];
     for (const [id, e] of lines) {
+      if (e.measure) {
+        const target = units === 'orig' ? e.src : units;
+        // back to cups for US only if a recipe measured it by volume or in metric ("1 lb butter" stays in pounds)
+        const m = measure(e.dim, e.lo, e.ranged ? e.hi : null, target, e.text, target === 'us' ? (e.anyVol || e.src === 'metric') : true);
+        out.push({ id, sort: e.text.toLowerCase(), qty: m.text, name: e.text, from: [...e.from] });
+        continue;
+      }
       const top = e.ranged ? e.hi : e.lo;
       const qty = niceNum(e.lo) + (e.ranged ? '–' + niceNum(e.hi) : '');
       let unit = '';
@@ -693,7 +832,7 @@
     app.innerHTML =
       '<a class="back" href="#/">← All recipes</a>' +
       '<div class="top"><div><h1>Grocery list</h1><p class="muted">' + items.length + ' things for ' + keys.length + ' recipe' + (keys.length === 1 ? '' : 's') + '</p></div>' +
-      '<div class="btns no-print"><button type="button" id="copy">Copy list</button><button type="button" id="print">Print</button><button type="button" id="uncheck">Untick all</button><button type="button" id="empty">Start over</button></div></div>' +
+      '<div class="btns no-print">' + unitsToggle() + '<button type="button" id="copy">Copy list</button><button type="button" id="print">Print</button><button type="button" id="uncheck">Untick all</button><button type="button" id="empty">Start over</button></div></div>' +
       '<div class="picked-list">' + keys.map(k => {
         const r = byKey(k), f = basket[k], base = Number(r.serves) || 0;
         const amount = base ? Math.round(base * f) + ' ' + esc(r.unit || 'servings') : (f === 0.5 ? '½' : f) + '× batch';
@@ -729,6 +868,7 @@
         .then(() => toast('List copied, paste it into notes or a message'), () => prompt('Copy this list:', text));
     });
     document.getElementById('print').addEventListener('click', () => window.print());
+    app.querySelectorAll('[data-units]').forEach(b => b.addEventListener('click', () => { setUnits(b.dataset.units); renderGroceries(); }));
     document.getElementById('uncheck').addEventListener('click', () => { got = new Set(); store.set('got', []); renderGroceries(); });
     document.getElementById('empty').addEventListener('click', () => {
       if (!confirm('Clear the grocery list and take every recipe off it?')) return;
