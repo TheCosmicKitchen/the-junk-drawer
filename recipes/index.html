@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Recipes</title>
+<meta name="description" content="Recipes from all the families, in one place.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f8f4ec;
+    --card: #fffdf8;
+    --ink: #2a241d;
+    --muted: #776b5c;
+    --line: #e7ddcb;
+    --accent: #9c4a2f;
+    --accent-ink: #ffffff;
+    --chip: #efe6d4;
+    --done: #a59886;
+    --mark: #f3dfb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1814; --card: #24201b; --ink: #f1e9dc; --muted: #ad9f8b; --line: #3a332a;
+      --accent: #e0896a; --accent-ink: #1b1814; --chip: #322b23; --done: #6f6556; --mark: #4a3b22;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1814; --card: #24201b; --ink: #f1e9dc; --muted: #ad9f8b; --line: #3a332a;
+    --accent: #e0896a; --accent-ink: #1b1814; --chip: #322b23; --done: #6f6556; --mark: #4a3b22;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 Inter, system-ui, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; line-height: 1.15; }
+  h1 { font-size: clamp(30px, 6vw, 46px); }
+  a { color: var(--accent); }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--card); border-radius: 99px; padding: 6px 14px; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  [hidden] { display: none !important; }
+  .muted { color: var(--muted); }
+
+  /* ---- list ---- */
+  .top { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+  .top p { margin: 6px 0 0; }
+  .search { margin: 24px 0 12px; }
+  .search input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .card { display: flex; flex-direction: column; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; color: inherit; text-decoration: none; }
+  .card:hover { border-color: var(--accent); }
+  .card h3 { font-size: 20px; }
+  .card .fam { font-size: 13px; color: var(--accent); font-weight: 600; letter-spacing: .02em; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; }
+  .tag { font-size: 12px; background: var(--chip); border-radius: 99px; padding: 2px 9px; color: var(--muted); }
+  .empty { text-align: center; padding: 40px 0; }
+
+  /* ---- recipe ---- */
+  .back { display: inline-block; margin-bottom: 20px; text-decoration: none; }
+  .r-head .fam { color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+  .meta { display: flex; gap: 6px 18px; flex-wrap: wrap; color: var(--muted); margin-top: 10px; font-size: 15px; }
+  .intro { font-family: Fraunces, Georgia, serif; font-style: italic; font-size: 18px; margin: 18px 0 0; max-width: 62ch; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 22px 0 6px; }
+  .scale { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 3px; }
+  .scale button { border: 0; padding: 4px 11px; }
+  .scale output { min-width: 7ch; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cols { display: grid; grid-template-columns: minmax(240px, 1fr) 1.6fr; gap: 28px; margin-top: 20px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; align-self: start; }
+  .panel h2 { font-size: 22px; margin-bottom: 10px; }
+  .panel h3 { font-size: 15px; font-family: Inter, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+  .panel h2 + h3 { margin-top: 4px; }
+  ul.ing, ol.steps { list-style: none; padding: 0; margin: 0; }
+  .ing li, .steps li { cursor: pointer; border-radius: 8px; user-select: none; }
+  .ing li { display: flex; gap: 10px; padding: 6px 6px; }
+  .ing li::before { content: ""; flex: none; width: 16px; height: 16px; margin-top: 4px; border: 1.5px solid var(--muted); border-radius: 4px; }
+  .ing li.done { color: var(--done); text-decoration: line-through; }
+  .ing li.done::before { background: var(--done); border-color: var(--done); }
+  .qty { font-weight: 600; }
+  .scaled .qty { background: var(--mark); border-radius: 4px; padding: 0 3px; }
+  ol.steps { counter-reset: step; }
+  .steps li { counter-increment: step; display: grid; grid-template-columns: 34px 1fr; gap: 10px; padding: 10px 6px; }
+  .steps li::before { content: counter(step); font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 20px; color: var(--accent); line-height: 1.3; }
+  .steps li.done { color: var(--done); }
+  .steps li.done::before { content: "✓"; color: var(--done); }
+  .steps li.next { background: var(--chip); }
+  .notes { margin-top: 20px; padding: 14px 16px; border-left: 3px solid var(--accent); background: var(--card); border-radius: 0 12px 12px 0; }
+  .notes p { margin: 0; }
+  .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .r-tags { margin-top: 24px; }
+
+  footer { margin-top: 40px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  footer a { color: inherit; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  @media print {
+    body { background: #fff; color: #000; }
+    .tools, .back, footer, .search, .chips, .toast { display: none !important; }
+    .panel { border: 0; padding: 0; }
+    .cols { grid-template-columns: 1fr 1.5fr; }
+    .ing li.done, .steps li.done { color: #000; text-decoration: none; }
+    .steps li.next { background: none; }
+    .scaled .qty { background: none; }
+  }
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading recipes…</p></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  const app = document.getElementById('app');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let families = [];   // [{ id, name, about, recipes: [...] }]
+  let all = [];        // flat list of recipes, each with .family
+  const ui = { q: '', fam: 'all' };
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 1600);
+  }
+
+  // ---------- quantities: parse "1 1/2", "1½", "2-3", "0.5" and scale them ----------
+  const UF = { '½': 1/2, '⅓': 1/3, '⅔': 2/3, '¼': 1/4, '¾': 3/4, '⅛': 1/8, '⅜': 3/8, '⅝': 5/8, '⅞': 7/8, '⅕': 1/5 };
+  const NUM = '(?:\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:\\.\\d+)?(?:\\s?[½⅓⅔¼¾⅛⅜⅝⅞⅕])?|[½⅓⅔¼¾⅛⅜⅝⅞⅕])';
+  const LEAD = new RegExp('^(' + NUM + ')(?:\\s*(?:-|–|to)\\s*(' + NUM + '))?(?=\\s|$|[a-zA-Z(])');
+  function parseNum(s) {
+    s = s.trim();
+    let v = 0;
+    const f = s.match(/[½⅓⅔¼¾⅛⅜⅝⅞⅕]/);
+    if (f) { v += UF[f[0]]; s = s.replace(f[0], '').trim(); }
+    if (!s) return v;
+    const parts = s.split(/\s+/);
+    for (const p of parts) {
+      if (p.includes('/')) { const [a, b] = p.split('/').map(Number); v += a / b; }
+      else v += Number(p);
+    }
+    return v;
+  }
+  const NICE = [[0, ''], [1/8, '⅛'], [1/4, '¼'], [1/3, '⅓'], [3/8, '⅜'], [1/2, '½'], [5/8, '⅝'], [2/3, '⅔'], [3/4, '¾'], [7/8, '⅞'], [1, '']];
+  function niceNum(x) {
+    if (x >= 20) return String(Math.round(x));
+    if (x >= 10) return String(Math.round(x * 2) / 2).replace('.5', '½');
+    let whole = Math.floor(x), frac = x - whole, best = NICE[0];
+    for (const n of NICE) if (Math.abs(n[0] - frac) < Math.abs(best[0] - frac)) best = n;
+    if (best[0] === 1) { whole += 1; best = NICE[0]; }
+    if (!whole && !best[1]) return x > 0 ? '⅛' : '0';
+    return (whole ? whole : '') + best[1];
+  }
+  function ingredientHTML(line, factor) {
+    const m = LEAD.exec(line);
+    if (!m) return esc(line);
+    const rest = line.slice(m[0].length);
+    let q;
+    if (factor === 1) q = m[0];
+    else q = niceNum(parseNum(m[1]) * factor) + (m[2] ? '–' + niceNum(parseNum(m[2]) * factor) : '');
+    return '<span class="qty">' + esc(q) + '</span>' + esc(rest);
+  }
+
+  // ---------- data ----------
+  async function load() {
+    const list = await fetch('data/families.json', { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('families.json: ' + r.status); return r.json(); });
+    families = await Promise.all(list.families.map(id =>
+      fetch('data/' + id + '.json', { cache: 'no-cache' })
+        .then(r => { if (!r.ok) throw new Error(id + '.json: ' + r.status); return r.json(); })
+        .then(f => ({ id, name: f.name || id, about: f.about || '', recipes: f.recipes || [] }))
+        .catch(err => { console.error(err); return { id, name: id, about: '', recipes: [], broken: String(err.message || err) }; })
+    ));
+    all = [];
+    for (const f of families) for (const r of f.recipes) all.push(Object.assign({}, r, { family: f }));
+    all.sort((a, b) => a.title.localeCompare(b.title));
+  }
+
+  // ---------- list view ----------
+  function matches(r, q) {
+    if (!q) return true;
+    const ings = Array.isArray(r.ingredients) ? r.ingredients : Object.values(r.ingredients || {}).flat();
+    const hay = [r.title, r.from, r.family.name, r.intro, (r.tags || []).join(' '), ings.join(' ')].join(' ').toLowerCase();
+    return q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
+  }
+  function renderList() {
+    document.title = 'Family Recipes';
+    const broken = families.filter(f => f.broken);
+    app.innerHTML =
+      '<div class="top"><div><h1>Family Recipes</h1><p class="muted">' + all.length + ' recipes from ' + families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + '</p></div>' +
+      '<button type="button" id="surprise">Surprise me</button></div>' +
+      (broken.length ? '<p class="muted">Couldn’t read: ' + broken.map(f => esc(f.broken)).join(', ') + '</p>' : '') +
+      '<div class="search"><input id="q" type="search" placeholder="Search recipes, ingredients, tags…" aria-label="Search recipes" value="' + esc(ui.q) + '"></div>' +
+      '<div class="chips" role="group" aria-label="Filter by family">' +
+        '<button type="button" data-fam="all" aria-pressed="' + (ui.fam === 'all') + '">All families</button>' +
+        families.map(f => '<button type="button" data-fam="' + esc(f.id) + '" aria-pressed="' + (ui.fam === f.id) + '" title="' + esc(f.about) + '">' + esc(f.name) + '</button>').join('') +
+      '</div>' +
+      '<div class="grid" id="grid"></div>' +
+      '<footer><span>Want a recipe added? Send it over.</span><a href="../">Junk drawer</a></footer>';
+    drawCards();
+    const q = document.getElementById('q');
+    q.addEventListener('input', () => { ui.q = q.value; drawCards(); });
+    app.querySelector('.chips').addEventListener('click', e => {
+      const b = e.target.closest('button[data-fam]'); if (!b) return;
+      ui.fam = b.dataset.fam;
+      app.querySelectorAll('.chips button').forEach(x => x.setAttribute('aria-pressed', x === b));
+      drawCards();
+    });
+    document.getElementById('surprise').addEventListener('click', () => {
+      const pool = visible().length ? visible() : all;
+      if (pool.length) location.hash = link(pool[Math.floor(Math.random() * pool.length)]);
+    });
+  }
+  const visible = () => all.filter(r => (ui.fam === 'all' || r.family.id === ui.fam) && matches(r, ui.q));
+  const link = r => '#/' + encodeURIComponent(r.family.id) + '/' + encodeURIComponent(r.id);
+  function drawCards() {
+    const list = visible();
+    document.getElementById('grid').innerHTML = list.length ? list.map(r =>
+      '<a class="card" href="' + link(r) + '">' +
+        '<span class="fam">' + esc(r.family.name) + (r.from ? ' · ' + esc(r.from) : '') + '</span>' +
+        '<h3>' + esc(r.title) + '</h3>' +
+        (r.time ? '<p>' + esc(r.time) + '</p>' : '') +
+        (r.tags && r.tags.length ? '<div class="tags">' + r.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
+      '</a>').join('')
+      : '<p class="muted empty" style="grid-column:1/-1">No recipes match that.</p>';
+  }
+
+  // ---------- recipe view ----------
+  let wake = null;
+  async function setWake(on) {
+    try {
+      if (on) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; syncWake(); }); }
+      else if (wake) { await wake.release(); wake = null; }
+    } catch (e) { wake = null; toast('Your browser won’t keep the screen on'); }
+    syncWake();
+  }
+  function syncWake() { const b = document.getElementById('wake'); if (b) b.setAttribute('aria-pressed', !!wake); }
+  document.addEventListener('visibilitychange', () => {
+    // the browser drops the lock when you switch away; take it back when you return
+    if (document.visibilityState === 'visible' && document.getElementById('wake') && wantWake) setWake(true);
+  });
+  let wantWake = false;
+
+  function renderRecipe(famId, recId) {
+    const r = all.find(x => x.family.id === famId && x.id === recId);
+    if (!r) {
+      app.innerHTML = '<a class="back" href="#/">← All recipes</a><h1>Recipe not found</h1><p class="muted">It may have been renamed or moved.</p>';
+      return;
+    }
+    document.title = r.title + ' · Family Recipes';
+    const groups = Array.isArray(r.ingredients) ? [['', r.ingredients]] : Object.entries(r.ingredients || {});
+    const base = Number(r.serves) || 0;
+    const unit = r.unit || (base === 1 ? 'serving' : 'servings');
+    let count = base, factor = 1;
+
+    app.innerHTML =
+      '<a class="back" href="#/">← All recipes</a>' +
+      '<div class="r-head"><div class="fam">' + esc(r.family.name) + '</div><h1>' + esc(r.title) + '</h1>' +
+        '<div class="meta">' +
+          (r.from ? '<span>From ' + esc(r.from) + '</span>' : '') +
+          (base ? '<span>Makes ' + base + ' ' + esc(unit) + '</span>' : '') +
+          (r.time ? '<span>' + esc(r.time) + '</span>' : '') +
+        '</div>' +
+        (r.intro ? '<p class="intro">' + esc(r.intro) + '</p>' : '') +
+      '</div>' +
+      '<div class="tools">' +
+        (base
+          ? '<span class="scale" aria-label="Servings"><button type="button" data-step="-1" aria-label="Fewer">−</button><output id="count"></output><button type="button" data-step="1" aria-label="More">+</button></span>'
+          : '<span class="scale" role="group" aria-label="Batch size">' + [0.5, 1, 2, 3].map(f => '<button type="button" data-factor="' + f + '" aria-pressed="' + (f === 1) + '">' + (f === 0.5 ? '½' : f) + '×</button>').join('') + '</span>') +
+        ('wakeLock' in navigator ? '<button type="button" id="wake" aria-pressed="false" title="Stops your screen going dark while you cook">Keep screen on</button>' : '') +
+        '<button type="button" id="share">Copy link</button>' +
+        '<button type="button" id="print">Print</button>' +
+        '<button type="button" id="reset" hidden>Clear ticks</button>' +
+      '</div>' +
+      '<div class="cols">' +
+        '<div class="panel" id="ingPanel"><h2>Ingredients</h2><div id="ings"></div><p class="hint">Tap things off as you go.</p></div>' +
+        '<div class="panel"><h2>Method</h2><ol class="steps" id="steps">' +
+          (r.steps || []).map(s => '<li>' + esc(s) + '</li>').join('') + '</ol></div>' +
+      '</div>' +
+      (r.notes ? '<div class="notes"><p><strong>Notes.</strong> ' + esc(r.notes) + '</p></div>' : '') +
+      (r.tags && r.tags.length ? '<div class="tags r-tags">' + r.tags.map(t => '<a class="tag" href="#/" data-tag="' + esc(t) + '">' + esc(t) + '</a>').join('') + '</div>' : '') +
+      '<footer><span>' + esc(r.family.name) + (r.family.about ? ' · ' + esc(r.family.about) : '') + '</span><a href="../">Junk drawer</a></footer>';
+
+    const ticked = new Set();
+    function drawIngs() {
+      let k = 0;
+      document.getElementById('ings').innerHTML = groups.map(([name, items]) =>
+        (name ? '<h3>' + esc(name) + '</h3>' : '') +
+        '<ul class="ing">' + items.map(line => { const id = k++; return '<li data-k="' + id + '" class="' + (ticked.has('i' + id) ? 'done' : '') + '">' +
+          '<span>' + ingredientHTML(line, factor) + '</span></li>'; }).join('') + '</ul>').join('');
+      document.getElementById('ingPanel').classList.toggle('scaled', factor !== 1);
+      const c = document.getElementById('count');
+      if (c) c.textContent = count + ' ' + (r.unit || (count === 1 ? 'serving' : 'servings'));
+    }
+    function syncSteps() {
+      const lis = [...document.querySelectorAll('#steps li')];
+      let nextMarked = false;
+      lis.forEach((li, i) => {
+        const done = ticked.has('s' + i);
+        li.classList.toggle('done', done);
+        li.classList.toggle('next', !done && !nextMarked && ticked.size > 0 && (nextMarked = true));
+      });
+      document.getElementById('reset').hidden = ticked.size === 0;
+    }
+    drawIngs(); syncSteps();
+
+    app.querySelector('.tools').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.step) {
+        count = Math.max(1, count + Number(b.dataset.step));
+        factor = count / base; drawIngs();
+      } else if (b.dataset.factor) {
+        factor = Number(b.dataset.factor);
+        app.querySelectorAll('[data-factor]').forEach(x => x.setAttribute('aria-pressed', x === b));
+        drawIngs();
+      } else if (b.id === 'wake') {
+        wantWake = !wake; setWake(wantWake);
+      } else if (b.id === 'share') {
+        const url = location.href;
+        (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+          .then(() => toast('Link copied'), () => prompt('Copy this link:', url));
+      } else if (b.id === 'print') {
+        window.print();
+      } else if (b.id === 'reset') {
+        ticked.clear(); drawIngs(); syncSteps();
+      }
+    });
+    document.getElementById('ings').addEventListener('click', e => {
+      const li = e.target.closest('li[data-k]'); if (!li) return;
+      const k = 'i' + li.dataset.k;
+      ticked.has(k) ? ticked.delete(k) : ticked.add(k);
+      li.classList.toggle('done', ticked.has(k));
+      document.getElementById('reset').hidden = ticked.size === 0;
+    });
+    document.getElementById('steps').addEventListener('click', e => {
+      const li = e.target.closest('li'); if (!li) return;
+      const k = 's' + [...li.parentNode.children].indexOf(li);
+      ticked.has(k) ? ticked.delete(k) : ticked.add(k);
+      syncSteps();
+    });
+    app.querySelectorAll('[data-tag]').forEach(a => a.addEventListener('click', () => { ui.q = a.dataset.tag; ui.fam = 'all'; }));
+    syncWake();
+  }
+
+  // ---------- routing ----------
+  function route() {
+    const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+    if (parts.length === 2) renderRecipe(parts[0], parts[1]);
+    else {
+      if (wake) { wantWake = false; setWake(false); }
+      renderList();
+    }
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', route);
+
+  load().then(route).catch(err => {
+    console.error(err);
+    app.innerHTML = '<h1>Family Recipes</h1><p class="muted">Couldn’t load the recipes (' + esc(err.message || err) + '). ' +
+      (location.protocol === 'file:' ? 'This page has to be opened from a web server, not straight from the file.' : '') + '</p>';
+  });
+})();
+</script>
+</body>
+</html>

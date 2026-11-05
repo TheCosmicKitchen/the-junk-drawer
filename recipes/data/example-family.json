@@ -1,0 +1,33 @@
+{
+  "name": "Example Family",
+  "about": "A second sample family, so the family filter has something to filter.",
+  "recipes": [
+    {
+      "id": "lentil-soup",
+      "title": "Weeknight Lentil Soup",
+      "from": "Sample",
+      "serves": 4,
+      "time": "40 minutes",
+      "tags": ["soup", "vegetarian", "weeknight"],
+      "intro": "A sample recipe with a single ingredient list.",
+      "ingredients": [
+        "2 tbsp olive oil",
+        "1 onion, diced",
+        "2 carrots, diced",
+        "2 cloves garlic, minced",
+        "1 tsp cumin",
+        "1 cup red lentils, rinsed",
+        "1 (14 oz) can diced tomatoes",
+        "4 cups vegetable stock",
+        "1/2 lemon, juiced",
+        "salt and pepper to taste"
+      ],
+      "steps": [
+        "Warm the oil in a large pot and cook the onion and carrots for 6 to 8 minutes until soft.",
+        "Add the garlic and cumin and stir for a minute.",
+        "Add the lentils, tomatoes and stock. Simmer for 20 minutes until the lentils fall apart.",
+        "Stir in the lemon juice and season to taste."
+      ]
+    }
+  ]
+}
