@@ -1,6 +1,3 @@
 {
-  "families": [
-    "our-kitchen",
-    "example-family"
-  ]
+  "families": ["our-kitchen", "example-family"]
 }
