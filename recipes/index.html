@@ -19,20 +19,25 @@
     --chip: #efe6d4;
     --done: #a59886;
     --mark: #f3dfb8;
+    --ring: #c0392b;
+    --dock: #2a241d;
+    --dock-ink: #f8f4ec;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #1b1814; --card: #24201b; --ink: #f1e9dc; --muted: #ad9f8b; --line: #3a332a;
       --accent: #e0896a; --accent-ink: #1b1814; --chip: #322b23; --done: #6f6556; --mark: #4a3b22;
+      --ring: #ff7a66; --dock: #f1e9dc; --dock-ink: #1b1814;
     }
   }
   :root[data-theme="dark"] {
     --bg: #1b1814; --card: #24201b; --ink: #f1e9dc; --muted: #ad9f8b; --line: #3a332a;
     --accent: #e0896a; --accent-ink: #1b1814; --chip: #322b23; --done: #6f6556; --mark: #4a3b22;
+    --ring: #ff7a66; --dock: #f1e9dc; --dock-ink: #1b1814;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 Inter, system-ui, sans-serif; }
-  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 160px; }
   h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; line-height: 1.15; }
   h1 { font-size: clamp(30px, 6vw, 46px); }
   a { color: var(--accent); }
@@ -47,17 +52,22 @@
   /* ---- list ---- */
   .top { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
   .top p { margin: 6px 0 0; }
+  .top .btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .search { margin: 24px 0 12px; }
   .search input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
-  .card { display: flex; flex-direction: column; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; color: inherit; text-decoration: none; }
-  .card:hover { border-color: var(--accent); }
-  .card h3 { font-size: 20px; }
-  .card .fam { font-size: 13px; color: var(--accent); font-weight: 600; letter-spacing: .02em; }
+  .card { position: relative; display: flex; flex-direction: column; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .card:hover, .card:focus-within { border-color: var(--accent); }
+  .card.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .card a.title { color: inherit; text-decoration: none; }
+  .card a.title::after { content: ""; position: absolute; inset: 0; border-radius: 14px; }
+  .card h3 { font-size: 20px; padding-right: 64px; }
+  .card .fam { font-size: 13px; color: var(--accent); font-weight: 600; letter-spacing: .02em; padding-right: 64px; }
   .card p { margin: 0; font-size: 14px; color: var(--muted); }
+  .card .pick { position: absolute; top: 12px; right: 12px; z-index: 1; font-size: 13px; padding: 4px 10px; }
   .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; }
-  .tag { font-size: 12px; background: var(--chip); border-radius: 99px; padding: 2px 9px; color: var(--muted); }
+  .tag { font-size: 12px; background: var(--chip); border-radius: 99px; padding: 2px 9px; color: var(--muted); text-decoration: none; }
   .empty { text-align: center; padding: 40px 0; }
 
   /* ---- recipe ---- */
@@ -69,6 +79,8 @@
   .scale { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 3px; }
   .scale button { border: 0; padding: 4px 11px; }
   .scale output { min-width: 7ch; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .video { margin-top: 20px; aspect-ratio: 16 / 9; width: 100%; max-width: 720px; border-radius: 16px; overflow: hidden; background: #000; }
+  .video iframe { width: 100%; height: 100%; border: 0; display: block; }
   .cols { display: grid; grid-template-columns: minmax(240px, 1fr) 1.6fr; gap: 28px; margin-top: 20px; }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; align-self: start; }
   .panel h2 { font-size: 22px; margin-bottom: 10px; }
@@ -88,31 +100,65 @@
   .steps li.done { color: var(--done); }
   .steps li.done::before { content: "✓"; color: var(--done); }
   .steps li.next { background: var(--chip); }
+  button.tmr { display: inline; padding: 0 8px; margin: 0 1px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); background: transparent; font-weight: 600; white-space: nowrap; line-height: 1.4; }
+  button.tmr::before { content: "⏱ "; }
+  button.tmr:hover { background: var(--accent); color: var(--accent-ink); }
   .notes { margin-top: 20px; padding: 14px 16px; border-left: 3px solid var(--accent); background: var(--card); border-radius: 0 12px 12px 0; }
   .notes p { margin: 0; }
   .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   .r-tags { margin-top: 24px; }
 
+  /* ---- grocery list ---- */
+  .picked-list { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 8px; }
+  .picked-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+  .picked-row a { font-weight: 600; text-decoration: none; color: inherit; flex: 1; min-width: 12ch; }
+  .picked-row .rm { font-size: 13px; padding: 4px 10px; }
+  ul.groc { list-style: none; padding: 0; margin: 0; columns: 2 280px; column-gap: 28px; }
+  .groc li { break-inside: avoid; display: flex; gap: 10px; padding: 7px 6px; border-radius: 8px; cursor: pointer; user-select: none; }
+  .groc li::before { content: ""; flex: none; width: 16px; height: 16px; margin-top: 4px; border: 1.5px solid var(--muted); border-radius: 4px; }
+  .groc li.done { color: var(--done); text-decoration: line-through; }
+  .groc li.done::before { background: var(--done); border-color: var(--done); }
+  .groc small { display: block; color: var(--muted); font-size: 12px; text-decoration: none; }
+
   footer { margin-top: 40px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   footer a { color: inherit; }
 
-  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  /* ---- dock: grocery bar + timers, pinned to the bottom ---- */
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10; }
+  .dock-in { max-width: 960px; margin: 0 auto; padding: 0 16px 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .dock-in > * { pointer-events: auto; }
+  .timer { display: flex; align-items: center; gap: 10px; background: var(--dock); color: var(--dock-ink); border-radius: 14px; padding: 8px 8px 8px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: 100%; }
+  .timer .lbl { font-size: 13px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 26ch; }
+  .timer b { font-variant-numeric: tabular-nums; font-size: 20px; min-width: 5ch; text-align: right; }
+  .timer button { background: transparent; color: inherit; border-color: currentColor; padding: 3px 10px; font-size: 13px; }
+  .timer.paused b { opacity: .55; }
+  .timer.ring { background: var(--ring); color: #fff; animation: shake .5s infinite; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+  @media (prefers-reduced-motion: reduce) { .timer.ring { animation: none; } }
+  .basket { display: flex; align-items: center; gap: 12px; background: var(--accent); color: var(--accent-ink); border-radius: 14px; padding: 10px 10px 10px 16px; text-decoration: none; font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+  .basket span { background: var(--accent-ink); color: var(--accent); border-radius: 10px; padding: 2px 10px; }
+
+  .toast { position: fixed; left: 50%; top: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
   .toast.show { opacity: 1; }
 
-  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } .timer .lbl { max-width: 14ch; } }
   @media print {
     body { background: #fff; color: #000; }
-    .tools, .back, footer, .search, .chips, .toast { display: none !important; }
+    main { padding-bottom: 0; }
+    .tools, .back, footer, .search, .chips, .toast, .dock, .video, .no-print { display: none !important; }
     .panel { border: 0; padding: 0; }
     .cols { grid-template-columns: 1fr 1.5fr; }
-    .ing li.done, .steps li.done { color: #000; text-decoration: none; }
+    .ing li.done, .steps li.done, .groc li.done { color: #000; text-decoration: none; }
     .steps li.next { background: none; }
     .scaled .qty { background: none; }
+    button.tmr { border: 0; color: #000; padding: 0; font-weight: inherit; }
+    button.tmr::before { content: ""; }
   }
 </style>
 </head>
 <body>
 <main id="app"><p class="muted">Loading recipes…</p></main>
+<div class="dock"><div class="dock-in" id="dock"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -120,16 +166,23 @@
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let families = [];   // [{ id, name, about, recipes: [...] }]
-  let all = [];        // flat list of recipes, each with .family
+  let all = [];        // flat list of recipes, each with .family and .key
   const ui = { q: '', fam: 'all' };
 
   function toast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
-    clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 1600);
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 1800);
   }
+  // per-browser storage; everything still works if it's blocked
+  const store = {
+    get(k, d) { try { const v = JSON.parse(localStorage.getItem('recipes.' + k)); return v == null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('recipes.' + k, JSON.stringify(v)); } catch (e) {} },
+  };
 
-  // ---------- quantities: parse "1 1/2", "1½", "2-3", "0.5" and scale them ----------
+  // =====================================================================
+  // Quantities: parse "1 1/2", "1½", "2-3", "0.5", work out units, scale
+  // =====================================================================
   const UF = { '½': 1/2, '⅓': 1/3, '⅔': 2/3, '¼': 1/4, '¾': 3/4, '⅛': 1/8, '⅜': 3/8, '⅝': 5/8, '⅞': 7/8, '⅕': 1/5 };
   const NUM = '(?:\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:\\.\\d+)?(?:\\s?[½⅓⅔¼¾⅛⅜⅝⅞⅕])?|[½⅓⅔¼¾⅛⅜⅝⅞⅕])';
   const LEAD = new RegExp('^(' + NUM + ')(?:\\s*(?:-|–|to)\\s*(' + NUM + '))?(?=\\s|$|[a-zA-Z(])');
@@ -139,8 +192,7 @@
     const f = s.match(/[½⅓⅔¼¾⅛⅜⅝⅞⅕]/);
     if (f) { v += UF[f[0]]; s = s.replace(f[0], '').trim(); }
     if (!s) return v;
-    const parts = s.split(/\s+/);
-    for (const p of parts) {
+    for (const p of s.split(/\s+/)) {
       if (p.includes('/')) { const [a, b] = p.split('/').map(Number); v += a / b; }
       else v += Number(p);
     }
@@ -156,17 +208,77 @@
     if (!whole && !best[1]) return x > 0 ? '⅛' : '0';
     return (whole ? whole : '') + best[1];
   }
-  function ingredientHTML(line, factor) {
-    const m = LEAD.exec(line);
-    if (!m) return esc(line);
-    const rest = line.slice(m[0].length);
-    let q;
-    if (factor === 1) q = m[0];
-    else q = niceNum(parseNum(m[1]) * factor) + (m[2] ? '–' + niceNum(parseNum(m[2]) * factor) : '');
-    return '<span class="qty">' + esc(q) + '</span>' + esc(rest);
-  }
 
-  // ---------- data ----------
+  // Units: words get pluralised to match the amount; abbreviations stay as they are.
+  // CANON groups spellings so the grocery list can add "1 cup" and "2 cups" together.
+  const WORDS = { cup: 'cups', tablespoon: 'tablespoons', teaspoon: 'teaspoons', pound: 'pounds', ounce: 'ounces', clove: 'cloves',
+    can: 'cans', pinch: 'pinches', stick: 'sticks', slice: 'slices', quart: 'quarts', pint: 'pints', gallon: 'gallons', liter: 'liters',
+    litre: 'litres', bunch: 'bunches', head: 'heads', sprig: 'sprigs', package: 'packages', jar: 'jars', handful: 'handfuls',
+    dash: 'dashes', piece: 'pieces', bag: 'bags', box: 'boxes', bottle: 'bottles', sheet: 'sheets', envelope: 'envelopes' };
+  const PLURAL_TO_WORD = Object.fromEntries(Object.entries(WORDS).map(([s, p]) => [p, s]));
+  const ABBR = { tbsp: 'tbsp', tbs: 'tbsp', tsp: 'tsp', lb: 'lb', lbs: 'lb', oz: 'oz', g: 'g', kg: 'kg', ml: 'ml', l: 'l', qt: 'qt', pt: 'pt' };
+  const CANON = { tablespoon: 'tbsp', teaspoon: 'tsp', pound: 'lb', ounce: 'oz', quart: 'qt', pint: 'pt', liter: 'l', litre: 'l' };
+  const SHOW = { cup: ['cup', 'cups'], tbsp: ['tbsp', 'tbsp'], tsp: ['tsp', 'tsp'], lb: ['lb', 'lb'], oz: ['oz', 'oz'], g: ['g', 'g'], kg: ['kg', 'kg'],
+    ml: ['ml', 'ml'], l: ['l', 'l'], qt: ['qt', 'qt'], pt: ['pt', 'pt'] };
+  function unitInfo(word) {
+    const w = word.toLowerCase();
+    if (ABBR[w]) return { canon: ABBR[w], word: null };
+    const sing = WORDS[w] ? w : PLURAL_TO_WORD[w];
+    if (!sing) return null;
+    return { canon: CANON[sing] || sing, word: sing };
+  }
+  function unitText(raw, info, amount) {
+    if (!info.word) return raw;
+    const many = amount > 1;
+    const out = many ? WORDS[info.word] : info.word;
+    return raw[0] === raw[0].toUpperCase() ? out[0].toUpperCase() + out.slice(1) : out;
+  }
+  function pluralWord(w) {
+    if (/(s|x|ch|sh)$/i.test(w)) return w + 'es';
+    if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ies';
+    if (/[^aeiou]o$/i.test(w)) return w + 'es';
+    return w + 's';
+  }
+  function singularWord(w) {
+    if (/ies$/i.test(w) && w.length > 4) return w.slice(0, -3) + 'y';
+    if (/(ches|shes|xes|sses|oes)$/i.test(w)) return w.slice(0, -2);
+    if (/[^s]s$/i.test(w) && w.length > 3) return w.slice(0, -1);
+    return w;
+  }
+  // Split "3 1/2 cups flour, sifted" into its parts.
+  function parseIng(line) {
+    const m = LEAD.exec(line);
+    if (!m) return { line, q1: null };
+    const q1 = parseNum(m[1]), q2 = m[2] ? parseNum(m[2]) : null;
+    let rest = line.slice(m[0].length).replace(/^\s+/, '');
+    let unitRaw = '', info = null, pre = '';
+    // a size in brackets before the unit belongs with it: "1 (14 oz) can tomatoes"
+    const u = /^(\([^)]*\)\s*)?([A-Za-z]+)\.?(?=\s|$|,)/.exec(rest);
+    if (u && (info = unitInfo(u[2]))) { pre = u[1] || ''; unitRaw = u[2]; rest = rest.slice(u[0].length).replace(/^\s+/, ''); }
+    return { line, q1, q2, unitRaw, info, pre, name: rest };
+  }
+  // A noun with no unit ("1½ egg") gets pluralised when there's more than one.
+  function countedName(name, amount) {
+    if (amount <= 1) return name;
+    const m = /^([^,(]*?)([A-Za-z]+)(\b.*)$/.exec(name);
+    if (!m || /s$/i.test(m[2])) return name;
+    return m[1] + pluralWord(m[2]) + m[3];
+  }
+  function ingredientHTML(line, factor) {
+    const p = parseIng(line);
+    if (p.q1 == null) return esc(line);
+    const a = p.q1 * factor, b = p.q2 != null ? p.q2 * factor : null;
+    const top = b != null ? b : a;
+    const qty = niceNum(a) + (b != null ? '–' + niceNum(b) : '');
+    const unit = p.info ? unitText(p.unitRaw, p.info, top) : '';
+    const name = p.info ? p.name : (factor === 1 ? p.name : countedName(p.name, top));
+    return '<span class="qty">' + esc(qty + (unit ? ' ' + p.pre + unit : '')) + '</span> ' + esc(name);
+  }
+  const flatIngredients = r => Array.isArray(r.ingredients) ? r.ingredients : Object.values(r.ingredients || {}).flat();
+
+  // =====================================================================
+  // Data
+  // =====================================================================
   async function load() {
     const list = await fetch('data/families.json', { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('families.json: ' + r.status); return r.json(); });
     families = await Promise.all(list.families.map(id =>
@@ -176,23 +288,171 @@
         .catch(err => { console.error(err); return { id, name: id, about: '', recipes: [], broken: String(err.message || err) }; })
     ));
     all = [];
-    for (const f of families) for (const r of f.recipes) all.push(Object.assign({}, r, { family: f }));
+    for (const f of families) for (const r of f.recipes) all.push(Object.assign({}, r, { family: f, key: f.id + '/' + r.id }));
     all.sort((a, b) => a.title.localeCompare(b.title));
   }
+  const byKey = k => all.find(r => r.key === k);
+  const link = r => '#/' + encodeURIComponent(r.family.id) + '/' + encodeURIComponent(r.id);
 
-  // ---------- list view ----------
+  // =====================================================================
+  // Grocery basket: { "family/recipe": factor }
+  // =====================================================================
+  let basket = store.get('basket', {});
+  function saveBasket() { store.set('basket', basket); drawDock(); }
+  function toggleBasket(r, factor) {
+    if (basket[r.key]) delete basket[r.key]; else basket[r.key] = factor || 1;
+    saveBasket();
+  }
+  const basketCount = () => Object.keys(basket).filter(byKey).length;
+
+  // =====================================================================
+  // YouTube
+  // =====================================================================
+  function youtube(url) {
+    let u;
+    try { u = new URL(url); } catch (e) { return null; }
+    const host = u.hostname.replace(/^www\.|^m\./, '');
+    let id = null;
+    if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+    else if (/(^|\.)youtube(-nocookie)?\.com$/.test(host)) {
+      id = u.searchParams.get('v');
+      const m = /^\/(?:shorts|embed|live)\/([^/?#]+)/.exec(u.pathname);
+      if (!id && m) id = m[1];
+    }
+    if (!id || !/^[\w-]{6,}$/.test(id)) return null;
+    let start = 0;
+    const t = u.searchParams.get('t') || u.searchParams.get('start');
+    if (t) {
+      if (/^\d+$/.test(t)) start = Number(t);
+      else { const m = /(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/.exec(t); start = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0); }
+    }
+    return 'https://www.youtube-nocookie.com/embed/' + id + '?rel=0' + (start ? '&start=' + start : '');
+  }
+
+  // =====================================================================
+  // Timers
+  // =====================================================================
+  // Spot "5 minutes", "18 to 20 minutes", "an hour", "1½ hours", "30 sec" in a step.
+  const WORDNUM = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10, fifteen: 15, twenty: 20, thirty: 30, 'half an': .5, 'half a': .5 };
+  const TIME_RE = /\b(\d+(?:\.\d+)?\s?½?|½|half an?|an?|one|two|three|four|five|six|ten|fifteen|twenty|thirty)(?:\s*(?:-|–|to|or)\s*(\d+(?:\.\d+)?))?\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b/gi;
+  function timeNum(s) {
+    s = s.toLowerCase().trim();
+    if (s in WORDNUM) return WORDNUM[s];
+    return parseNum(s);
+  }
+  const UNIT_SEC = u => /^h/i.test(u) ? 3600 : /^m/i.test(u) ? 60 : 1;
+  function stepHTML(text) {
+    let out = '', last = 0, m;
+    TIME_RE.lastIndex = 0;
+    while ((m = TIME_RE.exec(text))) {
+      const secs = Math.round(timeNum(m[1]) * UNIT_SEC(m[3]));
+      if (!secs) continue;
+      out += esc(text.slice(last, m.index)) +
+        '<button type="button" class="tmr" data-sec="' + secs + '" title="Start a ' + esc(fmtDur(secs)) + ' timer">' + esc(m[0]) + '</button>';
+      last = m.index + m[0].length;
+    }
+    return out + esc(text.slice(last));
+  }
+  function fmtDur(s) {
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return [h && h + ' hr', m && m + ' min', x && x + ' sec'].filter(Boolean).join(' ');
+  }
+  function clock(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
+  }
+
+  // Each timer: { id, label, end (ms timestamp) | left (ms, while paused), state: 'run' | 'pause' | 'ring' }
+  let timers = store.get('timers', []).filter(t => t && t.id);
+  let audio = null;
+  function unlockAudio() {
+    try { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch (e) {}
+  }
+  function beep() {
+    if (!audio) return;
+    try {
+      const t0 = audio.currentTime;
+      [0, .25, .5].forEach(d => {
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
+        g.gain.setValueAtTime(.0001, t0 + d); g.gain.exponentialRampToValueAtTime(.3, t0 + d + .02); g.gain.exponentialRampToValueAtTime(.0001, t0 + d + .18);
+        o.start(t0 + d); o.stop(t0 + d + .2);
+      });
+    } catch (e) {}
+  }
+  function saveTimers() { store.set('timers', timers); }
+  function addTimer(secs, label) {
+    unlockAudio();
+    timers.push({ id: Date.now() + '' + Math.random().toString(36).slice(2, 6), label, end: Date.now() + secs * 1000, state: 'run' });
+    saveTimers(); drawDock(); tick();
+    toast(fmtDur(secs) + ' timer started');
+  }
+  let ticking = null, lastBeep = 0, baseTitle = document.title;
+  function tick() {
+    const now = Date.now();
+    let ringing = false;
+    for (const t of timers) {
+      if (t.state === 'run' && now >= t.end) {
+        t.state = 'ring'; saveTimers(); drawDock();
+        try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 300]); } catch (e) {}
+      }
+      if (t.state === 'ring') ringing = true;
+      const el = document.querySelector('[data-timer="' + t.id + '"] b');
+      if (el) el.textContent = t.state === 'ring' ? 'Done!' : clock(t.state === 'pause' ? t.left : t.end - now);
+    }
+    if (ringing && now - lastBeep > 1500) { beep(); lastBeep = now; }
+    document.title = (ringing ? '⏰ ' : '') + baseTitle;
+    clearTimeout(ticking);
+    if (timers.length) ticking = setTimeout(tick, 250);
+  }
+
+  function drawDock() {
+    const dock = document.getElementById('dock');
+    const n = basketCount();
+    const onList = location.hash.startsWith('#/list');
+    dock.innerHTML =
+      timers.map(t =>
+        '<div class="timer ' + (t.state === 'ring' ? 'ring' : t.state === 'pause' ? 'paused' : '') + '" data-timer="' + t.id + '" role="timer">' +
+          '<span class="lbl" title="' + esc(t.label) + '">' + esc(t.label) + '</span><b></b>' +
+          (t.state === 'ring'
+            ? '<button type="button" data-t="stop">Stop</button>'
+            : '<button type="button" data-t="pause">' + (t.state === 'pause' ? 'Resume' : 'Pause') + '</button><button type="button" data-t="stop" aria-label="Cancel timer">✕</button>') +
+        '</div>').join('') +
+      (n && !onList ? '<a class="basket" href="#/list">Grocery list <span>' + n + ' recipe' + (n === 1 ? '' : 's') + '</span></a>' : '');
+    tick();
+  }
+  document.getElementById('dock').addEventListener('click', e => {
+    const b = e.target.closest('button[data-t]'); if (!b) return;
+    const id = b.closest('[data-timer]').dataset.timer;
+    const t = timers.find(x => x.id === id); if (!t) return;
+    if (b.dataset.t === 'stop') timers = timers.filter(x => x !== t);
+    else if (t.state === 'pause') { t.end = Date.now() + t.left; t.state = 'run'; delete t.left; unlockAudio(); }
+    else { t.left = t.end - Date.now(); t.state = 'pause'; }
+    saveTimers(); drawDock();
+  });
+  function askTimer(label) {
+    const v = prompt('Timer length in minutes (e.g. 12 or 1.5):', '10');
+    if (v == null) return;
+    const mins = parseFloat(v);
+    if (!(mins > 0)) { toast('That isn’t a number of minutes'); return; }
+    addTimer(Math.round(mins * 60), label);
+  }
+
+  // =====================================================================
+  // List view
+  // =====================================================================
   function matches(r, q) {
     if (!q) return true;
-    const ings = Array.isArray(r.ingredients) ? r.ingredients : Object.values(r.ingredients || {}).flat();
-    const hay = [r.title, r.from, r.family.name, r.intro, (r.tags || []).join(' '), ings.join(' ')].join(' ').toLowerCase();
+    const hay = [r.title, r.from, r.family.name, r.intro, (r.tags || []).join(' '), flatIngredients(r).join(' ')].join(' ').toLowerCase();
     return q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
   }
+  const visible = () => all.filter(r => (ui.fam === 'all' || r.family.id === ui.fam) && matches(r, ui.q));
   function renderList() {
-    document.title = 'Family Recipes';
+    baseTitle = 'Family Recipes';
     const broken = families.filter(f => f.broken);
     app.innerHTML =
       '<div class="top"><div><h1>Family Recipes</h1><p class="muted">' + all.length + ' recipes from ' + families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + '</p></div>' +
-      '<button type="button" id="surprise">Surprise me</button></div>' +
+      '<div class="btns"><button type="button" id="newTimer">⏱ Timer</button><button type="button" id="surprise">Surprise me</button></div></div>' +
       (broken.length ? '<p class="muted">Couldn’t read: ' + broken.map(f => esc(f.broken)).join(', ') + '</p>' : '') +
       '<div class="search"><input id="q" type="search" placeholder="Search recipes, ingredients, tags…" aria-label="Search recipes" value="' + esc(ui.q) + '"></div>' +
       '<div class="chips" role="group" aria-label="Filter by family">' +
@@ -200,6 +460,7 @@
         families.map(f => '<button type="button" data-fam="' + esc(f.id) + '" aria-pressed="' + (ui.fam === f.id) + '" title="' + esc(f.about) + '">' + esc(f.name) + '</button>').join('') +
       '</div>' +
       '<div class="grid" id="grid"></div>' +
+      '<p class="hint">Tap “+ List” on a few recipes to build one grocery list for all of them.</p>' +
       '<footer><span>Want a recipe added? Send it over.</span><a href="../">Junk drawer</a></footer>';
     drawCards();
     const q = document.getElementById('q');
@@ -210,52 +471,64 @@
       app.querySelectorAll('.chips button').forEach(x => x.setAttribute('aria-pressed', x === b));
       drawCards();
     });
+    document.getElementById('grid').addEventListener('click', e => {
+      const b = e.target.closest('button.pick'); if (!b) return;
+      toggleBasket(byKey(b.dataset.key));
+      drawCards();
+    });
     document.getElementById('surprise').addEventListener('click', () => {
       const pool = visible().length ? visible() : all;
       if (pool.length) location.hash = link(pool[Math.floor(Math.random() * pool.length)]);
     });
+    document.getElementById('newTimer').addEventListener('click', () => askTimer('Timer'));
   }
-  const visible = () => all.filter(r => (ui.fam === 'all' || r.family.id === ui.fam) && matches(r, ui.q));
-  const link = r => '#/' + encodeURIComponent(r.family.id) + '/' + encodeURIComponent(r.id);
   function drawCards() {
     const list = visible();
-    document.getElementById('grid').innerHTML = list.length ? list.map(r =>
-      '<a class="card" href="' + link(r) + '">' +
+    document.getElementById('grid').innerHTML = list.length ? list.map(r => {
+      const on = !!basket[r.key];
+      return '<div class="card' + (on ? ' picked' : '') + '">' +
+        '<button type="button" class="pick" data-key="' + esc(r.key) + '" aria-pressed="' + on + '" aria-label="' + (on ? 'Remove ' : 'Add ') + esc(r.title) + (on ? ' from' : ' to') + ' grocery list">' + (on ? '✓ List' : '+ List') + '</button>' +
         '<span class="fam">' + esc(r.family.name) + (r.from ? ' · ' + esc(r.from) : '') + '</span>' +
-        '<h3>' + esc(r.title) + '</h3>' +
-        (r.time ? '<p>' + esc(r.time) + '</p>' : '') +
+        '<a class="title" href="' + link(r) + '"><h3>' + esc(r.title) + '</h3></a>' +
+        (r.time || r.video ? '<p>' + [r.time && esc(r.time), r.video && youtube(r.video) && '▶ video'].filter(Boolean).join(' · ') + '</p>' : '') +
         (r.tags && r.tags.length ? '<div class="tags">' + r.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
-      '</a>').join('')
+      '</div>';
+    }).join('')
       : '<p class="muted empty" style="grid-column:1/-1">No recipes match that.</p>';
   }
 
-  // ---------- recipe view ----------
-  let wake = null;
+  // =====================================================================
+  // Recipe view
+  // =====================================================================
+  let wake = null, wantWake = false;
   async function setWake(on) {
     try {
       if (on) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; syncWake(); }); }
       else if (wake) { await wake.release(); wake = null; }
-    } catch (e) { wake = null; toast('Your browser won’t keep the screen on'); }
+    } catch (e) { wake = null; if (on) toast('Your browser won’t keep the screen on'); }
     syncWake();
   }
   function syncWake() { const b = document.getElementById('wake'); if (b) b.setAttribute('aria-pressed', !!wake); }
   document.addEventListener('visibilitychange', () => {
     // the browser drops the lock when you switch away; take it back when you return
-    if (document.visibilityState === 'visible' && document.getElementById('wake') && wantWake) setWake(true);
+    if (document.visibilityState === 'visible' && wantWake && document.getElementById('wake')) setWake(true);
   });
-  let wantWake = false;
 
   function renderRecipe(famId, recId) {
     const r = all.find(x => x.family.id === famId && x.id === recId);
     if (!r) {
+      baseTitle = 'Recipe not found · Family Recipes';
       app.innerHTML = '<a class="back" href="#/">← All recipes</a><h1>Recipe not found</h1><p class="muted">It may have been renamed or moved.</p>';
       return;
     }
-    document.title = r.title + ' · Family Recipes';
+    baseTitle = r.title + ' · Family Recipes';
     const groups = Array.isArray(r.ingredients) ? [['', r.ingredients]] : Object.entries(r.ingredients || {});
     const base = Number(r.serves) || 0;
     const unit = r.unit || (base === 1 ? 'serving' : 'servings');
-    let count = base, factor = 1;
+    let factor = basket[r.key] || 1;
+    let count = base ? Math.max(1, Math.round(base * factor)) : 0;
+    if (base) factor = count / base;
+    const video = r.video && youtube(r.video);
 
     app.innerHTML =
       '<a class="back" href="#/">← All recipes</a>' +
@@ -270,22 +543,31 @@
       '<div class="tools">' +
         (base
           ? '<span class="scale" aria-label="Servings"><button type="button" data-step="-1" aria-label="Fewer">−</button><output id="count"></output><button type="button" data-step="1" aria-label="More">+</button></span>'
-          : '<span class="scale" role="group" aria-label="Batch size">' + [0.5, 1, 2, 3].map(f => '<button type="button" data-factor="' + f + '" aria-pressed="' + (f === 1) + '">' + (f === 0.5 ? '½' : f) + '×</button>').join('') + '</span>') +
+          : '<span class="scale" role="group" aria-label="Batch size">' + [0.5, 1, 2, 3].map(f => '<button type="button" data-factor="' + f + '" aria-pressed="' + (f === factor) + '">' + (f === 0.5 ? '½' : f) + '×</button>').join('') + '</span>') +
+        '<button type="button" id="pick"></button>' +
+        '<button type="button" id="timer">⏱ Timer</button>' +
         ('wakeLock' in navigator ? '<button type="button" id="wake" aria-pressed="false" title="Stops your screen going dark while you cook">Keep screen on</button>' : '') +
         '<button type="button" id="share">Copy link</button>' +
         '<button type="button" id="print">Print</button>' +
         '<button type="button" id="reset" hidden>Clear ticks</button>' +
       '</div>' +
+      (video ? '<div class="video"><iframe src="' + esc(video) + '" title="Video: ' + esc(r.title) + '" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>' : '') +
       '<div class="cols">' +
         '<div class="panel" id="ingPanel"><h2>Ingredients</h2><div id="ings"></div><p class="hint">Tap things off as you go.</p></div>' +
         '<div class="panel"><h2>Method</h2><ol class="steps" id="steps">' +
-          (r.steps || []).map(s => '<li>' + esc(s) + '</li>').join('') + '</ol></div>' +
+          (r.steps || []).map(s => '<li>' + stepHTML(s) + '</li>').join('') + '</ol>' +
+          (/class="tmr"/.test((r.steps || []).map(stepHTML).join('')) ? '<p class="hint">Tap a ⏱ time to start a timer.</p>' : '') + '</div>' +
       '</div>' +
       (r.notes ? '<div class="notes"><p><strong>Notes.</strong> ' + esc(r.notes) + '</p></div>' : '') +
       (r.tags && r.tags.length ? '<div class="tags r-tags">' + r.tags.map(t => '<a class="tag" href="#/" data-tag="' + esc(t) + '">' + esc(t) + '</a>').join('') + '</div>' : '') +
       '<footer><span>' + esc(r.family.name) + (r.family.about ? ' · ' + esc(r.family.about) : '') + '</span><a href="../">Junk drawer</a></footer>';
 
     const ticked = new Set();
+    function syncPick() {
+      const b = document.getElementById('pick'), on = !!basket[r.key];
+      b.setAttribute('aria-pressed', on);
+      b.textContent = on ? '✓ On grocery list' : '+ Grocery list';
+    }
     function drawIngs() {
       let k = 0;
       document.getElementById('ings').innerHTML = groups.map(([name, items]) =>
@@ -295,18 +577,18 @@
       document.getElementById('ingPanel').classList.toggle('scaled', factor !== 1);
       const c = document.getElementById('count');
       if (c) c.textContent = count + ' ' + (r.unit || (count === 1 ? 'serving' : 'servings'));
+      if (basket[r.key]) { basket[r.key] = factor; saveBasket(); }
     }
     function syncSteps() {
-      const lis = [...document.querySelectorAll('#steps li')];
       let nextMarked = false;
-      lis.forEach((li, i) => {
+      document.querySelectorAll('#steps li').forEach((li, i) => {
         const done = ticked.has('s' + i);
         li.classList.toggle('done', done);
         li.classList.toggle('next', !done && !nextMarked && ticked.size > 0 && (nextMarked = true));
       });
       document.getElementById('reset').hidden = ticked.size === 0;
     }
-    drawIngs(); syncSteps();
+    drawIngs(); syncSteps(); syncPick();
 
     app.querySelector('.tools').addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -317,6 +599,11 @@
         factor = Number(b.dataset.factor);
         app.querySelectorAll('[data-factor]').forEach(x => x.setAttribute('aria-pressed', x === b));
         drawIngs();
+      } else if (b.id === 'pick') {
+        toggleBasket(r, factor); syncPick();
+        toast(basket[r.key] ? 'Added to the grocery list' : 'Taken off the grocery list');
+      } else if (b.id === 'timer') {
+        askTimer(r.title);
       } else if (b.id === 'wake') {
         wantWake = !wake; setWake(wantWake);
       } else if (b.id === 'share') {
@@ -337,8 +624,11 @@
       document.getElementById('reset').hidden = ticked.size === 0;
     });
     document.getElementById('steps').addEventListener('click', e => {
+      const t = e.target.closest('button.tmr');
       const li = e.target.closest('li'); if (!li) return;
-      const k = 's' + [...li.parentNode.children].indexOf(li);
+      const n = [...li.parentNode.children].indexOf(li);
+      if (t) { addTimer(Number(t.dataset.sec), r.title + ' · step ' + (n + 1)); return; }
+      const k = 's' + n;
       ticked.has(k) ? ticked.delete(k) : ticked.add(k);
       syncSteps();
     });
@@ -346,14 +636,116 @@
     syncWake();
   }
 
-  // ---------- routing ----------
+  // =====================================================================
+  // Grocery list view
+  // =====================================================================
+  // Adds up matching ingredients across the picked recipes: same thing + same kind of unit.
+  function buildGroceries() {
+    const lines = new Map(), loose = new Map();
+    for (const [key, factor] of Object.entries(basket)) {
+      const r = byKey(key); if (!r) continue;
+      for (const line of flatIngredients(r)) {
+        const p = parseIng(line);
+        const base = (p.q1 == null ? line : p.name).split(',')[0].replace(/^of\s+/i, '').trim();
+        const words = base.toLowerCase().split(/\s+/);
+        if (!p.info) words[words.length - 1] = singularWord(words[words.length - 1]);
+        const name = words.join(' ');
+        if (p.q1 == null) {
+          const e = loose.get(name) || { text: base, from: new Set() };
+          e.from.add(r.title); loose.set(name, e);
+          continue;
+        }
+        const id = (p.info ? p.pre + p.info.canon : '') + '|' + name;
+        const e = lines.get(id) || { lo: 0, hi: 0, ranged: false, info: p.info, pre: p.pre, unitRaw: p.unitRaw, text: base, from: new Set() };
+        e.lo += p.q1 * factor;
+        e.hi += (p.q2 != null ? p.q2 : p.q1) * factor;
+        e.ranged = e.ranged || p.q2 != null;
+        e.from.add(r.title);
+        lines.set(id, e);
+      }
+    }
+    const out = [];
+    for (const [id, e] of lines) {
+      const top = e.ranged ? e.hi : e.lo;
+      const qty = niceNum(e.lo) + (e.ranged ? '–' + niceNum(e.hi) : '');
+      let unit = '';
+      if (e.info) unit = SHOW[e.info.canon] ? SHOW[e.info.canon][top > 1 ? 1 : 0] : unitText(e.unitRaw, e.info, top);
+      // with a unit, keep the name as written ("2 cups red lentils"); without one, count it ("3 eggs", "1 onion")
+      const name = e.info ? e.text : countedName(e.text.replace(/\S+$/, w => singularWord(w)), top);
+      out.push({ id, sort: e.text.toLowerCase(), qty: qty + (unit ? ' ' + e.pre + unit : ''), name, from: [...e.from] });
+    }
+    for (const [name, e] of loose) {
+      if ([...lines.keys()].some(k => k.split('|')[1] === name)) continue;   // "salt" already on the list with an amount
+      out.push({ id: '|' + name, sort: name, qty: '', name: e.text, from: [...e.from] });
+    }
+    return out.sort((a, b) => a.sort.localeCompare(b.sort));
+  }
+  function renderGroceries() {
+    baseTitle = 'Grocery list · Family Recipes';
+    const keys = Object.keys(basket).filter(byKey);
+    if (!keys.length) {
+      app.innerHTML = '<a class="back" href="#/">← All recipes</a><h1>Grocery list</h1>' +
+        '<p class="muted">No recipes picked yet. Tap “+ List” on any recipe and its ingredients land here, added up with the others.</p>';
+      return;
+    }
+    let got = new Set(store.get('got', []));
+    const items = buildGroceries();
+    app.innerHTML =
+      '<a class="back" href="#/">← All recipes</a>' +
+      '<div class="top"><div><h1>Grocery list</h1><p class="muted">' + items.length + ' things for ' + keys.length + ' recipe' + (keys.length === 1 ? '' : 's') + '</p></div>' +
+      '<div class="btns no-print"><button type="button" id="copy">Copy list</button><button type="button" id="print">Print</button><button type="button" id="uncheck">Untick all</button><button type="button" id="empty">Start over</button></div></div>' +
+      '<div class="picked-list">' + keys.map(k => {
+        const r = byKey(k), f = basket[k], base = Number(r.serves) || 0;
+        const amount = base ? Math.round(base * f) + ' ' + esc(r.unit || 'servings') : (f === 0.5 ? '½' : f) + '× batch';
+        return '<div class="picked-row" data-key="' + esc(k) + '"><a href="' + link(r) + '">' + esc(r.title) + '</a>' +
+          '<span class="scale no-print"><button type="button" data-d="-1" aria-label="Less">−</button><output>' + amount + '</output><button type="button" data-d="1" aria-label="More">+</button></span>' +
+          '<button type="button" class="rm no-print">Remove</button></div>';
+      }).join('') + '</div>' +
+      '<div class="panel" style="margin-top:16px"><ul class="groc" id="groc">' + items.map(it =>
+        '<li data-id="' + esc(it.id) + '" class="' + (got.has(it.id) ? 'done' : '') + '"><span>' +
+          (it.qty ? '<span class="qty">' + esc(it.qty) + '</span> ' : '') + esc(it.name) +
+          (keys.length > 1 ? '<small>' + it.from.map(esc).join(', ') + '</small>' : '') + '</span></li>').join('') + '</ul>' +
+      '<p class="hint no-print">Tap things off as they go in the cart. Amounts are added up across recipes where the units match.</p></div>' +
+      '<footer><span>Your list is saved in this browser.</span><a href="../">Junk drawer</a></footer>';
+
+    document.getElementById('groc').addEventListener('click', e => {
+      const li = e.target.closest('li[data-id]'); if (!li) return;
+      got.has(li.dataset.id) ? got.delete(li.dataset.id) : got.add(li.dataset.id);
+      li.classList.toggle('done', got.has(li.dataset.id));
+      store.set('got', [...got]);
+    });
+    app.querySelector('.picked-list').addEventListener('click', e => {
+      const row = e.target.closest('.picked-row'); const b = e.target.closest('button'); if (!row || !b) return;
+      const k = row.dataset.key, r = byKey(k), base = Number(r.serves) || 0;
+      if (b.classList.contains('rm')) delete basket[k];
+      else if (base) basket[k] = Math.max(1, Math.round(base * basket[k]) + Number(b.dataset.d)) / base;
+      else { const steps = [0.5, 1, 2, 3, 4]; const i = steps.indexOf(basket[k]); basket[k] = steps[Math.max(0, Math.min(steps.length - 1, (i < 0 ? 1 : i) + Number(b.dataset.d)))]; }
+      saveBasket(); renderGroceries();
+    });
+    document.getElementById('copy').addEventListener('click', () => {
+      const text = 'Grocery list (' + keys.map(k => byKey(k).title).join(', ') + ')\n\n' +
+        items.filter(it => !got.has(it.id)).map(it => '- ' + (it.qty ? it.qty + ' ' : '') + it.name).join('\n');
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
+        .then(() => toast('List copied, paste it into notes or a message'), () => prompt('Copy this list:', text));
+    });
+    document.getElementById('print').addEventListener('click', () => window.print());
+    document.getElementById('uncheck').addEventListener('click', () => { got = new Set(); store.set('got', []); renderGroceries(); });
+    document.getElementById('empty').addEventListener('click', () => {
+      if (!confirm('Clear the grocery list and take every recipe off it?')) return;
+      basket = {}; store.set('got', []); saveBasket(); renderGroceries();
+    });
+  }
+
+  // =====================================================================
+  // Routing
+  // =====================================================================
   function route() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
-    if (parts.length === 2) renderRecipe(parts[0], parts[1]);
-    else {
-      if (wake) { wantWake = false; setWake(false); }
-      renderList();
-    }
+    if (parts[0] === 'list') renderGroceries();
+    else if (parts.length === 2) renderRecipe(parts[0], parts[1]);
+    else renderList();
+    if (parts.length !== 2 && wake) { wantWake = false; setWake(false); }
+    drawDock();
     window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
@@ -363,6 +755,7 @@
     app.innerHTML = '<h1>Family Recipes</h1><p class="muted">Couldn’t load the recipes (' + esc(err.message || err) + '). ' +
       (location.protocol === 'file:' ? 'This page has to be opened from a web server, not straight from the file.' : '') + '</p>';
   });
+  drawDock();
 })();
 </script>
 </body>
