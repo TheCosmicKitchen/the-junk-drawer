@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Words for Piroshki</title>
-<meta name="description" content="A NaNoWriMo word tracker. 50,000 words in November earns a tray of piroshki.">
+<meta name="description" content="A NaNoWriMo word tracker for two stories. Hit both goals in November and earn a tray of piroshki.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -16,52 +16,40 @@
     --line: #eadfca;
     --accent: #b5652a;
     --accent-ink: #ffffff;
+    --s1: #c4702f;
+    --s2: #4f7f8c;
     --dough: #f1e4c6;
     --dough-edge: #d9c49b;
     --baked: #c8843a;
     --baked-edge: #8f5520;
     --good: #3f7d4e;
     --warn: #b0562f;
-    --bar: #e3c48f;
-    --bar-today: #b5652a;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #1c1712;
-      --card: #26201a;
-      --ink: #f3eadc;
-      --muted: #b3a38e;
-      --line: #3a3128;
-      --accent: #e08a48;
-      --accent-ink: #1c1712;
-      --dough: #4a4033;
-      --dough-edge: #6a5c48;
-      --baked: #d8954a;
-      --baked-edge: #9c5f24;
-      --good: #7cc48d;
-      --warn: #ee9a70;
-      --bar: #6d5638;
-      --bar-today: #e08a48;
+      --bg: #1c1712; --card: #26201a; --ink: #f3eadc; --muted: #b3a38e; --line: #3a3128;
+      --accent: #e08a48; --accent-ink: #1c1712; --s1: #e08a48; --s2: #7fb3c1;
+      --dough: #4a4033; --dough-edge: #6a5c48; --baked: #d8954a; --baked-edge: #9c5f24;
+      --good: #7cc48d; --warn: #ee9a70;
     }
   }
   :root[data-theme="dark"] {
     --bg: #1c1712; --card: #26201a; --ink: #f3eadc; --muted: #b3a38e; --line: #3a3128;
-    --accent: #e08a48; --accent-ink: #1c1712; --dough: #4a4033; --dough-edge: #6a5c48;
-    --baked: #d8954a; --baked-edge: #9c5f24; --good: #7cc48d; --warn: #ee9a70;
-    --bar: #6d5638; --bar-today: #e08a48;
+    --accent: #e08a48; --accent-ink: #1c1712; --s1: #e08a48; --s2: #7fb3c1;
+    --dough: #4a4033; --dough-edge: #6a5c48; --baked: #d8954a; --baked-edge: #9c5f24;
+    --good: #7cc48d; --warn: #ee9a70;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 Inter, system-ui, sans-serif;
-  }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
-  h1, h2 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; display: flex; flex-direction: column; }
+  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; }
   h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.1; }
   h2 { font-size: 20px; margin-bottom: 12px; }
+  h3 { font-size: 17px; }
   .sub { color: var(--muted); margin: 8px 0 0; }
-  .sub em { font-style: normal; text-decoration: line-through; opacity: .7; }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 20px; }
+  .first { order: -1; border-color: var(--accent); }
+  header { order: -2; }
 
   .tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px 10px; margin: 4px 0 14px; }
   .pk { width: 100%; height: auto; display: block; }
@@ -75,35 +63,47 @@
   .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .big strong { font-family: Fraunces, Georgia, serif; font-size: 40px; line-height: 1; }
   .big span { color: var(--muted); }
-  .meter { height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 12px 0 4px; position: relative; }
-  .meter > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+  .meter { height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; position: relative; }
+  .meter > div { height: 100%; border-radius: 99px; transition: width .4s; background: var(--accent); }
   .meter .par { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .5; }
-  .meter-legend { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .legend { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .c1 { background: var(--s1); } .c2 { background: var(--s2); }
+  .stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .story { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .story .nums { font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .story .nums b { font-size: 22px; }
+  .story .nums span { color: var(--muted); }
+  .story p { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+  .ahead { color: var(--good); } .behind { color: var(--warn); }
 
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
   .stat { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
   .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
   .stat small { color: var(--muted); font-size: 13px; }
-  .ahead { color: var(--good); } .behind { color: var(--warn); }
 
-  form { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid .full { grid-column: 1 / -1; }
   label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
   input, select, button { font: inherit; color: inherit; }
   input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
   input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .btns { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
   button { cursor: pointer; border-radius: 10px; padding: 10px 16px; border: 1px solid var(--line); background: var(--bg); }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .saved { font-size: 13px; color: var(--good); align-self: center; }
 
   .chart { display: grid; grid-template-columns: repeat(30, 1fr); align-items: end; gap: 2px; height: 120px; position: relative; border-bottom: 1px solid var(--line); }
-  .chart .b { background: var(--bar); border-radius: 3px 3px 0 0; min-height: 0; }
-  .chart .b.today { background: var(--bar-today); }
+  .chart .b { display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; }
+  .chart .b > i { display: block; }
+  .chart .b.today { outline: 2px solid var(--ink); outline-offset: 1px; }
   .chart .daily { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--muted); opacity: .7; }
   .chart-x { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
 
   .log { list-style: none; padding: 0; margin: 0; }
-  .log li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .log li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
   .log li:first-child { border-top: 0; }
   .log button { padding: 2px 10px; font-size: 13px; color: var(--muted); }
   .empty { color: var(--muted); margin: 0; }
@@ -115,33 +115,41 @@
 
   footer { margin-top: 28px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   footer a { color: inherit; }
-  footer button { padding: 4px 10px; font-size: 13px; }
-  @media (max-width: 480px) { .tray { grid-template-columns: repeat(4, 1fr); } form { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) { .tray { grid-template-columns: repeat(4, 1fr); } .grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Words for Piroshki</h1>
-    <p class="sub">Write <span id="goalText">50,000</span> words this November, get a tray of piroshki. Piroshki. Not <em>pierogi</em>.</p>
+    <p class="sub">Two stories, one November. Hit both goals and a tray of piroshki is yours.</p>
   </header>
 
   <section class="win" id="win" aria-live="polite">
     <h2>Piroshki are coming!</h2>
-    <p>You wrote the whole novel. The oven is warming up.</p>
+    <p>Both stories, done. The oven is warming up.</p>
   </section>
 
   <section aria-labelledby="trayH">
     <h2 id="trayH">The tray</h2>
     <div class="tray" id="tray"></div>
-    <div class="big"><strong id="total">0</strong><span id="totalOf">of 50,000 words</span></div>
+    <div class="big"><strong id="total">0</strong><span id="totalOf"></span></div>
     <div class="meter" aria-hidden="true"><div id="bar" style="width:0"></div><span class="par" id="parMark"></span></div>
-    <div class="meter-legend"><span id="pct">0%</span><span id="parLabel">line = where you'd be at par today</span></div>
+    <div class="legend"><span id="pct">0%</span><span>line = where you'd be at an even pace today</span></div>
+  </section>
+
+  <section aria-labelledby="storiesH">
+    <h2 id="storiesH">Your stories</h2>
+    <div class="stories" id="stories"></div>
   </section>
 
   <section aria-labelledby="logH">
     <h2 id="logH">Log some words</h2>
-    <form id="form">
+    <form id="logForm" class="grid">
+      <div class="full">
+        <label for="story">Story</label>
+        <select id="story"></select>
+      </div>
       <div>
         <label for="words">Words</label>
         <input id="words" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 1700" required>
@@ -150,12 +158,12 @@
         <label for="day">Day</label>
         <select id="day"></select>
       </div>
-      <div class="btns">
+      <div class="btns full">
         <button class="primary" type="submit" data-mode="add">Add to this day</button>
         <button type="submit" data-mode="set">My total is now this</button>
       </div>
     </form>
-    <p class="hint">“Add” is for a session's words. “My total is now this” takes the count from your document and works out the difference for the chosen day.</p>
+    <p class="hint">“Add” is for a session's words. “My total is now this” takes the count from that story's document and works out the difference for the chosen day.</p>
   </section>
 
   <section aria-labelledby="statsH">
@@ -165,8 +173,9 @@
 
   <section aria-labelledby="chartH">
     <h2 id="chartH">Every day in November</h2>
-    <div class="chart" id="chart"><span class="daily" id="dailyLine"></span></div>
+    <div class="chart" id="chart"></div>
     <div class="chart-x"><span>Nov 1</span><span>Nov 15</span><span>Nov 30</span></div>
+    <div class="legend" id="chartLegend" style="margin-top:8px"></div>
   </section>
 
   <section aria-labelledby="daysH">
@@ -174,9 +183,21 @@
     <ul class="log" id="log"></ul>
   </section>
 
+  <section id="goalsSec" aria-labelledby="goalsH">
+    <h2 id="goalsH">Goals</h2>
+    <p class="hint" id="goalsIntro" style="margin:0 0 12px">Name your two stories and pick a word goal for each.</p>
+    <form id="goalForm" class="grid">
+      <div><label for="n0">First story</label><input id="n0" maxlength="40" required></div>
+      <div><label for="g0">Goal (words)</label><input id="g0" type="number" inputmode="numeric" min="1" step="1" required></div>
+      <div><label for="n1">Second story</label><input id="n1" maxlength="40" required></div>
+      <div><label for="g1">Goal (words)</label><input id="g1" type="number" inputmode="numeric" min="1" step="1" required></div>
+      <div class="btns full"><button class="primary" type="submit">Save goals</button><span class="saved" id="savedMsg" hidden>Saved</span></div>
+    </form>
+  </section>
+
   <footer>
     <span>Saved in a cookie in this browser only, so use the same phone or laptop each time.</span>
-    <span><button type="button" id="goalBtn">Change goal</button> <a href="../">Junk drawer</a></span>
+    <a href="../">Junk drawer</a>
   </footer>
 </main>
 
@@ -184,32 +205,41 @@
 (function () {
   const TRAY = 12;
   const now = new Date();
-  const YEAR = now.getFullYear();
-  const KEY = 'piroshki_' + YEAR;
+  const KEY = 'piroshki_' + now.getFullYear();
   const fmt = n => Math.round(n).toLocaleString('en-US');
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const $ = id => document.getElementById(id);
 
   // Day of November we're on: 0 before it starts, 30 after it ends.
-  function novDay() {
-    if (now.getMonth() < 10) return 0;
-    if (now.getMonth() > 10) return 30;
-    return now.getDate();
-  }
-  const TODAY = novDay();
+  const TODAY = now.getMonth() < 10 ? 0 : now.getMonth() > 10 ? 30 : now.getDate();
 
   // ---- storage: a cookie, mirrored to localStorage in case the cookie gets cleared ----
-  function readCookie() {
-    const hit = document.cookie.split('; ').find(c => c.startsWith(KEY + '='));
-    return hit ? decodeURIComponent(hit.slice(KEY.length + 1)) : null;
+  function blank() {
+    return { setup: false, stories: [
+      { name: 'Story one', goal: 25000, days: {} },
+      { name: 'Story two', goal: 25000, days: {} },
+    ] };
   }
   function load() {
     let raw = null;
-    try { raw = readCookie(); } catch (e) {}
-    if (!raw) { try { raw = localStorage.getItem(KEY); } catch (e) {} }
     try {
-      const d = JSON.parse(raw);
-      if (d && typeof d.days === 'object') return { goal: d.goal || 50000, days: d.days };
+      const hit = document.cookie.split('; ').find(c => c.startsWith(KEY + '='));
+      if (hit) raw = decodeURIComponent(hit.slice(KEY.length + 1));
     } catch (e) {}
-    return { goal: 50000, days: {} };
+    if (!raw) { try { raw = localStorage.getItem(KEY); } catch (e) {} }
+    let d = null;
+    try { d = JSON.parse(raw); } catch (e) {}
+    const s = blank();
+    if (d && Array.isArray(d.stories)) {
+      d.stories.slice(0, 2).forEach((st, i) => {
+        s.stories[i] = { name: String(st.name || s.stories[i].name), goal: st.goal > 0 ? st.goal : 25000, days: st.days || {} };
+      });
+      s.setup = !!d.setup;
+    } else if (d && typeof d.days === 'object') {
+      // single-goal version: keep whatever was logged as the first story
+      s.stories[0].days = d.days;
+    }
+    return s;
   }
   function save() {
     const raw = JSON.stringify(state);
@@ -221,6 +251,20 @@
     try { localStorage.setItem(KEY, raw); } catch (e) {}
   }
   const state = load();
+  const S = state.stories;
+
+  // ---- numbers ----
+  const on = (s, d) => s.days[d] || 0;
+  const sum = s => Object.values(s.days).reduce((a, b) => a + b, 0);
+  const dayTotal = d => S.reduce((a, s) => a + on(s, d), 0);
+  const daysLeft = 30 - Math.max(TODAY, 1) + 1;   // today counts
+  function streak() {
+    let d = TODAY;
+    if (d >= 1 && !dayTotal(d)) d--;          // today isn't over yet
+    let n = 0;
+    while (d >= 1 && dayTotal(d) > 0) { n++; d--; }
+    return n;
+  }
 
   // ---- piroshok drawing ----
   const SHAPE = 'M8 38 C8 18 30 9 50 9 C70 9 92 18 92 38 C92 50 72 55 50 55 C28 55 8 50 8 38 Z';
@@ -228,91 +272,106 @@
   function piroshok(i, frac) {
     const label = frac >= 1 ? 'baked piroshok' : frac > 0 ? 'piroshok in the oven' : 'raw piroshok';
     return '<svg class="pk' + (frac >= 1 ? ' done' : '') + '" viewBox="0 0 100 62" role="img" aria-label="' + label + '">' +
-      '<defs><clipPath id="c' + i + '"><rect x="0" y="0" height="62" width="' + (100 * Math.min(frac, 1)) + '"/></clipPath></defs>' +
+      '<defs><clipPath id="c' + i + '"><rect x="0" y="0" height="62" width="' + (100 * frac) + '"/></clipPath></defs>' +
       '<path class="raw" d="' + SHAPE + '"/>' +
       '<g clip-path="url(#c' + i + ')"><path class="baked" d="' + SHAPE + '"/></g>' +
       '<path class="seam" d="' + SEAM + '"/></svg>';
   }
 
-  // ---- numbers ----
-  function wordsOn(d) { return state.days[d] || 0; }
-  function total() { return Object.values(state.days).reduce((a, b) => a + b, 0); }
-  function streak() {
-    let d = TODAY;
-    if (d >= 1 && !wordsOn(d)) d--;          // today isn't over yet
-    let n = 0;
-    while (d >= 1 && wordsOn(d) > 0) { n++; d--; }
-    return n;
-  }
-
   let lastBaked = -1;
   function render() {
-    const goal = state.goal;
-    const tot = total();
+    // The tray counts each story only up to its own goal, so racing ahead on one can't cover for the other.
+    const goal = S[0].goal + S[1].goal;
+    const tots = S.map(sum);
+    const counted = S.reduce((a, s, i) => a + Math.min(tots[i], s.goal), 0);
+    const all = tots[0] + tots[1];
     const per = goal / TRAY;
-    const baked = Math.floor(tot / per);
+    const baked = Math.floor(counted / per + 1e-9);
+    const won = S.every((s, i) => tots[i] >= s.goal);
 
-    document.getElementById('goalText').textContent = fmt(goal);
     let tray = '';
-    for (let i = 0; i < TRAY; i++) tray += piroshok(i, Math.max(0, Math.min(1, (tot - i * per) / per)));
-    document.getElementById('tray').innerHTML = tray;
-    // only animate newly baked ones
+    for (let i = 0; i < TRAY; i++) tray += piroshok(i, Math.max(0, Math.min(1, (counted - i * per) / per)));
+    $('tray').innerHTML = tray;
     document.querySelectorAll('.pk.done').forEach((el, i) => { if (lastBaked < 0 || i < lastBaked) el.style.animation = 'none'; });
     lastBaked = baked;
 
-    document.getElementById('total').textContent = fmt(tot);
-    document.getElementById('totalOf').textContent = 'of ' + fmt(goal) + ' words · ' +
-      Math.min(baked, TRAY) + ' of ' + TRAY + ' piroshki baked';
-    const pct = Math.min(100, tot / goal * 100);
-    document.getElementById('bar').style.width = pct + '%';
-    document.getElementById('pct').textContent = (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
-    const parNow = goal * TODAY / 30;
-    document.getElementById('parMark').style.left = 'calc(' + (TODAY / 30 * 100) + '% - 1px)';
-    document.getElementById('parMark').style.display = TODAY ? '' : 'none';
-    document.getElementById('win').classList.toggle('show', tot >= goal);
+    $('total').textContent = fmt(counted);
+    $('totalOf').textContent = 'of ' + fmt(goal) + ' words · ' + Math.min(baked, TRAY) + ' of ' + TRAY + ' piroshki baked';
+    const pct = Math.min(100, counted / goal * 100);
+    $('bar').style.width = pct + '%';
+    $('pct').textContent = (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
+    $('parMark').style.left = 'calc(' + (TODAY / 30 * 100) + '% - 1px)';
+    $('parMark').style.display = TODAY ? '' : 'none';
+    $('win').classList.toggle('show', won);
 
-    // stats
-    const left = Math.max(0, goal - tot);
-    const daysLeft = 30 - Math.max(TODAY, 1) + 1;          // today counts
-    const diff = tot - parNow;
-    const daysSoFar = Math.max(TODAY, 1);
-    const projected = tot / daysSoFar * 30;
-    const best = Math.max(0, ...Object.values(state.days));
+    // per story
+    $('stories').innerHTML = S.map((s, i) => {
+      const t = tots[i], par = s.goal * TODAY / 30, diff = t - par, left = s.goal - t;
+      const p = Math.min(100, t / s.goal * 100);
+      const line = left <= 0
+        ? '<span class="ahead">Done! ' + (t > s.goal ? fmt(t - s.goal) + ' over goal.' : '') + '</span>'
+        : fmt(Math.ceil(left / daysLeft)) + ' a day to finish · ' + (TODAY
+          ? '<span class="' + (diff >= 0 ? 'ahead' : 'behind') + '">' + fmt(Math.abs(diff)) + (diff >= 0 ? ' ahead' : ' behind') + '</span>'
+          : 'starts Nov 1');
+      return '<div class="story"><h3><span class="dot c' + (i + 1) + '"></span>' + esc(s.name) + '</h3>' +
+        '<div class="nums"><b>' + fmt(t) + '</b> <span>of ' + fmt(s.goal) + ' · ' + Math.floor(p) + '%</span></div>' +
+        '<div class="meter" aria-hidden="true"><div style="width:' + p + '%;background:var(--s' + (i + 1) + ')"></div>' +
+        (TODAY ? '<span class="par" style="left:calc(' + (TODAY / 30 * 100) + '% - 1px)"></span>' : '') + '</div>' +
+        '<p>' + line + '</p></div>';
+    }).join('');
+
+    // shared stats
+    const projected = all / Math.max(TODAY, 1) * 30;
+    let best = 0, bestDay = 0;
+    for (let d = 1; d <= 30; d++) if (dayTotal(d) > best) { best = dayTotal(d); bestDay = d; }
+    const st = streak();
     const stats = [
-      ['Today', fmt(wordsOn(TODAY)), TODAY ? 'Nov ' + TODAY : 'November hasn’t started'],
-      tot >= goal
-        ? ['Done!', '🎉', 'Goal reached']
-        : ['Per day to finish', fmt(Math.ceil(left / daysLeft)), fmt(left) + ' left over ' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's')],
-      ['Versus par', '<span class="' + (diff >= 0 ? 'ahead' : 'behind') + '">' + (diff >= 0 ? '+' : '−') + fmt(Math.abs(diff)) + '</span>',
-        diff >= 0 ? 'ahead of ' + fmt(parNow) : 'behind ' + fmt(parNow)],
-      ['Streak', streak() + ' day' + (streak() === 1 ? '' : 's'), 'writing every day'],
-      ['On this pace', fmt(projected), projected >= goal ? 'by Nov 30: piroshki' : 'by Nov 30'],
-      ['Best day', fmt(best), best ? 'Nov ' + Object.keys(state.days).find(k => state.days[k] === best) : 'not yet'],
+      ['Today', fmt(dayTotal(TODAY)), TODAY ? 'both stories, Nov ' + TODAY : 'November hasn’t started'],
+      ['Streak', st + ' day' + (st === 1 ? '' : 's'), 'writing every day'],
+      ['On this pace', fmt(projected), 'words by Nov 30'],
+      ['Best day', fmt(best), best ? 'Nov ' + bestDay : 'not yet'],
     ];
-    document.getElementById('stats').innerHTML = stats.map(s =>
+    $('stats').innerHTML = stats.map(s =>
       '<div class="stat"><small>' + s[0] + '</small><b>' + s[1] + '</b><small>' + s[2] + '</small></div>').join('');
 
-    // chart
+    // chart: stacked bars, one colour per story
     const daily = goal / 30;
     const top = Math.max(daily * 1.5, best) || 1;
     let bars = '';
     for (let d = 1; d <= 30; d++) {
-      const w = wordsOn(d);
-      bars += '<div class="b' + (d === TODAY ? ' today' : '') + '" style="height:' + (w / top * 100) + '%" title="Nov ' + d + ': ' + fmt(w) + ' words"></div>';
+      const t = dayTotal(d);
+      bars += '<div class="b' + (d === TODAY ? ' today' : '') + '" style="height:' + (t / top * 100) + '%" title="Nov ' + d + ': ' +
+        S.map(s => esc(s.name) + ' ' + fmt(on(s, d))).join(', ') + '">' +
+        S.map((s, i) => '<i class="c' + (i + 1) + '" style="height:' + (t ? on(s, d) / t * 100 : 0) + '%"></i>').join('') + '</div>';
     }
-    const chart = document.getElementById('chart');
-    chart.innerHTML = bars + '<span class="daily" style="bottom:' + (daily / top * 100) + '%" title="' + fmt(daily) + ' a day keeps you on par"></span>';
+    $('chart').innerHTML = bars + '<span class="daily" style="bottom:' + (daily / top * 100) + '%" title="' + fmt(daily) + ' a day keeps you on pace"></span>';
+    $('chartLegend').innerHTML = S.map((s, i) => '<span><span class="dot c' + (i + 1) + '"></span>' + esc(s.name) + '</span>').join('') +
+      '<span>dashed line = ' + fmt(daily) + ' a day</span>';
 
     // log
-    const days = Object.keys(state.days).map(Number).sort((a, b) => b - a);
-    document.getElementById('log').innerHTML = days.length
-      ? days.map(d => '<li><span>Nov ' + d + '</span><span>' + fmt(state.days[d]) +
-          ' words <button type="button" data-del="' + d + '" aria-label="Clear Nov ' + d + '">clear</button></span></li>').join('')
+    const rows = [];
+    for (let d = 30; d >= 1; d--) S.forEach((s, i) => { if (on(s, d)) rows.push([d, i]); });
+    $('log').innerHTML = rows.length
+      ? rows.map(([d, i]) => '<li><span>Nov ' + d + ' · <span class="dot c' + (i + 1) + '"></span>' + esc(S[i].name) + '</span><span>' +
+          fmt(on(S[i], d)) + ' words <button type="button" data-day="' + d + '" data-story="' + i + '">clear</button></span></li>').join('')
       : '<li><p class="empty">Nothing logged yet. The dough is waiting.</p></li>';
+
+    // story picker keeps its selection across re-renders
+    const sel = $('story'), keep = sel.value || '0';
+    sel.innerHTML = S.map((s, i) => '<option value="' + i + '">' + esc(s.name) + '</option>').join('');
+    sel.value = keep;
+
+    // goals: up top until they've been set once
+    $('goalsSec').classList.toggle('first', !state.setup);
+    $('goalsIntro').hidden = state.setup;
+  }
+
+  function fillGoalForm() {
+    S.forEach((s, i) => { $('n' + i).value = s.name; $('g' + i).value = s.goal; });
   }
 
   // ---- day picker ----
-  const daySel = document.getElementById('day');
+  const daySel = $('day');
   for (let d = 1; d <= 30; d++) {
     const o = document.createElement('option');
     o.value = d; o.textContent = 'Nov ' + d + (d === TODAY ? ' (today)' : '');
@@ -321,35 +380,44 @@
   daySel.value = Math.max(TODAY, 1);
 
   // ---- events ----
-  const form = document.getElementById('form');
-  form.addEventListener('submit', e => {
+  $('logForm').addEventListener('submit', e => {
     e.preventDefault();
     const mode = (e.submitter && e.submitter.dataset.mode) || 'add';
-    const n = Math.floor(Number(document.getElementById('words').value));
+    const n = Math.floor(Number($('words').value));
     if (!(n >= 0)) return;
+    const s = S[Number($('story').value)];
     const d = Number(daySel.value);
     if (mode === 'set') {
-      const others = total() - wordsOn(d);
-      const v = n - others;
-      if (v < 0) { alert('That total is lower than your other days add up to (' + fmt(others) + '). Clear a day first?'); return; }
-      state.days[d] = v;
+      const others = sum(s) - on(s, d);
+      if (n < others) { alert('That total is lower than your other days on ' + s.name + ' add up to (' + fmt(others) + '). Clear a day first?'); return; }
+      s.days[d] = n - others;
     } else {
-      state.days[d] = wordsOn(d) + n;
+      s.days[d] = on(s, d) + n;
     }
-    if (!state.days[d]) delete state.days[d];
+    if (!s.days[d]) delete s.days[d];
     save(); render();
-    form.reset(); daySel.value = d;
+    $('words').value = '';
   });
-  document.getElementById('log').addEventListener('click', e => {
-    const d = e.target.dataset && e.target.dataset.del;
-    if (!d || !confirm('Clear the words logged for Nov ' + d + '?')) return;
-    delete state.days[d]; save(); render();
+  $('log').addEventListener('click', e => {
+    const b = e.target.closest('button[data-day]');
+    if (!b) return;
+    const s = S[b.dataset.story], d = b.dataset.day;
+    if (!confirm('Clear ' + s.name + ' for Nov ' + d + '?')) return;
+    delete s.days[d]; save(); render();
   });
-  document.getElementById('goalBtn').addEventListener('click', () => {
-    const v = Math.floor(Number(prompt('Word goal for November:', state.goal)));
-    if (v > 0) { state.goal = v; save(); render(); }
+  $('goalForm').addEventListener('submit', e => {
+    e.preventDefault();
+    S.forEach((s, i) => {
+      s.name = $('n' + i).value.trim() || s.name;
+      const g = Math.floor(Number($('g' + i).value));
+      if (g > 0) s.goal = g;
+    });
+    state.setup = true;
+    save(); render(); fillGoalForm();
+    const m = $('savedMsg'); m.hidden = false; setTimeout(() => { m.hidden = true; }, 1500);
   });
 
+  fillGoalForm();
   render();
 })();
 </script>
