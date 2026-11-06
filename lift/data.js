@@ -127,16 +127,20 @@ class SupaStore {
 
   // ----- seasons -----
   async seasons() {
-    const [seasons, goals, subs] = await Promise.all([
+    const [seasons, goals, subs, plan] = await Promise.all([
       this.all(() => this.sb.from('lift_seasons').select(SEASON).is('deleted_at', null).order('starts_on', { ascending: false })),
       this.all(() => this.sb.from('lift_season_goals').select('id,season_id,name,metric,target,unit').is('deleted_at', null)),
       this.all(() => this.sb.from('lift_season_subscriptions').select('id,season_id').is('deleted_at', null)),
+      this.all(() => this.sb.from('lift_season_plan').select(PLAN).is('deleted_at', null)),
     ]);
-    return { seasons, goals, subs };
+    return { seasons, goals, subs, plan };
   }
   async addSeason(f) { return must(await this.sb.from('lift_seasons').insert(f).select(SEASON).single()); }
   async updateSeason(id, patch) { return must(await this.sb.from('lift_seasons').update(patch).eq('id', id).select(SEASON).single()); }
   deleteSeason(id) { return this.updateSeason(id, { deleted_at: new Date().toISOString() }); }
+  async addPlan(f) { return must(await this.sb.from('lift_season_plan').insert(f).select(PLAN).single()); }
+  async updatePlan(id, patch) { return must(await this.sb.from('lift_season_plan').update(patch).eq('id', id).select(PLAN).single()); }
+  removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
   async joinSeason(seasonId) { return must(await this.sb.from('lift_season_subscriptions').insert({ season_id: seasonId }).select('id,season_id').single()); }
   async leaveSeason(subId) { must(await this.sb.from('lift_season_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
   // Everyone in a shared season, totals only (the database never hands over the other person's sets).
@@ -146,6 +150,7 @@ class SupaStore {
 }
 
 const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by';
+const PLAN = 'id,season_id,template_id,position,weekdays';
 
 // ---------------------------------------------------------------------------
 // Demo: a few weeks of believable lifting, held in memory.
@@ -299,13 +304,21 @@ class DemoStore {
         { id: uid(), season_id: 's-crew', name: 'Show up 30 times', metric: 'visits', target: 30, unit: null },
       ];
       this.seasonSubs = [];
+      this.planRows = [
+        { id: uid(), season_id: 's-fall', template_id: 't-push', position: 1, weekdays: 0 },
+        { id: uid(), season_id: 's-fall', template_id: 't-pull', position: 2, weekdays: 0 },
+        { id: uid(), season_id: 's-fall', template_id: 't-legs', position: 3, weekdays: 0 },
+      ];
     }
     return { seasons: this.seasonRows.filter(s => !s.deleted_at).map(clone), goals: this.goalRows.filter(g => !g.deleted_at).map(clone),
-      subs: this.seasonSubs.filter(s => !s.deleted_at).map(clone) };
+      subs: this.seasonSubs.filter(s => !s.deleted_at).map(clone), plan: this.planRows.filter(p => !p.deleted_at).map(clone) };
   }
   async addSeason(f) { await this.seasons(); const s = { id: uid(), is_shared: false, created_by: 'me', ...f }; this.seasonRows.push(s); return clone(s); }
   async updateSeason(id, patch) { const s = this.seasonRows.find(x => x.id === id); Object.assign(s, patch); return clone(s); }
   deleteSeason(id) { return this.updateSeason(id, { deleted_at: new Date().toISOString() }); }
+  async addPlan(f) { const p = { id: uid(), position: 1, weekdays: 0, ...f }; this.planRows.push(p); return clone(p); }
+  async updatePlan(id, patch) { const p = this.planRows.find(x => x.id === id); Object.assign(p, patch); return clone(p); }
+  removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
   async joinSeason(seasonId) { const s = { id: uid(), season_id: seasonId }; this.seasonSubs.push(s); return clone(s); }
   async leaveSeason(subId) { const s = this.seasonSubs.find(x => x.id === subId); if (s) s.deleted_at = new Date().toISOString(); }
   async standings(seasonId) {

@@ -177,6 +177,7 @@ async function loadAll() {
   S.seasons = seasons.seasons;
   S.goals = seasons.goals;
   S.seasonSubs = seasons.subs || [];
+  S.plan = seasons.plan || [];
   S.standings = {};
   S.names = new Map(names.map(n => [n.user_id, n.display_name]));
   S.myId = myId;
@@ -245,6 +246,7 @@ function renderLog() {
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
     '</div></section>' +
+    planCard() +
     followCard() +
     (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Save today as a routine</button>' : '');
@@ -439,7 +441,7 @@ const LG = { mode: 'pick', exId: null, editing: null };
 // Sheets with something to type in (search, routine editor, seasons) open full height,
 // so the text box sits at the top instead of down where the phone keyboard pops up.
 function openSheet() {
-  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season'].includes(LG.mode));
+  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk'].includes(LG.mode));
   if (!sheet.open) sheet.showModal();
 }
 function closeSheet() { flushSaves(); if (sheet.open) sheet.close(); render(); }
@@ -670,6 +672,7 @@ inner.addEventListener('click', async e => {
   if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
+  if (LG.mode === 'chunk') return chunkClick(b);
   if (LG.mode === 'design') return designerClick(b);
   if (LG.mode === 'season') return seasonClick(b);
   if (LG.mode !== 'entry' && LG.mode !== 'edit') return;
@@ -939,7 +942,7 @@ function openDesigner(id, fresh) {
       '<p class="hint-line" id="rtHint"></p>' +
       '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
     '</div>' +
-    '<div class="design-foot"><button class="btn" id="rtAdd">+ Add exercises</button><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button></div>';
+    '<div class="design-foot"><button class="btn" id="rtAdd">+ Exercises</button><button class="btn" id="rtFrom">+ From a routine</button><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button></div>';
   openSheet();
   drawItems();
   const name = $('rtName'), notes = $('rtNotes');
@@ -951,7 +954,7 @@ function openDesigner(id, fresh) {
 function drawItems() {
   const list = routineItems(D.id), t = S.templates.find(x => x.id === D.id);
   $('rtItems').innerHTML = list.length ? list.map(itemRow).join('')
-    : '<li class="empty-steps"><b>No exercises yet.</b><br>Tap <b>+ Add exercises</b> below and tick the ones you do, in order.</li>';
+    : '<li class="empty-steps"><b>No exercises yet.</b><br>Tap <b>+ Exercises</b> below and tick the ones you do, in order, or grab steps you already have with <b>+ From a routine</b>.</li>';
   $('rtStart').disabled = !list.length;
   $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
     'Saves as you go.' + (t && t.is_shared ? ' Anyone subscribed sees changes straight away.' : '');
@@ -1087,8 +1090,72 @@ inner.addEventListener('input', e => {
   if (v == null) return;
   queueItem(id, { [inp.dataset.field]: clampItem(it, inp.dataset.field, v) });
 });
+// Reuse part of another routine: tick steps from any routine you can see (yours or the crew's),
+// and they're copied onto the end of this one with their sets, reps and load.
+const CH = { picked: [] };
+function openChunkPicker() {
+  LG.mode = 'chunk'; CH.picked = [];
+  const here = S.templates.find(x => x.id === D.id);
+  const others = S.templates.filter(t => t.id !== D.id && routineItems(t.id).length)
+    .sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
+  inner.innerHTML =
+    '<div class="sheet-head"><div><button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-chunk-back>← Back to ' + esc(here ? here.name : 'the routine') + '</button>' +
+      '<h2 id="sheetTitle">Add steps from a routine</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      (others.length ? '<p class="hint-line" style="margin-top:0">Tick the steps you want, in the order you’ll do them. Their sets, reps and load come too.</p>' +
+        others.map(t => '<section class="chunk"><div class="row"><h3>' + esc(t.name) + (isMine(t) ? '' : ' <small class="muted">by ' + esc(ownerName(t)) + '</small>') + '</h3>' +
+          '<button type="button" class="linkbtn" data-chunk-all="' + esc(t.id) + '">Tick all</button></div><ul class="results">' +
+          routineItems(t.id).map(it => '<li><button data-chunk="' + esc(it.id) + '" aria-pressed="false"><span><i class="tickbox" aria-hidden="true"></i>' + esc(exName(it.exercise_id)) + '</span>' +
+            '<small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></button></li>').join('') + '</ul></section>').join('')
+        : '<p class="muted">No other routines with steps yet. Make one, or subscribe to one the crew shares.</p>') +
+      '<div class="pick-foot"><button class="btn primary block" data-chunk-add disabled>Tick steps to add</button></div>' +
+    '</div>';
+  openSheet();
+}
+function drawChunk() {
+  inner.querySelectorAll('[data-chunk]').forEach(b => {
+    const i = CH.picked.indexOf(b.dataset.chunk);
+    b.classList.toggle('sel', i >= 0); b.setAttribute('aria-pressed', i >= 0);
+    b.querySelector('.tickbox').textContent = i >= 0 ? i + 1 : '';
+  });
+  const n = CH.picked.length, add = inner.querySelector('[data-chunk-add]');
+  add.disabled = !n;
+  add.textContent = n ? 'Add ' + n + ' step' + (n === 1 ? '' : 's') : 'Tick steps to add';
+}
+async function chunkClick(b) {
+  if (b.hasAttribute('data-chunk-back')) return openDesigner(D.id);
+  if (b.dataset.chunk) {
+    const id = b.dataset.chunk, i = CH.picked.indexOf(id);
+    if (i >= 0) CH.picked.splice(i, 1); else CH.picked.push(id);
+    vibrate(5); return drawChunk();
+  }
+  if (b.dataset.chunkAll) {
+    const ids = routineItems(b.dataset.chunkAll).map(it => it.id);
+    if (ids.every(id => CH.picked.includes(id))) CH.picked = CH.picked.filter(id => !ids.includes(id));
+    else for (const id of ids) if (!CH.picked.includes(id)) CH.picked.push(id);
+    return drawChunk();
+  }
+  if (b.hasAttribute('data-chunk-add')) {
+    b.disabled = true;
+    const tid = D.id, list = routineItems(tid);
+    if (list.length + CH.picked.length > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
+    let pos = list.length ? Math.max(...list.map(i => i.position)) : 0;
+    try {
+      for (const id of CH.picked) {
+        const src = S.itemsById.get(id);
+        if (!src) continue;
+        const it = await store.addItem({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
+          load_mode: src.load_mode, load_value: src.load_value, unit: src.unit });
+        S.items.push(it); S.itemsById.set(it.id, it);
+      }
+      toast('Added ' + CH.picked.length + ' step' + (CH.picked.length === 1 ? '' : 's') + '.');
+    } catch (x) { fail(x); }
+    openDesigner(tid);
+  }
+}
 async function designerClick(b) {
   if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
+  if (b.id === 'rtFrom') { flushSaves(); return openChunkPicker(); }
   if (b.id === 'rtNoteBtn') { b.remove(); const n = $('rtNotes'); n.hidden = false; n.focus(); return; }
   if (b.id === 'rtShare') {
     const t = S.templates.find(x => x.id === D.id);
@@ -1191,6 +1258,68 @@ function goalLine(g, m) {
     '<div class="bar"><i style="width:' + (p.ratio * 100).toFixed(1) + '%"></i></div></div>';
 }
 const seasonSub = id => (S.seasonSubs || []).find(x => x.season_id === id);
+// A season's plan: routines in order. Ticked weekdays pin a routine to those days; the rest take turns.
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const byPos = (a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id));
+const planFor = sid => (S.plan || []).filter(p => p.season_id === sid).sort(byPos);
+const tplById = id => S.templates.find(t => t.id === id);
+const dayList = mask => DAY_NAMES.filter((_, i) => mask & (1 << i)).join(', ');
+function planLine(s) {
+  const plan = planFor(s.id);
+  if (!plan.length) return '';
+  return '<p class="hint-line">Plan: ' + esc(plan.map(p => { const t = tplById(p.template_id); return (t ? t.name : 'a private routine') + (p.weekdays ? ' (' + dayList(p.weekdays) + ')' : ''); }).join(' → ')) + '</p>';
+}
+// Which routine of a rotation was done on a day: the one whose exercises that day covers best (at least half).
+function matchRoutine(rot, day) {
+  const done = new Set(S.recent.filter(x => x.performed_on === day && x.is_warmup !== true).map(x => x.exercise_id));
+  if (!done.size) return -1;
+  let best = -1, score = 0.5 - 1e-9;
+  rot.forEach((p, i) => {
+    const ex = [...new Set(routineItems(p.template_id).map(it => it.exercise_id))];
+    const sc = ex.length ? ex.filter(e => done.has(e)).length / ex.length : 0;
+    if (sc > score) { score = sc; best = i; }
+  });
+  return best;
+}
+// Today's routine from the plan of a season you're in that's running now.
+function todaysPlan() {
+  const t = today(), dow = L.parseDate(t).getDay();
+  for (const s of (S.seasons || []).filter(s => inSeason(s) && s.starts_on <= t && t <= s.ends_on)) {
+    const plan = planFor(s.id).filter(p => tplById(p.template_id) && routineItems(p.template_id).length);
+    if (!plan.length) continue;
+    const pinned = plan.find(p => p.weekdays & (1 << dow));
+    if (pinned) return { season: s, plan, entry: pinned, why: 'it’s ' + DAY_NAMES[dow] };
+    const rot = plan.filter(p => !p.weekdays);
+    if (!rot.length) {
+      for (let k = 1; k <= 7; k++) { const p = plan.find(x => x.weekdays & (1 << ((dow + k) % 7))); if (p) return { season: s, plan, entry: null, next: p, nextDay: DAY_NAMES[(dow + k) % 7] }; }
+      continue;
+    }
+    const todayIdx = matchRoutine(rot, t);
+    if (todayIdx >= 0) return { season: s, plan, entry: rot[todayIdx], why: 'on today' };
+    const days = [...new Set(S.recent.map(x => x.performed_on))].filter(d => d < t && d >= s.starts_on).sort().reverse();
+    for (const d of days) {
+      const i = matchRoutine(rot, d);
+      if (i >= 0) return { season: s, plan, entry: rot[(i + 1) % rot.length], why: 'next after ' + tplById(rot[i].template_id).name };
+    }
+    return { season: s, plan, entry: rot[0], why: 'first in the rotation' };
+  }
+  return null;
+}
+function planCard() {
+  if (following()) return '';
+  const tp = todaysPlan();
+  if (!tp) return '';
+  const head = '<div class="date">' + esc(tp.season.name) + '</div>';
+  if (!tp.entry) return '<section class="card plan-card">' + head + '<p style="margin:6px 0 0">Rest day by the plan. Next up: <b>' + esc(tplById(tp.next.template_id).name) + '</b> on ' + tp.nextDay + '.</p></section>';
+  const t = tplById(tp.entry.template_id);
+  const others = tp.plan.filter(p => p.template_id !== t.id && !tp.plan.slice(0, tp.plan.indexOf(p)).some(q => q.template_id === p.template_id));
+  return '<section class="card plan-card">' + head +
+    '<div class="row" style="margin-top:4px"><div><small class="muted">Today’s routine, ' + esc(tp.why) + '</small><h2>' + esc(t.name) + '</h2></div>' +
+      '<button class="btn primary" data-start="' + esc(t.id) + '">Start</button></div>' +
+    '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') + '</div>' +
+    (others.length ? '<p class="hint-line">Or: ' + others.map(p => '<button class="linkbtn" data-start="' + esc(p.template_id) + '">' + esc(tplById(p.template_id).name) + '</button>').join(' · ') + '</p>' : '') +
+  '</section>';
+}
 const inSeason = s => isMine(s) || !!seasonSub(s.id);
 const seasonDates = s => fmtDay(s.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(s.ends_on, { month: 'short', day: 'numeric', year: 'numeric' });
 function seasonsSection() {
@@ -1201,7 +1330,7 @@ function seasonsSection() {
       const goals = S.goals.filter(g => g.season_id === s.id);
       return '<section class="card season"><span class="tag new">From ' + esc(ownerName(s)) + '</span><h3 style="margin-top:8px">' + esc(s.name) + '</h3>' +
         '<span class="muted" style="font-size:14px">' + esc(seasonDates(s)) + ' · ' + esc(seasonStatus(s)) + '</span>' +
-        (goals.length ? '<p class="hint-line">Goals: ' + esc(goals.map(g => g.name).join(', ')) + '</p>' : '') +
+        (goals.length ? '<p class="hint-line">Goals: ' + esc(goals.map(g => g.name).join(', ')) + '</p>' : '') + planLine(s) +
         '<p class="hint-line">Join to compare totals side by side. Only totals are shared, never your sets.</p>' +
         '<div class="actions"><button class="btn primary" data-join-season="' + esc(s.id) + '">Join season</button></div></section>';
     }).join('') +
@@ -1211,7 +1340,7 @@ function seasonsSection() {
       return '<section class="card season' + (S.period === 'season:' + s.id ? ' on' : '') + '">' + who + '<h3' + (who ? ' style="margin-top:8px"' : '') + '>' + esc(s.name) + '</h3>' +
         '<span class="muted" style="font-size:14px">' + esc(seasonDates(s)) + ' · ' + esc(seasonStatus(s)) + '</span>' +
         '<p class="hint-line">' + m.visits + ' visits · ' + esc(volText(m.volume)) + (m.volume.kg ? '' : ' lb') + ' moved · ' + m.bests + ' bests set</p>' +
-        goals.map(g => goalLine(g, m)).join('') +
+        goals.map(g => goalLine(g, m)).join('') + planLine(s) +
         '<div class="actions"><button class="btn primary" data-season="' + esc(s.id) + '">View season</button>' +
         (isMine(s) ? '<button class="btn" data-edit-season="' + esc(s.id) + '">Edit</button>' : '<button class="btn" data-leave-season="' + esc(s.id) + '">Leave</button>') + '</div></section>';
     }).join('') : crew.length ? '' : '<section class="card"><p class="muted" style="margin:0">A season is any stretch you choose: a training block, a month, a year. Give it goals and watch them fill. Share it and the crew can join in.</p></section>');
@@ -1259,7 +1388,7 @@ function crewCard(season) {
 const SG = { id: null, pending: [] };
 function openSeasonSheet(id) {
   LG.mode = 'season';
-  SG.id = id; SG.pending = [];
+  SG.id = id; SG.pending = []; SG.planPending = [];
   const s = id ? seasonById(id) : { name: '', starts_on: today(), ends_on: L.addDays(today(), 55), is_shared: false };
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + (id ? 'Edit season' : 'New season') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
@@ -1271,12 +1400,19 @@ function openSeasonSheet(id) {
       '<div class="field-label"><span>Goals</span><small>optional</small></div><div id="snGoals"></div>' +
       '<div class="goal-add"><select class="plain-input" id="gMetric" aria-label="Goal type"><option value="visits">Visits</option><option value="volume:lb">Volume (lb)</option><option value="volume:kg">Volume (kg)</option></select>' +
         '<input class="plain-input" id="gTarget" inputmode="numeric" placeholder="Target" aria-label="Target"><button class="btn" id="gAdd" type="button">Add</button></div>' +
+      '<div class="field-label"><span>Routines</span><small>optional</small></div><div id="snPlan"></div>' +
+      (S.templates.length ? '<div class="goal-add plan-add"><select class="plain-input" id="pRoutine" aria-label="Routine to add">' +
+          S.templates.slice().sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name))
+            .map(t => '<option value="' + esc(t.id) + '">' + esc(t.name + (isMine(t) ? '' : ' (by ' + ownerName(t) + ')')) + '</option>').join('') +
+        '</select><button class="btn" id="pAdd" type="button">Add</button></div>'
+        : '<p class="hint-line">Make a routine first, then plan the season around it.</p>') +
       '<p class="warn" id="snErr" role="alert"></p>' +
       '<button class="btn primary block" id="snSave">' + (id ? 'Save season' : 'Start season') + '</button>' +
       (id ? '<button class="btn block" style="margin-top:10px;color:var(--accent)" id="snDelete">Delete season</button>' : '') +
     '</div>';
   openSheet();
   drawGoals();
+  drawPlan();
   if (!id) setTimeout(() => $('snName').focus(), 60);
 }
 function drawGoals() {
@@ -1286,8 +1422,47 @@ function drawGoals() {
     : '<p class="hint-line" style="margin:0 2px 8px">e.g. 24 visits, or 400,000 lb moved.</p>';
 }
 const shareLabel = on => (on ? '✓ Shared with the crew' : 'Share with the crew');
+function drawPlan() {
+  const list = SG.id ? planFor(SG.id) : SG.planPending;
+  const shared = SG.id ? !!(seasonById(SG.id) || {}).is_shared : $('snShare') && $('snShare').getAttribute('aria-pressed') === 'true';
+  $('snPlan').innerHTML = list.length ? list.map((p, i) => {
+    const key = p.id || 'p' + i, t = tplById(p.template_id);
+    return '<div class="plan-row"><div class="row"><span><b>' + (i + 1) + '.</b> ' + esc(t ? t.name : 'A routine you can’t see') +
+        (shared && t && isMine(t) && !t.is_shared ? ' <small class="muted">· not shared, so only you see it</small>' : '') + '</span>' +
+      '<span>' + (i ? '<button class="iconbtn sm" data-plan-up="' + esc(key) + '" aria-label="Move up">↑</button>' : '') +
+      '<button class="iconbtn sm" data-plan-del="' + esc(key) + '" aria-label="Remove from the plan">✕</button></span></div>' +
+      '<div class="days" role="group" aria-label="Days for ' + esc(t ? t.name : 'this routine') + '">' + DAY_NAMES.map((d, b) =>
+        '<button type="button" data-plan-day="' + esc(key) + '" data-bit="' + b + '" aria-pressed="' + !!(p.weekdays & (1 << b)) + '" aria-label="' + d + '">' + d.slice(0, 2) + '</button>').join('') + '</div></div>';
+  }).join('') + '<p class="hint-line">Routines with no days ticked take turns, in this order. Tick days to pin one to them. The Log tab suggests today’s.</p>'
+    : '<p class="hint-line" style="margin:0 2px 8px">e.g. Push, Pull, Legs taking turns, or Push on Mondays.</p>';
+}
+async function planClick(b) {
+  const list = SG.id ? planFor(SG.id) : SG.planPending;
+  const find = key => (SG.id ? list.find(p => p.id === key) : SG.planPending[Number(key.slice(1))]);
+  try {
+    if (b.id === 'pAdd') {
+      if (list.length >= 30) return toast('That’s plenty of routines for one season.');
+      const e = { template_id: $('pRoutine').value, position: (list.length ? Math.max(...list.map(p => p.position)) : 0) + 1, weekdays: 0 };
+      if (SG.id) S.plan.push(await store.addPlan({ ...e, season_id: SG.id })); else SG.planPending.push(e);
+    } else if (b.dataset.planDay) {
+      const p = find(b.dataset.planDay), w = p.weekdays ^ (1 << Number(b.dataset.bit));
+      if (SG.id) Object.assign(p, await store.updatePlan(p.id, { weekdays: w })); else p.weekdays = w;
+    } else if (b.dataset.planDel) {
+      const p = find(b.dataset.planDel);
+      if (SG.id) { await store.removePlan(p.id); S.plan = S.plan.filter(x => x.id !== p.id); } else SG.planPending.splice(SG.planPending.indexOf(p), 1);
+    } else if (b.dataset.planUp) {
+      const p = find(b.dataset.planUp), i = list.indexOf(p), q = list[i - 1];
+      if (SG.id) {
+        const [a, c] = [p.position === q.position ? q.position - 1 : q.position, p.position];
+        Object.assign(p, await store.updatePlan(p.id, { position: Math.max(1, a) })); Object.assign(q, await store.updatePlan(q.id, { position: c }));
+      } else { SG.planPending[i] = q; SG.planPending[i - 1] = p; SG.planPending.forEach((x, k) => { x.position = k + 1; }); }
+    }
+  } catch (x) { return fail(x); }
+  vibrate(5); drawPlan();
+}
 async function seasonClick(b) {
-  if (b.id === 'snShare') { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = shareLabel(on); return; }
+  if (b.id === 'pAdd' || b.dataset.planDay || b.dataset.planDel || b.dataset.planUp) return planClick(b);
+  if (b.id === 'snShare') { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = shareLabel(on); if (!SG.id) drawPlan(); return; }
   if (b.id === 'gAdd') {
     const [metric, unit] = $('gMetric').value.split(':');
     const target = L.parseLoad($('gTarget').value);
@@ -1318,6 +1493,7 @@ async function seasonClick(b) {
         s = await store.addSeason({ name, starts_on, ends_on, is_shared });
         S.seasons.unshift(s);
         for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
+        for (const p of SG.planPending) S.plan.push(await store.addPlan({ ...p, season_id: s.id }));
       }
       S.period = 'season:' + s.id;
       sheet.close();
