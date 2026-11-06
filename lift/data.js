@@ -112,15 +112,15 @@ class SupaStore {
     ]);
     const ids = templates.map(t => t.id);
     const items = ids.length ? await this.all(() => this.sb.from('lift_template_items')
-      .select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').is('deleted_at', null)
+      .select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s').is('deleted_at', null)
       .in('template_id', ids).order('position')) : [];
     return { templates, items, subs };
   }
   async addRoutine(fields) { return must(await this.sb.from('lift_templates').insert(fields).select(TPL).single()); }
   async updateRoutine(id, patch) { return must(await this.sb.from('lift_templates').update(patch).eq('id', id).select(TPL).single()); }
   deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
-  async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').single()); }
-  async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').single()); }
+  async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s').single()); }
+  async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s').single()); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
   async subscribe(templateId) { return must(await this.sb.from('lift_routine_subscriptions').insert({ template_id: templateId }).select('id,template_id').single()); }
   async unsubscribe(subId) { must(await this.sb.from('lift_routine_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
@@ -129,7 +129,7 @@ class SupaStore {
   async seasons() {
     const [seasons, goals, subs, plan] = await Promise.all([
       this.all(() => this.sb.from('lift_seasons').select(SEASON).is('deleted_at', null).order('starts_on', { ascending: false })),
-      this.all(() => this.sb.from('lift_season_goals').select('id,season_id,name,metric,target,unit').is('deleted_at', null)),
+      this.all(() => this.sb.from('lift_season_goals').select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by').is('deleted_at', null)),
       this.all(() => this.sb.from('lift_season_subscriptions').select('id,season_id').is('deleted_at', null)),
       this.all(() => this.sb.from('lift_season_plan').select(PLAN).is('deleted_at', null)),
     ]);
@@ -162,7 +162,7 @@ class SupaStore {
   }
   async addBodyweight(f) { return must(await this.sb.from('lift_bodyweight').insert(f).select('id,measured_on,weight,unit,created_at').single()); }
   async removeBodyweight(id) { must(await this.sb.from('lift_bodyweight').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
-  async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit').single()); }
+  async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by').single()); }
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
 
@@ -308,7 +308,7 @@ class DemoStore {
     return clone(t);
   }
   deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
-  async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'fixed', load_value: 0, unit: 'lb', ...f }; this.items.push(i); return clone(i); }
+  async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'fixed', load_value: 0, unit: 'lb', rest_s: null, ...f }; this.items.push(i); return clone(i); }
   async updateItem(id, patch) { const i = this.items.find(x => x.id === id); Object.assign(i, patch); return clone(i); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
   async subscribe(templateId) { const s = { id: uid(), template_id: templateId }; this.subs.push(s); return clone(s); }
@@ -384,7 +384,7 @@ class DemoStore {
   }
   async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
   async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
-  async addGoal(f) { const g = { id: uid(), unit: null, ...f }; this.goalRows.push(g); return clone(g); }
+  async addGoal(f) { const g = { id: uid(), unit: null, exercise_id: null, template_id: null, created_by: 'me', ...f }; this.goalRows.push(g); return clone(g); }
   async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }
 const clone = o => ({ ...o });
