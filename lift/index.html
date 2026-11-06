@@ -12,7 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <meta name="description" content="A lifting log for a small crew. Keep the faith, log the set.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Cinzel:wght@600;700&family=Figtree:wght@400;500;600;700;800&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 <style>
   /* Chalk and iron: cool steel neutrals, competition-plate blue for actions, plate gold for PRs and clubs.
      Barlow Condensed for numbers and headings (gym-board lettering), Figtree for everything you read. */
@@ -24,6 +24,8 @@
     --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #2a78d6; --seq-5: #184f95; --grid: #e7ebf0; --axis: #c7cfd8;
     --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
     --body: Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --liturgy: Cinzel, Georgia, "Times New Roman", serif;
+    --gothic: UnifrakturMaguntia, Cinzel, Georgia, serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -454,6 +456,29 @@
   .weekly { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
   .weekly .date { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
   .weekly .sb-stats { margin-top: 10px; }
+  /* ---------- the church: lettering, arches, gold ---------- */
+  .brand { font-family: var(--gothic); font-weight: 400; font-size: 27px; letter-spacing: 0; }
+  .card-title, .section-title, .page-title, .sheet-head h2, .hero h1, .sbanner .band h1, .sbanner .band h2 { font-family: var(--liturgy); letter-spacing: .02em; }
+  .card-title { font-size: 19px; }
+  .section-title { font-size: 14px; color: var(--gold); }
+  .hero { border-radius: 160px 160px var(--radius) var(--radius) / 54px 54px var(--radius) var(--radius); padding-top: 26px; border-top: 3px solid var(--gold); }
+  .hero .date::before, .hero .date::after { content: " ✠ "; color: var(--gold); }
+  .card-head small.muted { display: block; font-size: 12.5px; }
+  .sess-clock { margin: 12px 0 0; font-weight: 700; font-size: 14px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .dry { margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: var(--gold-soft); color: var(--ink); font-size: 14px; }
+  .quests { border-top: 3px solid var(--gold); }
+  .wins { border-top: 3px solid var(--accent); }
+  .saints td:first-child { font-weight: 600; }
+  .points-box { margin-top: 12px; }
+  .pt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .pt-grid label { display: flex; flex-direction: column; gap: 4px; }
+  .pt-grid input { text-align: center; font-weight: 700; }
+  .pt-grid small { color: var(--muted); font-size: 12px; text-align: center; }
+  .gate .brand { font-size: 36px; }
+  .top .brand { white-space: nowrap; font-size: clamp(20px, 6.2vw, 27px); min-width: 0; }
+  .tabs .nav-brand { white-space: nowrap; font-size: 21px; }
+  .weekly .card-head { flex-wrap: nowrap; align-items: flex-start; }
+  .gate .motto { font-family: var(--liturgy); color: var(--gold); letter-spacing: .12em; font-size: 13px; text-align: center; margin-top: 4px; }
 
   /* ---------- page title (desktop) and nav extras ---------- */
   .page-title, .nav-brand, .nav-log { display: none; }
@@ -488,7 +513,8 @@
     #view > .hero { grid-column: span 7; }
     #view > .hero:only-of-type, #view > .seg + .hero { grid-column: 1 / -1; }
     #view > .hero + .plan-card, #view > .hero + .follow, #view > .hero + .card.empty, #view > .hero + .weekly { grid-column: span 5; }
-    #view > .wins { grid-column: 1 / -1; }
+    #view > .wins { grid-column: span 7; }
+    #view > .quests { grid-column: span 5; }
     #view > .plan-card + .plan-card { grid-column: span 5; }
     #view > .ex-card, #view > .routine, #view > .season, #view > .day { grid-column: span 6; }
     #view > .cal-card { grid-column: span 7; }
@@ -569,7 +595,7 @@
   <button class="nav-log" id="navLog" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Log a set</button>
   <div>
   <a href="#log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>Log</a>
-  <a href="#routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Routines</a>
+  <a href="#routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Rites</a>
   <a href="#history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendar</a>
   <a href="#seasons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Seasons</a>
   <a href="#progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 20 L21 8"/><circle cx="15" cy="9" r="3.5"/></svg>Progress</a>

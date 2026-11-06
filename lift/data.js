@@ -147,6 +147,8 @@ class SupaStore {
   async standings(seasonId) { return must(await this.sb.rpc('season_standings', { p_season: seasonId })); }
   async seasonWorkouts(seasonId) { return must(await this.sb.rpc('season_workouts', { p_season: seasonId })); }
   async seasonBests(seasonId) { return must(await this.sb.rpc('season_bests', { p_season: seasonId })); }
+  async seasonPrs(seasonId) { return must(await this.sb.rpc('season_prs', { p_season: seasonId })); }
+  async crewRecords() { return must(await this.sb.rpc('crew_records')); }
   async seasonDaily(seasonId) { return must(await this.sb.rpc('season_daily', { p_season: seasonId })); }
 
   // ----- the stream of wins: PRs, clubs, goals, finished sessions (no reactions, no comments) -----
@@ -186,7 +188,7 @@ class SupaStore {
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
 
-const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by';
+const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by,points';
 const TPL = 'id,name,notes,is_shared,kind,created_by,updated_at';
 const PLAN = 'id,season_id,template_id,position,weekdays';
 const POST = 'id,kind,performed_on,title,summary,created_by,created_at';
@@ -389,6 +391,17 @@ class DemoStore {
     const ids = Object.keys(best).slice(0, 6);
     return ids.flatMap((e, i) => people.map(p => ({ user_id: p.user_id, display_name: p.display_name, exercise_id: e, ...best[e],
       best_weight: p.user_id === 'me' ? best[e].best_weight : best[e].best_weight + (i % 2 ? 10 : -15) })));
+  }
+  async seasonPrs(seasonId) { return (await this.standings(seasonId)).map(p => ({ user_id: p.user_id, prs: p.user_id === 'me' ? 4 : 3 })); }
+  async crewRecords() {
+    const best = new Map();
+    for (const x of this.live()) if (!x.is_warmup && x.weight > 0 && x.reps <= 12) {
+      const e = x.weight * (1 + x.reps / 30);
+      if (!best.has(x.exercise_id) || e > best.get(x.exercise_id).e1rm_lb) best.set(x.exercise_id, { exercise_id: x.exercise_id, user_id: 'me', display_name: 'Demo lifter', weight: x.weight, reps: x.reps, unit: x.unit, e1rm_lb: Math.round(e * 10) / 10, performed_on: x.performed_on, lifters: 2 });
+    }
+    let i = 0;
+    for (const r of best.values()) if (i++ % 2) Object.assign(r, { user_id: 'alex', display_name: 'Alex', weight: r.weight + 10, e1rm_lb: Math.round((r.weight + 10) * (1 + r.reps / 30) * 10) / 10 });
+    return [...best.values()];
   }
   async seasonDaily(seasonId) {
     const sn = this.seasonRows.find(x => x.id === seasonId);

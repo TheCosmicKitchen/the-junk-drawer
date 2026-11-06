@@ -110,7 +110,7 @@ function gate(html) {
   $('app').hidden = true; $('tabs').hidden = true; $('fab').hidden = true;
   const g = $('gate');
   g.hidden = false;
-  g.innerHTML = '<div class="brand">' + LOGO + 'The Church of Iron</div><p class="muted">Keep the faith. Log the set.</p>' + html;
+  g.innerHTML = '<div class="brand">' + LOGO + 'The Church of Iron</div><p class="motto">ORA ET LEVA · PRAY AND LIFT</p><p class="muted">Keep the faith. Log the set.</p>' + html;
   return g;
 }
 function gateForm(g, onSubmit) {
@@ -238,7 +238,7 @@ function route() {
   if (tab !== currentTab) window.scrollTo(0, 0);
   $('fab').hidden = tab !== 'log';   // only on Log, so it never covers buttons elsewhere
   currentTab = tab;
-  $('pageTitle').textContent = { log: 'Log', routines: 'Routines', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' }[tab];
+  $('pageTitle').textContent = { log: 'Today’s Mass', routines: 'Rites', history: 'The Calendar', seasons: 'Liturgical Seasons', progress: 'Progress' }[tab];
   render();
 }
 function render() {
@@ -283,21 +283,24 @@ function renderLog() {
   const vol = L.volumeByUnit(sets);
   const weekVisits = S.days.filter(d => d.performed_on > L.addDays(today(), -7) && d.sets > 0).length;
   const groups = groupByExercise(sets);
-  const hello = sets.length ? (sets.length >= 15 ? 'Big day.' : 'Rolling.') : 'Today';
+  const hello = sets.length ? (sets.length >= 15 ? 'High Mass.' : 'In session.') : 'Today';
   view.innerHTML =
     '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
     '<h1>' + hello + '</h1><div class="stats">' +
       '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>moved today</small></div>' +
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
-    '</div>' + countsLine() + (groups.length ? '<button class="btn primary finish-btn" data-recap>Finish &amp; recap ›</button>' : '') + '</section>' +
+    '</div>' + countsLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>Ite, missa est · Finish ›</button>' : '') + '</section>' +
     weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
+    questsCard() +
     winsCard();
   loadWins();
+  loadRecords();
+  tickClock();
 }
 // Turn a day's lifting into a routine: one step per exercise, in the order you did them,
 // with the number of working sets and your heaviest set's reps and weight.
@@ -523,6 +526,8 @@ async function logSet(fields) {
   if (beatsBest) postWin('pr', exName(saved.exercise_id) + ' PR', { weight: Number(saved.weight), reps: saved.reps, unit: saved.unit });
   if (crossed) postWin('club', crossed.title, {});
   checkGoalWins();
+  checkRecord(saved);
+  checkQuestWins();
   prefs.unit = saved.unit;
   if (saved.count_bodyweight) prefs.bodyweight = Number(saved.bodyweight);
   savePrefs();
@@ -540,8 +545,8 @@ function afterLogToast(saved) {
   const undo = { label: 'Undo', run: () => (n === 1 ? removeSet(first, true) : removeSets(list)) };
   const crossed = list.map(x => x._crossed).filter(Boolean).pop();
   const what = (n > 1 ? n + ' × ' : '') + setText(first);
-  if (crossed) toast('🎉 Welcome to the ' + crossed.title + '!', undo);
-  else if (list.some(x => x._pr)) toast('🏆 New PR: ' + what + ' on ' + exName(first.exercise_id), undo);
+  if (crossed) toast('🕯️ A candle is lit: welcome to the ' + crossed.title, undo);
+  else if (list.some(x => x._pr)) toast('🙌 Hallelujah, a PR: ' + what + ' on ' + exName(first.exercise_id), undo);
   else toast('Logged ' + what, undo);
 }
 async function removeSets(list) {
@@ -690,6 +695,7 @@ async function openEntry(exId, editing, item) {
       (editing ? '' : '<button class="linkbtn" data-change>Change</button>') + '</div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
       planLine +
+      (editing ? '' : dryHint(exId)) +
       '<p class="last-line" id="lastLine">' + (editing ? 'Editing a set from ' + esc(fmtDay(editing.performed_on)) : 'Looking up last time…') + '</p>' +
       '<div class="trio' + (editing ? ' two' : '') + '">' +
         '<label class="box"><span>Weight <i id="wUnit">' + esc(st.unit) + '</i></span><input id="wIn" inputmode="decimal" enterkeyhint="done" placeholder="–" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"></label>' +
@@ -995,7 +1001,7 @@ function followCard() {
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
-    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. Go in peace.</div><button class="btn primary block" style="margin-top:10px" data-recap>Finish &amp; recap ›</button>'
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. Go in peace.</div><button class="btn primary block" style="margin-top:10px" data-recap>Ite, missa est · Finish ›</button>'
       : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>') +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
@@ -1020,7 +1026,7 @@ function renderRoutines() {
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
   view.innerHTML =
-    '<div class="row page-actions"><h2 style="font-size:28px">Routines</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
+    '<div class="row page-actions"><h2 style="font-size:28px">Rites</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
     comingUp() +
     '<h3 class="section-title">Workouts</h3>' +
     (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
@@ -1792,6 +1798,7 @@ function openSeasonSheet(id) {
       '<div class="grid2"><div><div class="field-label"><span>Starts</span></div><input class="plain-input" id="snStart" type="date" value="' + esc(s.starts_on) + '"></div>' +
         '<div><div class="field-label"><span>Ends</span></div><input class="plain-input" id="snEnd" type="date" value="' + esc(s.ends_on) + '"></div></div>' +
       '<div class="toggles" style="margin-top:12px"><button type="button" class="toggle" id="snShare" aria-pressed="' + !!s.is_shared + '">' + shareLabel(s.is_shared) + '</button></div>' +
+      pointsHtml(s.points) +
       '<div class="field-label"><span>Goals</span><small>optional</small></div><div id="snGoals"></div>' +
       goalAddHtml() +
       '<div class="field-label"><span>Routines</span><small>optional</small></div><div id="snPlan"></div>' +
@@ -1856,6 +1863,7 @@ async function planClick(b) {
 }
 async function seasonClick(b) {
   if (b.id === 'pAdd' || b.dataset.planDay || b.dataset.planDel || b.dataset.planUp) return planClick(b);
+  if (b.id === 'ptToggle') { const on = b.getAttribute('aria-pressed') !== 'true'; $('ptBox').outerHTML = pointsHtml(on ? { day: 1, pr: 3, workout: 5 } : null); return; }
   if (b.id === 'snShare') { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = shareLabel(on); if (!SG.id) drawPlan(); return; }
   if (b.id === 'gAdd') {
     const [metric, unit] = $('gMetric').value.split(':');
@@ -1892,9 +1900,9 @@ async function seasonClick(b) {
     b.disabled = true;
     try {
       let s;
-      if (SG.id) { s = await store.updateSeason(SG.id, { name, starts_on, ends_on, is_shared }); delete S.standings[s.id]; S.seasons = S.seasons.map(x => (x.id === s.id ? s : x)); }
+      if (SG.id) { s = await store.updateSeason(SG.id, { name, starts_on, ends_on, is_shared, points: readPoints() }); delete S.standings[s.id]; S.seasons = S.seasons.map(x => (x.id === s.id ? s : x)); }
       else {
-        s = await store.addSeason({ name, starts_on, ends_on, is_shared });
+        s = await store.addSeason({ name, starts_on, ends_on, is_shared, points: readPoints() });
         S.seasons.unshift(s);
         for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
         for (const p of SG.planPending) S.plan.push(await store.addPlan({ ...p, season_id: s.id }));
@@ -2089,9 +2097,10 @@ function renderProgress() {
     '<section class="card c-side"><div class="card-head"><h3 class="card-title">Training calendar</h3><small class="muted">26 weeks</small></div>' + C.heatmap({ values: heatVals, end: today(), label: 'Days lifted in the last 26 weeks, shaded by pounds moved' }) +
       '<p class="hint-line">Best of the last 12 weeks: week of ' + esc(fmtDay(best.start, { month: 'short', day: 'numeric' })) + ', <b>' + C.compact(best.lb) + ' lb</b> over ' + best.visits + ' days.</p></section>' +
     '<section class="card c-wide" id="trendBox"></section>' +
+    '<section class="card c-full" id="recordsBox"></section>' +
     '<section class="card c-side"><div class="card-head"><h3 class="card-title">Top lifts</h3><small class="muted">by estimated 1-rep max</small></div>' +
       '<input class="search" id="bestSearch" type="search" placeholder="Find a lift" value="' + esc(S.bestQuery) + '" aria-label="Find a lift"><div id="bestsBox"></div></section>' +
-    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">Clubs</h3><small class="muted">a candle for each of the ' + ms.count + ' joined</small></div>' +
+    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">Votive candles</h3><small class="muted">one lit for each of the ' + ms.count + ' clubs joined</small></div>' +
       candlesSVG(ms.count, ms.ratio, ms.count + ' candles lit, one for each club; the next catches as you near the ' + (ms.next ? ms.next.title : 'top')) +
       (ms.next ? '<div class="row" style="font-size:14px;font-weight:700"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
         '<div class="bar" style="margin-top:6px"><i style="width:' + (ms.ratio * 100).toFixed(1) + '%"></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
@@ -2102,6 +2111,7 @@ function renderProgress() {
   input.addEventListener('input', () => { S.bestQuery = input.value; drawBests(); });
   drawBests();
   drawTrend();
+  drawRecords();
 }
 // Lift trend: top set and estimated 1-rep max per day, for any lift you've done.
 function trendChoices() {
@@ -2431,8 +2441,8 @@ function renderSeasonPage(sn) {
       (sn.is_shared ? '<button class="btn ghost" data-link="s-' + esc(sn.id) + '">🔗 Copy link</button>' : '') + '</div></div></section>';
   if (!st || !st.d) {
     view.innerHTML = head + '<section class="card"><p class="muted" style="margin:0">Loading the season…</p></section>';
-    Promise.all([store.standings(sn.id), store.seasonWorkouts(sn.id), store.seasonBests(sn.id), store.seasonDaily(sn.id)]).then(([rows, w, b, d]) => {
-      S.standings[sn.id] = { rows, w, b, d };
+    Promise.all([store.standings(sn.id), store.seasonWorkouts(sn.id), store.seasonBests(sn.id), store.seasonDaily(sn.id), sn.points ? store.seasonPrs(sn.id) : []]).then(([rows, w, b, d, prs]) => {
+      S.standings[sn.id] = { rows, w, b, d, prs };
       if (currentTab === 'seasons' && S.seasonOpen === sn.id) renderSeasonPage(sn);
     }).catch(x => { if (S.seasonOpen === sn.id) view.innerHTML = head + '<section class="card"><p class="warn">Couldn’t load the season: ' + esc(x.message) + '</p></section>'; });
     return;
@@ -2479,10 +2489,12 @@ function renderSeasonPage(sn) {
   };
   // Standings table.
   const goalCount = p => goals.filter(x => (!x.created_by || x.created_by === sn.created_by || x.created_by === p.user_id) && goalHave(x, p.m, { season: sn, person: p.user_id, st }) >= Number(x.target)).length;
-  const ranked = people.slice().sort((a, b) => L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
-  const standings = '<table class="cmp standings"><thead><tr><th>#</th><th>Lifter</th><th>Days</th><th>Sets</th><th>Pounds</th><th>Goals</th></tr></thead><tbody>' +
+  const pts = p => seasonPoints(sn, st, p);
+  const ranked = people.slice().sort((a, b) => (sn.points ? pts(b) - pts(a) : 0) || L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
+  const standings = '<table class="cmp standings"><thead><tr><th>#</th><th>Lifter</th><th>Days</th><th>Sets</th><th>Pounds</th><th>Vows</th>' + (sn.points ? '<th>Points</th>' : '') + '</tr></thead><tbody>' +
     ranked.map((p, i) => '<tr' + (p.user_id === S.myId ? ' class="me"' : '') + '><td>' + (i === 0 && !solo ? '👑' : i + 1) + '</td><td><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span></td>' +
-      '<td class="num">' + p.m.visits + '</td><td class="num">' + L.fmtNum(Number(p.sets), 0) + '</td><td class="num"><b>' + C.compact(L.lbEquivalent(p.m.volume)) + '</b></td><td class="num">' + goalCount(p) + '</td></tr>').join('') + '</tbody></table>';
+      '<td class="num">' + p.m.visits + '</td><td class="num">' + L.fmtNum(Number(p.sets), 0) + '</td><td class="num"><b>' + C.compact(L.lbEquivalent(p.m.volume)) + '</b></td><td class="num">' + goalCount(p) + '</td>' + (sn.points ? '<td class="num"><b>' + pts(p) + '</b></td>' : '') + '</tr>').join('') + '</tbody></table>' +
+    (sn.points ? '<p class="hint-line">Indulgences: ' + esc(pointsRule(sn.points)) + '.</p>' : '');
   // Head-to-head: planned workouts done, best lifts.
   const wt = [...new Set(st.w.map(x => x.template_id))].map(id => { const t = tplById(id); return { label: t ? t.name : 'A private workout', vals: people.map(p => Number((st.w.find(x => x.template_id === id && x.user_id === p.user_id) || {}).times || 0)) }; });
   const bt = [...new Set(st.b.map(x => x.exercise_id))].map(id => ({ label: exName(id), raw: people.map(p => st.b.find(x => x.exercise_id === id && x.user_id === p.user_id)) }))
@@ -2497,9 +2509,9 @@ function renderSeasonPage(sn) {
       kpi('Your gym days', L.fmtNum(myM.visits, 0), phaseOf(sn) === 'live' ? esc(seasonStatus(sn)) : '', null) +
       kpi('Your pounds', C.compact(L.lbEquivalent(myM.volume)) + ' lb', '', null) +
       kpi('Your sets', L.fmtNum(Number(me.sets) || myM.sets, 0), '', null) +
-      kpi('Goals done', g.done + ' / ' + g.of, myM.bests ? myM.bests + ' bests set' : '', null) +
+      (sn.points ? kpi('Your points', String(seasonPoints(sn, st, me)), 'indulgences earned', null) : kpi('Vows kept', g.done + ' / ' + g.of, myM.bests ? myM.bests + ' bests set' : '', null)) +
     '</div>' +
-    '<section class="card c-full"><div class="card-head"><h3 class="card-title">Achievements</h3>' +
+    '<section class="card c-full"><div class="card-head"><div><h3 class="card-title">Vows</h3><small class="muted">the season’s goals</small></div>' +
       (isMine(sn) ? '<button class="btn sm" data-edit-season="' + esc(sn.id) + '">+ Goal</button>' : '<button class="btn sm" data-my-goals="' + esc(sn.id) + '">+ My goal</button>') + '</div>' +
       (goals.length ? '<div class="goal-grid">' + goals.map(goalTile).join('') + '</div>' : '<p class="muted">No goals yet. Add one: show up N times, move N pounds, lift a weight, or do a workout N times.</p>') + '</section>' +
     (solo ? '' : '<section class="card c-side"><h3 class="card-title">Standings</h3>' + standings + '</section>') +
@@ -2507,7 +2519,7 @@ function renderSeasonPage(sn) {
       '<section class="card c-half"><div class="card-head"><h3 class="card-title">Week by week</h3><small class="muted">pounds moved</small></div>' + weeks + '</section>'
       : '<section class="card c-full"><p class="muted" style="margin:0">' + (phaseOf(sn) === 'upcoming' ? 'Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'long', day: 'numeric' })) + '. The charts fill in once it’s running.' : 'The charts fill in after the first couple of days.') + '</p></section>') +
     '<section class="card c-half"><h3 class="card-title">' + (solo ? 'Workouts and best lifts' : 'Head to head') + '</h3>' + h2h + '</section>' +
-    '<section class="card c-full"><h3 class="card-title">The plan</h3>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => {
+    '<section class="card c-full"><div class="card-head"><h3 class="card-title">The liturgy</h3><small class="muted">the season’s plan</small></div>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => {
       const t = tplById(x.template_id);
       if (!t) return '<li><b>A private workout</b><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></li>';
       return '<li><div class="plan-head"><a href="#r-' + esc(t.id) + '">' + esc(t.name) + ' ›</a><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></div>' +
@@ -2564,7 +2576,7 @@ function openWizard(from) {
     picked: plan.map(x => x.template_id).filter(id => tplById(id)),
     days: new Map(plan.map(x => [x.template_id, x.weekdays])),
     mode: plan.some(x => x.weekdays) ? 'days' : 'rotate',
-    goals: null, carry: from ? seasonGoals(from).map(g => ({ ...g, key: 'carry:' + g.id })) : [],
+    goals: null, carry: from ? seasonGoals(from).map(g => ({ ...g, key: 'carry:' + g.id })) : [], points: from ? from.points || null : null,
   });
   LG.mode = 'wizard';
   drawWizard();
@@ -2599,7 +2611,7 @@ function drawWizard() {
       WZ.goals = WZ.carry.length ? WZ.carry.concat(sug.filter(x => !WZ.carry.some(c => c.metric === x.metric && (c.exercise_id || null) === (x.exercise_id || null)))) : sug;
       WZ.on = new Set(WZ.carry.length ? WZ.carry.map(g => g.key) : sug.slice(0, 2).map(g => g.key));
     }
-    body = '<p class="hint-line" style="margin-top:0">' + (WZ.carry.length ? 'Last time’s goals are ticked. ' : '') + 'Suggestions come from your last 8 weeks. Tick what you want; you can add more on the season page.</p>' +
+    body = pointsHtml(WZ.points) + '<p class="hint-line">' + (WZ.carry.length ? 'Last time’s goals are ticked. ' : '') + 'Suggestions come from your last 8 weeks. Tick what you want; you can add more on the season page.</p>' +
       '<ul class="results">' + WZ.goals.map(g => '<li><button data-wz-goal="' + esc(g.key) + '" class="' + (WZ.on.has(g.key) ? 'sel' : '') + '" aria-pressed="' + WZ.on.has(g.key) + '"><span><i class="tickbox" aria-hidden="true">' + (WZ.on.has(g.key) ? '✓' : '') + '</i>' + esc(g.name) + '</span><small>' +
         ({ visits: 'gym days', volume: 'pounds moved', lift: 'a lift', workout: 'a workout' }[g.metric] || '') + '</small></button></li>').join('') + '</ul>';
   }
@@ -2610,11 +2622,13 @@ function drawWizard() {
   const sd = $('wzStart'); if (sd) sd.addEventListener('change', () => { if (sd.value) { WZ.start = sd.value; drawWizard(); } });
 }
 async function wizardClick(b) {
+  if (WZ.step === 3 && $('ptToggle') && b.id !== 'ptToggle') WZ.points = readPoints();
   if (b.dataset.wzLen) { WZ.len = /^\d+$/.test(b.dataset.wzLen) ? Number(b.dataset.wzLen) : b.dataset.wzLen; WZ.goals = null; return drawWizard(); }
   if (b.id === 'wzShare') { WZ.shared = !WZ.shared; return drawWizard(); }
   if (b.dataset.wzPick) { const i = WZ.picked.indexOf(b.dataset.wzPick); if (i >= 0) WZ.picked.splice(i, 1); else WZ.picked.push(b.dataset.wzPick); WZ.goals = null; vibrate(5); return drawWizard(); }
   if (b.dataset.wzMode) { WZ.mode = b.dataset.wzMode; WZ.goals = null; return drawWizard(); }
   if (b.dataset.wzDay) { const id = b.dataset.wzDay; WZ.days.set(id, (WZ.days.get(id) || 0) ^ (1 << Number(b.dataset.bit))); WZ.goals = null; vibrate(5); return drawWizard(); }
+  if (b.id === 'ptToggle') { WZ.points = readPoints(); WZ.points = WZ.points ? null : { day: 1, pr: 3, workout: 5 }; return drawWizard(); }
   if (b.dataset.wzGoal) { const k = b.dataset.wzGoal; if (WZ.on.has(k)) WZ.on.delete(k); else WZ.on.add(k); return drawWizard(); }
   if (b.hasAttribute('data-wz-back')) { WZ.step--; return drawWizard(); }
   if (b.hasAttribute('data-wz-next')) {
@@ -2625,7 +2639,8 @@ async function wizardClick(b) {
   if (!b.hasAttribute('data-wz-go')) return;
   b.disabled = true; b.textContent = 'Setting up…';
   try {
-    const sn = await store.addSeason({ name: WZ.name.trim().slice(0, 60), starts_on: WZ.start, ends_on: wzEnd(), is_shared: WZ.shared });
+    WZ.points = readPoints();
+    const sn = await store.addSeason({ name: WZ.name.trim().slice(0, 60), starts_on: WZ.start, ends_on: wzEnd(), is_shared: WZ.shared, points: WZ.points });
     S.seasons.unshift(sn);
     let pos = 0;
     for (const id of WZ.picked) S.plan.push(await store.addPlan({ season_id: sn.id, template_id: id, position: ++pos, weekdays: WZ.mode === 'days' ? WZ.days.get(id) || 0 : 0 }));
@@ -2705,16 +2720,18 @@ async function loadWins() {
   S.winsLoading = false;
   const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard();
 }
-const WIN_ICON = { pr: '🏆', club: '🕯️', goal: '✅', session: '🏋️' };
+const WIN_ICON = { pr: '🙌', club: '🕯️', goal: '✅', session: '⛪', record: '😇', quest: '🥾' };
 function winText(w) {
   const m = w.summary || {};
   if (w.kind === 'pr') return w.title.replace(/ PR$/, '') + ' PR: ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps;
-  if (w.kind === 'club') return 'Joined the ' + w.title;
-  if (w.kind === 'goal') return 'Hit a goal: ' + w.title;
-  return 'Finished ' + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
+  if (w.kind === 'club') return 'Lit a candle: the ' + w.title;
+  if (w.kind === 'record') return 'Canonized: ' + w.title.replace(/ record$/, '') + ' record, ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps + (m.from ? ' (was ' + m.from + '’s)' : '');
+  if (w.kind === 'quest') return 'Finished a pilgrimage: ' + w.title;
+  if (w.kind === 'goal') return 'Kept a vow: ' + w.title;
+  return 'Went to Mass: ' + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
 }
 function winsCard() {
-  const head = '<div class="card-head"><h3 class="card-title">Wins</h3><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
+  const head = '<div class="card-head"><div><h3 class="card-title">Miracles</h3><small class="muted">the crew’s wins</small></div><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
   if (!S.wins) return '<section class="card wins" id="winsBox">' + head + '<p class="muted" style="margin:0">Loading…</p></section>';
   const people = [S.myId, ...[...S.names.keys()].filter(id => id !== S.myId)];
   const color = id => C.SERIES[Math.max(0, people.indexOf(id)) % 3];
@@ -2725,7 +2742,7 @@ function winsCard() {
       '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body"><b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b> ' + esc(winText(w)) +
         '<small>' + esc(dayLabel(w.performed_on) === 'Today' ? 'Today' : w.performed_on === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</small></span>' +
         (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the stream">✕</button>' : '') + '</li>').join('') + '</ol>'
-      : '<p class="muted" style="margin:0">PRs, clubs, goals and finished sessions from the crew show up here.</p>') + '</section>';
+      : '<p class="muted" style="margin:0">PRs, candles, kept vows, records and finished sessions from the crew show up here.</p>') + '</section>';
 }
 
 // ===========================================================================
@@ -2758,7 +2775,7 @@ function openRecap() {
       (diff != null ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' than your last session (' + esc(fmtDay(r.prev.performed_on, { month: 'short', day: 'numeric' })) + ').</p>' : '') +
       (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">🏆 ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
       '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
-      '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + (shareOn() ? (posted ? 'Update it in the stream' : 'Finish and add to the stream') : 'Finish') + '</button>' +
+      '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + (shareOn() ? (posted ? 'Update it in Miracles' : 'Ite, missa est · add to Miracles') : 'Ite, missa est · finish') + '</button>' +
       (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
     '</div>';
   openSheet();
@@ -2769,7 +2786,8 @@ async function recapClick(b) {
   b.disabled = true;
   if (r && shareOn()) await postWin('session', r.title, { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length });
   stopRest(); sheet.close(); render();
-  toast(shareOn() ? 'Session done. It’s in the stream.' : 'Session done. Go in peace.');
+  try { localStorage.setItem('lift.finished', today()); } catch (e) {}
+  toast(shareOn() ? 'The Mass is ended. Go in peace (it’s in Miracles).' : 'The Mass is ended. Go in peace.');
 }
 
 // ===========================================================================
@@ -2784,11 +2802,157 @@ function weeklyCard() {
   const prs = S.bestRows.filter(r => r.first_lifted_on >= lastWeek && r.first_lifted_on < thisWeek).length;
   const diff = w0.lb ? Math.round((w1.lb - w0.lb) / w0.lb * 100) : null;
   const live = (S.seasons || []).filter(x => inSeason(x) && phaseOf(x) === 'live');
-  return '<section class="card weekly"><div class="card-head"><div><div class="date">Last week · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
+  const sabbath = streakWeeks() >= 6 && w1.visits >= 3;
+  return '<section class="card weekly"><div class="card-head"><div><div class="date">Sunday bulletin · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
       '<h3 class="card-title">' + (w1.visits ? w1.visits + ' gym day' + (w1.visits === 1 ? '' : 's') + ', ' + C.compact(w1.lb) + ' lb' : 'A rest week') + '</h3></div>' +
       '<button class="iconbtn sm" data-week-seen="' + lastWeek + '" aria-label="Hide last week’s recap">✕</button></div>' +
-    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>PRs</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>week streak</small></div></div>' +
+    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>PRs</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>weeks of devotion</small></div></div>' +
     (diff != null && w1.visits ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' pounds than the week before.</p>' : '') +
+    (sabbath ? '<p class="hint-line">🕊️ ' + streakWeeks() + ' weeks of devotion in a row. Consider a Sabbath week: same lifts at about 60% of the weight, then come back fresh.</p>' : '') +
     (live.length ? '<p class="hint-line">' + live.map(x => { const g = goalsDone(x); return '<button class="linkbtn" data-season="' + esc(x.id) + '">' + esc(x.name) + '</button>: ' + g.done + ' of ' + g.of + ' goals done, ' + esc(seasonStatus(x)); }).join(' · ') + '</p>' : '') +
   '</section>';
+}
+
+// ===========================================================================
+// The Communion of Saints: crew records, one holder per lift, by estimated 1-rep max.
+// ===========================================================================
+async function loadRecords() {
+  if (S.recordsLoading || (S.records && Date.now() - S.recordsAt < 120000)) return;
+  S.recordsLoading = true;
+  try { S.records = await store.crewRecords(); S.recordsAt = Date.now(); } catch (x) { S.records = S.records || []; }
+  S.recordsLoading = false;
+  if (currentTab === 'progress') drawRecords();
+}
+const e1lb = (w, r, u) => Number(w) * (1 + r / 30) * (u === 'kg' ? L.LB_PER_KG : 1);
+function myBestE1(exId) {
+  let best = null;
+  for (const r of S.bestRows) if (r.exercise_id === exId && r.reps <= 12) { const e = e1lb(r.heaviest, r.reps, r.unit); if (!best || e > best.e) best = { e, w: Number(r.heaviest), reps: r.reps, unit: r.unit }; }
+  return best;
+}
+function drawRecords() {
+  const box = $('recordsBox'); if (!box) return;
+  const head = '<div class="card-head"><div><h3 class="card-title">Communion of Saints</h3><small class="muted">crew records, by estimated 1-rep max</small></div></div>';
+  if (!S.records) { box.innerHTML = head + '<p class="muted">Loading…</p>'; loadRecords(); return; }
+  const multi = S.records.some(r => Number(r.lifters) >= 2);
+  const rows = S.records.filter(r => !multi || Number(r.lifters) >= 2).sort((a, b) => Number(b.e1rm_lb) - Number(a.e1rm_lb)).slice(0, 15);
+  const mine = rows.filter(r => r.user_id === S.myId).length;
+  box.innerHTML = head + (rows.length ? '<p class="hint-line" style="margin-top:2px">You hold ' + mine + ' of these ' + rows.length + '. Beat a saint’s best and the record (and the halo) is yours.</p>' +
+    '<div class="cmp-wrap"><table class="cmp saints"><thead><tr><th>Lift</th><th>Saint</th><th>Best</th><th>You</th></tr></thead><tbody>' +
+    rows.map(r => { const m = myBestE1(r.exercise_id), me = r.user_id === S.myId;
+      return '<tr' + (me ? ' class="me"' : '') + '><td>' + esc(exName(r.exercise_id)) + '</td><td>' + (me ? '😇 You' : '😇 ' + esc(r.display_name)) + '</td>' +
+        '<td class="num"><b>' + esc(L.fmtLoad(Number(r.weight))) + '</b> <small>' + r.unit + ' × ' + r.reps + '</small></td>' +
+        '<td class="num">' + (me ? '<span class="muted">holder</span>' : m ? esc(L.fmtLoad(m.w)) + ' <small>× ' + m.reps + ' · ' + Math.round(m.e / Number(r.e1rm_lb) * 100) + '%</small>' : '<span class="muted">–</span>') + '</td></tr>'; }).join('') +
+    '</tbody></table></div>' : '<p class="muted">Records show up once the crew has logged some sets.</p>');
+}
+// After a set: did it take a record from someone else?
+function checkRecord(x) {
+  if (!S.records || x.is_warmup === true || !(Number(x.weight) > 0) || x.reps > 12) return;
+  const e = e1lb(x.weight, x.reps, x.unit), rec = S.records.find(r => r.exercise_id === x.exercise_id);
+  if (!rec || e <= Number(rec.e1rm_lb)) return;
+  const from = rec.user_id !== S.myId ? rec.display_name : null;
+  Object.assign(rec, { user_id: S.myId, display_name: 'You', weight: x.weight, reps: x.reps, unit: x.unit, e1rm_lb: Math.round(e * 10) / 10, performed_on: x.performed_on });
+  if (from && Number(rec.lifters) >= 2) {
+    postWin('record', exName(x.exercise_id) + ' record', { weight: Number(x.weight), reps: x.reps, unit: x.unit, from });
+    setTimeout(() => toast('😇 Canonized: the crew record on ' + exName(x.exercise_id) + ' is yours (it was ' + from + '’s)'), 1200);
+  }
+}
+
+// ===========================================================================
+// Dry spells and Sabbath weeks: when a lift has stalled for three sessions, say so in the logger.
+// ===========================================================================
+function stallOf(exId) {
+  const byDay = new Map();
+  for (const x of S.recent) if (x.exercise_id === exId && x.is_warmup !== true && x.reps <= 12 && Number(x.weight) > 0) {
+    const e = e1lb(x.weight, x.reps, x.unit); byDay.set(x.performed_on, Math.max(byDay.get(x.performed_on) || 0, e));
+  }
+  const days = [...byDay.keys()].sort();
+  if (days.length < 5) return null;
+  const last3 = days.slice(-3).map(dd => byDay.get(dd)), before = Math.max(...days.slice(0, -3).map(dd => byDay.get(dd)));
+  return Math.max(...last3) <= before ? { sessions: 3 } : null;
+}
+const dryHint = exId => (stallOf(exId) ? '<p class="dry">🏜️ A dry spell: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.</p>' : '');
+
+// ===========================================================================
+// In session: a clock from your first set today, until you finish.
+// ===========================================================================
+function sessionClock() {
+  const sets = todaySets(); if (!sets.length) return '';
+  let done = null; try { done = localStorage.getItem('lift.finished'); } catch (e) {}
+  const first = Math.min(...sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite)), last = Math.max(...sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite));
+  if (!Number.isFinite(first)) return '';
+  const finished = done === today(), live = !finished && Date.now() - last < 3 * 3600e3;
+  const mins = Math.max(1, Math.round(((live ? Date.now() : last) - first) / 60000));
+  return '<p class="sess-clock" id="sessClock" data-first="' + first + '" data-live="' + live + '">' + (live ? '⏱ In session · ' : finished ? '✓ The Mass is ended · ' : '⏱ ') + mins + ' min</p>';
+}
+let clockTimer = null;
+function tickClock() {
+  clearInterval(clockTimer);
+  const el = $('sessClock'); if (!el || el.dataset.live !== 'true') return;
+  clockTimer = setInterval(() => {
+    const c = $('sessClock'); if (!c || c.dataset.live !== 'true') return clearInterval(clockTimer);
+    c.textContent = '⏱ In session · ' + Math.max(1, Math.round((Date.now() - Number(c.dataset.first)) / 60000)) + ' min';
+  }, 30000);
+}
+
+// ===========================================================================
+// Pilgrimages: three small quests a week, the same for the whole crew (picked from the week's date).
+// ===========================================================================
+function weekSets() { const w = weekOf(today()); return S.recent.filter(x => x.performed_on >= w && x.is_warmup !== true); }
+const QUESTS = [
+  { id: 'days3', name: 'Show up three times', need: () => 3, have: ws => new Set(ws.map(x => x.performed_on)).size },
+  { id: 'newlift', name: 'Try a lift you haven’t done in a month', need: () => 1, have: ws => { const w = weekOf(today()), old = new Set(S.recent.filter(x => x.performed_on < w && x.performed_on >= L.addDays(w, -30)).map(x => x.exercise_id)); return new Set(ws.map(x => x.exercise_id).filter(id => !old.has(id))).size ? 1 : 0; } },
+  { id: 'pr', name: 'Set a PR', need: () => 1, have: () => S.bestRows.filter(r => r.first_lifted_on >= weekOf(today())).length ? 1 : 0 },
+  { id: 'reps100', name: '100 reps of one lift', need: () => 100, have: ws => { const m = new Map(); for (const x of ws) m.set(x.exercise_id, (m.get(x.exercise_id) || 0) + x.reps); return Math.max(0, ...m.values()); } },
+  { id: 'volume', name: 'Move a mountain', need: () => Math.max(10000, niceRound(weekly(9).slice(0, 8).reduce((a, w) => a + w.lb, 0) / 8 * 1.1)), have: ws => Math.round(L.lbEquivalent(L.volumeByUnit(ws))), fmt: v => C.compact(v) + ' lb' },
+  { id: 'plan', name: 'Finish a planned workout', need: () => 1, have: () => { const w = weekOf(today()), days = [...new Set(S.recent.filter(x => x.performed_on >= w).map(x => x.performed_on))];
+      const plans = [...new Set((S.plan || []).map(p => p.template_id))].map(id => ({ template_id: id })); return plans.length && days.some(dd => matchRoutine(plans, dd) >= 0) ? 1 : 0; } },
+  { id: 'days5', name: 'Five gym days', need: () => 5, have: ws => new Set(ws.map(x => x.performed_on)).size },
+];
+function weekQuests() {
+  const seed = [...weekOf(today())].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const pool = QUESTS.slice(), out = [];
+  let r = seed;
+  while (out.length < 3 && pool.length) { r = (r * 1103515245 + 12345) >>> 0; const q = pool.splice(r % pool.length, 1)[0]; if (!(q.id === 'days5' && out.some(o => o.id === 'days3')) && !(q.id === 'days3' && out.some(o => o.id === 'days5'))) out.push(q); }
+  const ws = weekSets();
+  return out.map(q => { const need = q.need(), have = Math.min(need, q.have(ws)); return { ...q, needV: need, haveV: have, done: have >= need }; });
+}
+function questsCard() {
+  const qs = weekQuests(), done = qs.filter(q => q.done).length;
+  return '<section class="card quests"><div class="card-head"><div><h3 class="card-title">Pilgrimages</h3><small class="muted">this week’s quests, the same for the whole crew</small></div><small class="muted">' + done + ' / ' + qs.length + '</small></div>' +
+    qs.map(q => '<div class="goal"><div class="row"><span>' + (q.done ? '✅ ' : '🥾 ') + esc(q.name) + (q.id === 'volume' ? ' (' + C.compact(q.needV) + ' lb)' : '') + '</span><span class="muted num">' +
+      esc(q.fmt ? q.fmt(q.haveV) : L.fmtNum(q.haveV, 0) + ' / ' + L.fmtNum(q.needV, 0)) + '</span></div><div class="bar"><i style="width:' + (q.haveV / q.needV * 100).toFixed(1) + '%"></i></div></div>').join('') +
+  '</section>';
+}
+function checkQuestWins() {
+  const now = new Set(weekQuests().filter(q => q.done).map(q => q.id));
+  if (!S.questsDone) { S.questsDone = now; return; }
+  for (const id of now) if (!S.questsDone.has(id)) {
+    const q = QUESTS.find(x => x.id === id);
+    postWin('quest', q.name + ' · week of ' + fmtDay(weekOf(today()), { month: 'short', day: 'numeric' }), {});
+    setTimeout(() => toast('🥾 Pilgrimage complete: ' + q.name), 1600);
+  }
+  S.questsDone = now;
+}
+
+// ===========================================================================
+// Indulgences: optional season scoring in points.
+// ===========================================================================
+const pointsRule = pt => [pt.day ? pt.day + ' per gym day' : '', pt.pr ? pt.pr + ' per PR' : '', pt.workout ? pt.workout + ' per planned workout done' : ''].filter(Boolean).join(', ');
+function seasonPoints(sn, st, p) {
+  const pt = sn.points; if (!pt) return 0;
+  const days = Number(p.m ? p.m.visits : p.visits) || 0;
+  const prs = Number(((st.prs || []).find(x => x.user_id === p.user_id) || {}).prs || 0);
+  const workouts = (st.w || []).filter(x => x.user_id === p.user_id).reduce((a, x) => a + Number(x.times || 0), 0);
+  return days * (Number(pt.day) || 0) + prs * (Number(pt.pr) || 0) + workouts * (Number(pt.workout) || 0);
+}
+function pointsHtml(pt) {
+  return '<div class="points-box" id="ptBox"><button type="button" class="toggle" id="ptToggle" aria-pressed="' + !!pt + '">' + (pt ? '✓ Scored in indulgences (points)' : 'Score it in indulgences (points)') + '</button>' +
+    (pt ? '<div class="pt-grid">' + [['day', 'per gym day'], ['pr', 'per PR'], ['workout', 'per planned workout']].map(([k, l]) =>
+      '<label><input class="plain-input" data-pt="' + k + '" inputmode="numeric" value="' + esc(pt[k] ?? 0) + '"><small>' + l + '</small></label>').join('') + '</div>' : '') + '</div>';
+}
+function readPoints() {
+  const t = $('ptToggle'); if (!t || t.getAttribute('aria-pressed') !== 'true') return null;
+  const out = {};
+  inner.querySelectorAll('[data-pt]').forEach(i => { out[i.dataset.pt] = Math.max(0, Math.min(100, parseInt(i.value, 10) || 0)); });
+  return out;
 }
