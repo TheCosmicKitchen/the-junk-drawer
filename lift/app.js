@@ -294,6 +294,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.period) { S.period = b.dataset.period; renderProgress(); }
   else if (b.id === 'moreDays') { S.historyLimit += 40; renderHistory(); }
   // routines
+  else if (b.dataset.quickItem) quickStep(b.dataset.quickItem, b);
   else if (b.dataset.followItem) { const it = S.itemsById.get(b.dataset.followItem); if (it) openEntry(it.exercise_id, null, it); }
   else if (b.dataset.start) startFollowing(b.dataset.start);
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
@@ -314,6 +315,23 @@ view.addEventListener('click', async e => {
 $('fab').addEventListener('click', () => openLogger());
 const findSet = id => S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id);
 
+// Log what's left of a routine step at its planned reps and weight, in one tap.
+async function quickStep(itemId, btn) {
+  const it = S.itemsById.get(itemId);
+  const tg = it && L.itemTarget(it, S.bestRows);
+  if (!tg || tg.weight == null) return it && openEntry(it.exercise_id, null, it);
+  const left = it.sets - stepDone(it);
+  if (left < 1) return;
+  btn.disabled = true;
+  const last = todaySets().filter(s => s.exercise_id === it.exercise_id).pop();
+  const bw = last ? !!last.count_bodyweight : false;
+  try {
+    const saved = await logSets({ exercise_id: it.exercise_id, weight: tg.weight, reps: tg.reps, unit: tg.unit,
+      count_bodyweight: bw, bodyweight: bw ? last.bodyweight : null, is_warmup: false }, left);
+    afterLogToast(saved);
+    render();
+  } catch (x) { fail(x); btn.disabled = false; render(); }
+}
 async function sameAgain(exId, btn) {
   const last = todaySets().filter(s => s.exercise_id === exId).pop();
   if (!last) return openLogger(exId);
@@ -369,11 +387,28 @@ async function logSet(fields) {
   savePrefs();
   return { saved };
 }
+// Log `count` identical sets in one go (3 × 8 @ 150 is one tap). Returns what was saved.
+async function logSets(fields, count) {
+  const out = [];
+  for (let i = 0; i < count; i++) out.push((await logSet(fields)).saved);
+  return out;
+}
 function afterLogToast(saved) {
-  const undo = { label: 'Undo', run: () => removeSet(saved, true) };
-  if (saved._crossed) toast('🎉 Welcome to the ' + saved._crossed.title + '!', undo);
-  else if (saved._pr) toast('🏆 New PR: ' + setText(saved) + ' on ' + exName(saved.exercise_id), undo);
-  else toast('Logged ' + setText(saved), undo);
+  const list = Array.isArray(saved) ? saved : [saved];
+  const first = list[0], n = list.length;
+  const undo = { label: 'Undo', run: () => (n === 1 ? removeSet(first, true) : removeSets(list)) };
+  const crossed = list.map(x => x._crossed).filter(Boolean).pop();
+  const what = (n > 1 ? n + ' × ' : '') + setText(first);
+  if (crossed) toast('🎉 Welcome to the ' + crossed.title + '!', undo);
+  else if (list.some(x => x._pr)) toast('🏆 New PR: ' + what + ' on ' + exName(first.exercise_id), undo);
+  else toast('Logged ' + what, undo);
+}
+async function removeSets(list) {
+  try {
+    for (const s of list) { const gone = await store.deleteSet(s.id); syncCaches(gone, true); bumpDay(s, -1); }
+  } catch (x) { fail(x); }
+  refreshBests(); render(); refreshLoggerList();
+  toast('Undone');
 }
 async function removeSet(s, quiet) {
   try {
@@ -483,6 +518,8 @@ async function openEntry(exId, editing, item) {
     warm: base ? base.is_warmup === true : false,
     note: editing ? editing.notes || '' : '', date: editing ? editing.performed_on : today(),
     showNote: !!(editing && editing.notes),
+    // How many sets one tap logs: what's left of the routine step, 1 if you're already going today, else 3 until last time is known.
+    sets: item ? Math.max(1, item.sets - stepDone(item)) : base ? 1 : 3,
   };
   // Following a routine: the step's target wins over last time.
   const target = LG.item ? L.itemTarget(LG.item, S.bestRows) : null;
@@ -506,9 +543,12 @@ async function openEntry(exId, editing, item) {
         '<input id="wIn" inputmode="decimal" aria-label="Weight" value="' + esc(L.fmtLoad(st.weight)) + '"><button type="button" data-w="1" aria-label="More weight">+</button></div>' +
       '<div class="nudges" id="nudges" role="group" aria-label="Fine-tune the weight"></div>' +
       '<div class="hint-line" id="plates"></div>' +
-      '<div class="field-label"><span>Reps</span></div>' +
-      '<div class="stepper"><button type="button" data-r="-1" aria-label="Fewer reps">−</button>' +
-        '<input id="rIn" inputmode="numeric" aria-label="Reps" value="' + esc(st.reps) + '"><button type="button" data-r="1" aria-label="More reps">+</button></div>' +
+      '<div class="pair"><div><div class="field-label"><span>Reps</span></div>' +
+      '<div class="stepper sm"><button type="button" data-r="-1" aria-label="Fewer reps">−</button>' +
+        '<input id="rIn" inputmode="numeric" aria-label="Reps" value="' + esc(st.reps) + '"><button type="button" data-r="1" aria-label="More reps">+</button></div></div>' +
+      (editing ? '' : '<div><div class="field-label"><span>Sets</span></div>' +
+      '<div class="stepper sm"><button type="button" data-n="-1" aria-label="Fewer sets">−</button>' +
+        '<input id="nIn" inputmode="numeric" aria-label="Sets" value="' + esc(st.sets) + '"><button type="button" data-n="1" aria-label="More sets">+</button></div></div>') + '</div>' +
       '<div class="toggles">' +
         '<button type="button" class="toggle" data-t="bw" aria-pressed="' + st.bw + '">Count bodyweight</button>' +
         '<button type="button" class="toggle" data-t="warm" aria-pressed="' + st.warm + '">Warm-up</button>' +
@@ -518,7 +558,7 @@ async function openEntry(exId, editing, item) {
       '<div id="noteRow"' + (st.showNote ? '' : ' hidden') + '><div class="field-label"><span>Note</span></div><input class="plain-input" id="noteIn" maxlength="300" value="' + esc(st.note) + '" placeholder="How did it feel?"></div>' +
       (editing ? '<div class="field-label"><span>Day</span></div><input class="plain-input" id="dateIn" type="date" value="' + esc(st.date) + '" max="' + today() + '">' : '') +
       '<div id="prFlag"></div><p class="warn" id="formErr" role="alert"></p>' +
-      '<button class="btn primary block" id="saveBtn">' + (editing ? 'Save changes' : 'Log set') + '</button>' +
+      '<button class="btn primary block big" id="saveBtn">' + (editing ? 'Save changes' : 'Log set') + '</button>' +
       (editing ? '<button class="btn block" style="margin-top:10px;color:var(--accent)" id="delBtn">Delete this set</button>' : '<div id="doneToday"></div>') +
     '</div>';
   openSheet();
@@ -533,8 +573,10 @@ async function openEntry(exId, editing, item) {
     LG.last = prev;
     const working = prev.find(s => s.is_warmup !== true) || prev[0];
     if (working && !base && !LG.item) {
-      Object.assign(st, { weight: Number(working.weight), reps: working.reps, unit: working.unit, bw: !!working.count_bodyweight,
-        bodyweight: working.bodyweight != null ? Number(working.bodyweight) : st.bodyweight });
+      const top = prev.filter(s => s.is_warmup !== true).reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a), working);
+      const same = prev.filter(s => s.is_warmup !== true && Number(s.weight) === Number(top.weight) && s.unit === top.unit).length;
+      Object.assign(st, { weight: Number(top.weight), reps: top.reps, unit: top.unit, bw: !!top.count_bodyweight,
+        bodyweight: top.bodyweight != null ? Number(top.bodyweight) : st.bodyweight, sets: Math.min(10, Math.max(1, same)) });
       syncInputs();
     }
     $('lastLine').innerHTML = prev.length
@@ -553,6 +595,7 @@ function syncInputs() {
   drawNudges();
   $('wIn').value = L.fmtLoad(st().weight);
   $('rIn').value = st().reps;
+  if ($('nIn')) $('nIn').value = st().sets;
   inner.querySelectorAll('[data-unit]').forEach(b => b.setAttribute('aria-pressed', b.dataset.unit === st().unit));
   inner.querySelector('[data-t="bw"]').setAttribute('aria-pressed', st().bw);
   $('bwRow').hidden = !st().bw;
@@ -562,12 +605,18 @@ const st = () => LG.st;
 function wireEntry() {
   $('wIn').addEventListener('input', () => { const v = L.parseLoad($('wIn').value); if (v != null) st().weight = v; updateLive(); });
   $('rIn').addEventListener('input', () => { const v = parseInt($('rIn').value, 10); if (v > 0) st().reps = v; updateLive(); });
+  if ($('nIn')) { $('nIn').addEventListener('input', () => { const v = parseInt($('nIn').value, 10); if (v > 0) st().sets = Math.min(20, v); updateLive(); }); $('nIn').addEventListener('focus', () => $('nIn').select()); }
   $('bwIn').addEventListener('input', () => { st().bodyweight = L.parseLoad($('bwIn').value); });
   [$('wIn'), $('rIn')].forEach(i => i.addEventListener('focus', () => i.select()));
   inner.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('saveBtn').click(); } }));
 }
 function updateLive() {
   const s = st();
+  const btn = $('saveBtn');
+  if (btn && LG.mode === 'entry' && !btn.disabled) {
+    const load = s.weight > 0 ? ' @ ' + L.fmtLoad(s.weight) + ' ' + s.unit : '';
+    btn.textContent = s.sets > 1 ? 'Log ' + s.sets + ' × ' + s.reps + load : 'Log ' + s.reps + ' rep' + (s.reps === 1 ? '' : 's') + load;
+  }
   // plates, for barbell-ish loads
   const pl = s.weight >= L.BAR[s.unit] ? L.plateLoadout(s.weight, L.BAR[s.unit], L.PLATES[s.unit]) : null;
   $('plates').textContent = pl && pl.perSide.length
@@ -635,6 +684,7 @@ inner.addEventListener('click', async e => {
   if (b.dataset.w) { s.weight = Math.max(0, Math.round((s.weight + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.nudge) { s.weight = Math.min(2000, Math.max(0, Math.round((s.weight + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.r) { s.reps = Math.max(1, Math.min(1000, s.reps + Number(b.dataset.r))); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.n) { s.sets = Math.max(1, Math.min(20, s.sets + Number(b.dataset.n))); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.t) {
     const t = b.dataset.t;
     if (t === 'bw') { s.bw = !s.bw; $('bwRow').hidden = !s.bw; if (s.bw && $('bwIn').value === '') $('bwIn').focus(); }
@@ -674,12 +724,13 @@ async function saveEntry(btn) {
       sheet.close(); render();
       toast('Saved');
     } else {
-      const { saved } = await logSet({ exercise_id: LG.exId, ...fields });
+      const n = Math.max(1, Math.min(20, parseInt(($('nIn') || {}).value, 10) || st().sets || 1));
+      const saved = await logSets({ exercise_id: LG.exId, ...fields }, n);
       afterLogToast(saved);
       if (fields.notes) { $('noteIn').value = ''; st().showNote = false; $('noteRow').hidden = true; inner.querySelector('[data-t="note"]').setAttribute('aria-pressed', 'false'); }
-      refreshLoggerList(); updateLive(); render();
+      st().sets = 1; syncInputs();   // the block is in; the next tap adds one more
       btn.disabled = false;
-      btn.textContent = 'Log another';
+      refreshLoggerList(); updateLive(); render();
     }
   } catch (x) { $('formErr').textContent = x.message; btn.disabled = false; }
 }
@@ -772,12 +823,15 @@ function followCard() {
     '<div class="bar" style="margin-top:10px"><i style="width:' + (f.items.length ? (done / f.items.length) * 100 : 0) + '%"></i></div>' +
     '<ol class="steps">' + f.items.map((it, i) => {
       const d = stepDone(it), full = d >= it.sets;
-      return '<li><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
+      const tg = full ? null : L.itemTarget(it, S.bestRows);
+      const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log ' + (it.sets - d) + ' × ' + tg.reps + ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit + ', as planned">✓</button>' : '';
+      return '<li class="step-row"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
         '<span class="tick" aria-hidden="true">' + (full ? '✓' : i + 1) + '</span>' +
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(L.targetText(it, S.bestRows)) + '</small></span>' +
-        '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button></li>';
+        '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
-    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. The boulder rolls on.</div>' : '') +
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. The boulder rolls on.</div>'
+      : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>') +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
 
