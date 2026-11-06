@@ -34,7 +34,9 @@ export function fmtBig(n) {    // 12,345 / 1.25M
   return fmtNum(Math.round(n), 0);
 }
 export function parseLoad(text) {
-  const v = Number(String(text).trim().replace(',', '.'));
+  const t = String(text ?? '').trim();
+  if (!t) return null;   // an empty box is "no weight yet", not 0
+  const v = Number(t.replace(',', '.'));
   return isFinite(v) ? v : null;
 }
 

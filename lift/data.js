@@ -112,15 +112,15 @@ class SupaStore {
     ]);
     const ids = templates.map(t => t.id);
     const items = ids.length ? await this.all(() => this.sb.from('lift_template_items')
-      .select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s').is('deleted_at', null)
+      .select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').is('deleted_at', null)
       .in('template_id', ids).order('position')) : [];
     return { templates, items, subs };
   }
   async addRoutine(fields) { return must(await this.sb.from('lift_templates').insert(fields).select(TPL).single()); }
   async updateRoutine(id, patch) { return must(await this.sb.from('lift_templates').update(patch).eq('id', id).select(TPL).single()); }
   deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
-  async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s').single()); }
-  async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s').single()); }
+  async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').single()); }
+  async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').single()); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
   async subscribe(templateId) { return must(await this.sb.from('lift_routine_subscriptions').insert({ template_id: templateId }).select('id,template_id').single()); }
   async unsubscribe(subId) { must(await this.sb.from('lift_routine_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
@@ -287,12 +287,12 @@ class DemoStore {
     const it = (template_id, exercise_id, position, sets, reps, load_mode, load_value) =>
       ({ id: uid(), template_id, exercise_id, position, sets, reps, load_mode, load_value, unit: 'lb' });
     this.items = [
-      it('t-push', 'ex0', 1, 3, 5, 'percent_1rm', 80), it('t-push', 'ex4', 2, 3, 8, 'fixed', 95), it('t-push', 'ex6', 3, 3, 10, 'fixed', 0), it('t-push', 'ex11', 4, 3, 12, 'fixed', 50),
-      it('t-legs', 'ex1', 1, 4, 5, 'percent_1rm', 75), it('t-legs', 'ex15', 2, 3, 8, 'fixed', 155), it('t-legs', 'ex7', 3, 3, 10, 'fixed', 270),
-      it('t-pull', 'ex3', 1, 3, 10, 'fixed', 120), it('t-pull', 'ex10', 2, 3, 10, 'fixed', 110), it('t-pull', 'ex5', 3, 3, 10, 'fixed', 30),
-      it('b-bench', 'ex0', 1, 3, 5, 'fixed', 175), it('b-bench', 'ex11', 2, 3, 10, 'fixed', 60),
-      it('b-arms', 'ex5', 1, 3, 10, 'fixed', 35), it('b-arms', 'ex11', 2, 3, 12, 'fixed', 50),
-      it('b-calves', 'ex9', 1, 3, 10, 'fixed', 235), it('b-calves', 'ex7', 2, 3, 12, 'fixed', 300),
+      it('t-push', 'ex0', 1, 3, 5, 'percent_1rm', 80), it('t-push', 'ex4', 2, 3, 8, 'last', 0), it('t-push', 'ex6', 3, 3, 10, 'last', 0), it('t-push', 'ex11', 4, 3, 12, 'last', 0),
+      it('t-legs', 'ex1', 1, 4, 5, 'percent_1rm', 75), it('t-legs', 'ex15', 2, 3, 8, 'last', 0), it('t-legs', 'ex7', 3, 3, 10, 'last', 0),
+      it('t-pull', 'ex3', 1, 3, 10, 'last', 0), it('t-pull', 'ex10', 2, 3, 10, 'last', 0), it('t-pull', 'ex5', 3, 3, 10, 'last', 0),
+      it('b-bench', 'ex0', 1, 3, 5, 'last', 0), it('b-bench', 'ex11', 2, 3, 10, 'last', 0),
+      it('b-arms', 'ex5', 1, 3, 10, 'last', 0), it('b-arms', 'ex11', 2, 3, 12, 'last', 0),
+      it('b-calves', 'ex9', 1, 3, 10, 'last', 0), it('b-calves', 'ex7', 2, 3, 12, 'last', 0),
     ];
     this.subs = [{ id: uid(), template_id: 't-legs' }];
   }
@@ -314,7 +314,7 @@ class DemoStore {
     return clone(t);
   }
   deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
-  async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'fixed', load_value: 0, unit: 'lb', rest_s: null, ...f }; this.items.push(i); return clone(i); }
+  async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'last', load_value: 0, unit: 'lb', rest_s: null, note: null, ...f }; this.items.push(i); return clone(i); }
   async updateItem(id, patch) { const i = this.items.find(x => x.id === id); Object.assign(i, patch); return clone(i); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
   async subscribe(templateId) { const s = { id: uid(), template_id: templateId }; this.subs.push(s); return clone(s); }

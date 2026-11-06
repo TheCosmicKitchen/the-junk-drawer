@@ -85,7 +85,7 @@ function toast(msg, action) {
 }
 const fail = e => toast(e && e.message ? e.message : 'Something went wrong.');
 
-const BOULDER = '<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M3 35 L37 13" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="15" r="8.5" fill="var(--accent)"/></svg>';
+const PLATE = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="var(--accent)"/><circle cx="20" cy="20" r="11.5" fill="none" stroke="var(--accent-ink)" stroke-width="2" opacity=".55"/><circle cx="20" cy="20" r="4.5" fill="var(--bg)"/></svg>';
 function hillSVG(ratio, label) {
   const t = Math.max(0.03, Math.min(0.97, ratio));
   const x = 20 + 280 * t, y = 112 - 84 * t;
@@ -105,7 +105,7 @@ function gate(html) {
   $('app').hidden = true; $('tabs').hidden = true; $('fab').hidden = true;
   const g = $('gate');
   g.hidden = false;
-  g.innerHTML = '<div class="brand">' + BOULDER + 'Sisyfitness</div><p class="muted">Push the boulder. Log the set.</p>' + html;
+  g.innerHTML = '<div class="brand">' + PLATE + 'The Church of Iron</div><p class="muted">Keep the faith. Log the set.</p>' + html;
   return g;
 }
 function gateForm(g, onSubmit) {
@@ -305,7 +305,7 @@ async function saveDayAsRoutine(day, btn) {
     for (const g of groups.slice(0, 100)) {
       const top = g.sets.reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a));
       const it = await store.addItem({ template_id: t.id, exercise_id: g.exercise_id, position: ++position,
-        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'fixed', load_value: Math.min(2000, Number(top.weight)), unit: top.unit });
+        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit });
       S.items.push(it); S.itemsById.set(it.id, it);
     }
     toast('Saved. Give it a name and tweak away.');
@@ -380,11 +380,67 @@ $('fab').addEventListener('click', () => openLogger());
 $('navLog').addEventListener('click', () => { if (location.hash !== '#log' && location.hash !== '') location.hash = '#log'; openLogger(); });
 const findSet = id => S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id);
 
+// ===========================================================================
+// Weights are per person. A routine step only says exercise, sets and reps, plus a rule:
+//   last         your last working weight for that lift (through your estimated 1-rep max when the
+//                rep count differs: 5 @ 200 suggests about 180 for 8)
+//   progress     the same, plus N when you hit every rep last time (for 3×5 / 5×5 style programs)
+//   percent_1rm  a percent of your best estimated 1-rep max
+// A lift you've never logged gets no guess: the weight box starts empty.
+// ===========================================================================
+const roundDown = (w, unit) => { const step = unit === 'kg' ? 1.25 : 2.5; return Math.floor(w / step + 1e-9) * step; };
+const roundNear = (w, unit) => { const step = unit === 'kg' ? 2.5 : 5; return Math.round(w / step) * step; };
+// Your most recent session of a lift (before today if there is one): its working sets.
+function lastSession(exId) {
+  const sets = S.recent.filter(x => x.exercise_id === exId && x.is_warmup !== true);
+  if (!sets.length) return null;
+  const before = sets.filter(x => x.performed_on < today());
+  const pool = before.length ? before : sets;
+  const day = pool.reduce((m, x) => (x.performed_on > m ? x.performed_on : m), '');
+  return { day, sets: pool.filter(x => x.performed_on === day) };
+}
+function suggestFor(it) {
+  const reps = it.reps, mode = it.load_mode || 'last';
+  if (mode === 'percent_1rm') {
+    const ls = lastSession(it.exercise_id), unit = ls ? ls.sets[0].unit : it.unit || prefs.unit;
+    const basis = L.bestE1rm(it.exercise_id, unit, S.bestRows);
+    return basis ? { weight: roundNear(basis * Number(it.load_value) / 100, unit), unit, reps, why: Number(it.load_value) + '% of your best' }
+      : { weight: null, unit, reps, why: Number(it.load_value) + '% of your best, once you’ve logged it' };
+  }
+  const ls = lastSession(it.exercise_id);
+  let ref = null;
+  if (ls) ref = ls.sets.reduce((m, x) => (Number(x.weight) > Number(m.weight) ? x : m), ls.sets[0]);
+  else {   // older than what's loaded: your best set by estimated 1-rep max
+    const rows = S.bestRows.filter(r => r.exercise_id === it.exercise_id);
+    if (rows.length) { const r = rows.reduce((m, x) => ((L.e1rm(Number(x.heaviest), x.reps) || Number(x.heaviest)) > (L.e1rm(Number(m.heaviest), m.reps) || Number(m.heaviest)) ? x : m)); ref = { weight: r.heaviest, reps: r.reps, unit: r.unit }; }
+  }
+  if (!ref) return { weight: null, unit: it.unit || prefs.unit, reps, why: 'first time: enter a weight' };
+  const unit = ref.unit, w0 = Number(ref.weight);
+  let weight = w0, why = 'your last';
+  if (w0 > 0 && ref.reps !== reps) {
+    const e = L.e1rm(w0, ref.reps) || w0 * (1 + ref.reps / 30);
+    weight = roundDown(e / (1 + reps / 30), unit);
+    why = 'from your last ' + ref.reps + ' × ' + L.fmtLoad(w0);
+  }
+  if (mode === 'progress' && ls && w0 > 0) {
+    const hit = ls.sets.filter(x => Number(x.weight) >= w0 && x.reps >= reps).length >= it.sets;
+    if (hit) { weight = w0 + Number(it.load_value); why = '+' + L.fmtLoad(Number(it.load_value)) + ': you hit every rep last time'; }
+    else if (ref.reps >= reps) { weight = w0; why = 'same again until you hit every rep'; }
+  }
+  return { weight, unit, reps, why };
+}
+// "3 × 8", plus the rule when it isn't plain "your last".
+const ruleTag = it => (it.load_mode === 'progress' ? ' · +' + L.fmtLoad(Number(it.load_value)) : it.load_mode === 'percent_1rm' ? ' · ' + L.fmtNum(Number(it.load_value), 0) + '%' : '');
+const stepText = it => it.sets + ' × ' + it.reps + ruleTag(it);
+// For the person following: the step with their own weight.
+const loadText = g => (g.weight == null ? '' : g.weight > 0 ? L.fmtLoad(g.weight) + ' ' + g.unit : 'bodyweight');
+const myStepText = it => { const g = suggestFor(it); return it.sets + ' × ' + it.reps + (g.weight != null ? (g.weight > 0 ? ' @ ' : ' · ') + loadText(g) : ''); };
+
 // Log what's left of a routine step at its planned reps and weight, in one tap.
 async function quickStep(itemId, btn) {
   const it = S.itemsById.get(itemId);
-  const tg = it && L.itemTarget(it, S.bestRows);
-  if (!tg || tg.weight == null) return it && openEntry(it.exercise_id, null, it);
+  const tg = it && suggestFor(it);
+  if (!tg || tg.weight == null) return it && openEntry(it.exercise_id, null, it);   // no history: open the step to type a weight
   const left = it.sets - stepDone(it);
   if (left < 1) return;
   btn.disabled = true;
@@ -577,7 +633,7 @@ async function openEntry(exId, editing, item) {
   const base = editing || todaySets().filter(s => s.exercise_id === exId).pop();
   const unit = base ? base.unit : prefs.unit;
   const st = LG.st = {
-    weight: base ? Number(base.weight) : (L.BAR[unit] && /press|squat|deadlift|row|bench|barbell|rdl|thrust/i.test(exName(exId)) ? L.BAR[unit] : 0),
+    weight: base ? Number(base.weight) : null,   // filled from your last time below; a lift you've never done starts empty
     reps: base ? base.reps : 8, unit,
     bw: base ? !!base.count_bodyweight : !!(S.byId.get(exId) || {}).supports_bodyweight,
     bodyweight: base && base.bodyweight != null ? Number(base.bodyweight) : prefs.bodyweight,
@@ -587,15 +643,16 @@ async function openEntry(exId, editing, item) {
     // How many sets one tap logs: what's left of the routine step, 1 if you're already going today, else 3 until last time is known.
     sets: item ? Math.max(1, item.sets - stepDone(item)) : base ? 1 : 3,
   };
-  // Following a routine: the step's target wins over last time.
-  const target = LG.item ? L.itemTarget(LG.item, S.bestRows) : null;
+  // Following a routine: the step's sets and reps, with your own weight for it (unless you're mid-way today).
+  const target = LG.item ? suggestFor(LG.item) : null;
   if (target) {
-    st.reps = target.reps; st.unit = target.unit;
-    if (target.weight != null && (target.weight > 0 || LG.item.load_mode === 'fixed')) st.weight = target.weight;
+    st.reps = target.reps;
+    if (!base) { st.unit = target.unit; st.weight = target.weight; }
   }
   const planLine = LG.item
-    ? '<div class="pr-flag" style="background:var(--accent-soft);color:var(--ink);animation:none">📋 Plan: <b>' + esc(L.targetText(LG.item, S.bestRows)) + '</b>' +
-      (target.pct && !target.basis ? '<span class="muted" style="font-weight:500"> (log a set first to work out the %)</span>' : '') + '</div>'
+    ? '<div class="pr-flag" style="background:var(--accent-soft);color:var(--ink);animation:none">📋 Plan: <b>' + esc(stepText(LG.item)) + '</b>' +
+      '<span class="muted" style="font-weight:500"> · ' + esc(target.weight != null ? loadText(target) + ', ' + target.why : target.why) + '</span></div>' +
+      (LG.item.note ? '<p class="tip">📝 ' + esc(LG.item.note) + '</p>' : '')
     : '';
   inner.innerHTML =
     '<div class="sheet-head"><div>' + (editing ? '' : '<button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-change>← Change exercise</button>') +
@@ -606,7 +663,7 @@ async function openEntry(exId, editing, item) {
       '<div class="field-label"><span>Weight' + '</span><span class="seg" role="group" aria-label="Unit">' +
         ['lb', 'kg'].map(u => '<button type="button" data-unit="' + u + '" aria-pressed="' + (u === st.unit) + '">' + u + '</button>').join('') + '</span></div>' +
       '<div class="stepper"><button type="button" data-w="-1" aria-label="Less weight">−</button>' +
-        '<input id="wIn" inputmode="decimal" aria-label="Weight" value="' + esc(L.fmtLoad(st.weight)) + '"><button type="button" data-w="1" aria-label="More weight">+</button></div>' +
+        '<input id="wIn" inputmode="decimal" aria-label="Weight" placeholder="Weight" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"><button type="button" data-w="1" aria-label="More weight">+</button></div>' +
       '<div class="nudges" id="nudges" role="group" aria-label="Fine-tune the weight"></div>' +
       '<div class="hint-line" id="plates"></div>' +
       '<div class="pair"><div><div class="field-label"><span>Reps</span></div>' +
@@ -638,7 +695,7 @@ async function openEntry(exId, editing, item) {
     if (LG.exId !== exId || LG.mode !== 'entry') return;
     LG.last = prev;
     const working = prev.find(s => s.is_warmup !== true) || prev[0];
-    if (working && !base && !LG.item) {
+    if (working && !base && (!LG.item || st.weight == null)) {
       const top = prev.filter(s => s.is_warmup !== true).reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a), working);
       const same = prev.filter(s => s.is_warmup !== true && Number(s.weight) === Number(top.weight) && s.unit === top.unit).length;
       Object.assign(st, { weight: Number(top.weight), reps: top.reps, unit: top.unit, bw: !!top.count_bodyweight,
@@ -659,7 +716,7 @@ function drawNudges() {
 }
 function syncInputs() {
   drawNudges();
-  $('wIn').value = L.fmtLoad(st().weight);
+  $('wIn').value = st().weight == null ? '' : L.fmtLoad(st().weight);
   $('rIn').value = st().reps;
   if ($('nIn')) $('nIn').value = st().sets;
   inner.querySelectorAll('[data-unit]').forEach(b => b.setAttribute('aria-pressed', b.dataset.unit === st().unit));
@@ -680,11 +737,11 @@ function updateLive() {
   const s = st();
   const btn = $('saveBtn');
   if (btn && LG.mode === 'entry' && !btn.disabled) {
-    const load = s.weight > 0 ? ' @ ' + L.fmtLoad(s.weight) + ' ' + s.unit : '';
+    const load = s.weight > 0 ? ' @ ' + L.fmtLoad(s.weight) + ' ' + s.unit : s.weight == null ? ' (enter a weight)' : '';
     btn.textContent = s.sets > 1 ? 'Log ' + s.sets + ' × ' + s.reps + load : 'Log ' + s.reps + ' rep' + (s.reps === 1 ? '' : 's') + load;
   }
   // plates, for barbell-ish loads
-  const pl = s.weight >= L.BAR[s.unit] ? L.plateLoadout(s.weight, L.BAR[s.unit], L.PLATES[s.unit]) : null;
+  const pl = s.weight != null && s.weight >= L.BAR[s.unit] ? L.plateLoadout(s.weight, L.BAR[s.unit], L.PLATES[s.unit]) : null;
   $('plates').textContent = pl && pl.perSide.length
     ? 'Plates per side on a ' + L.BAR[s.unit] + ' ' + s.unit + ' bar: ' + pl.perSide.map(L.fmtLoad).join(' · ') + (Math.abs(pl.total - s.weight) > 1e-6 ? ' (= ' + L.fmtLoad(pl.total) + ')' : '')
     : '';
@@ -747,13 +804,13 @@ inner.addEventListener('click', async e => {
   const s = st();
   if (b.dataset.unit && b.dataset.unit !== s.unit) {
     const factor = b.dataset.unit === 'kg' ? 1 / L.LB_PER_KG : L.LB_PER_KG;
-    s.weight = Math.round(s.weight * factor * 2) / 2;
+    if (s.weight != null) s.weight = Math.round(s.weight * factor * 2) / 2;
     if (s.bodyweight != null) s.bodyweight = Math.round(s.bodyweight * factor * 2) / 2;
     s.unit = b.dataset.unit;
     syncInputs(); updateLive(); return;
   }
-  if (b.dataset.w) { s.weight = Math.max(0, Math.round((s.weight + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
-  if (b.dataset.nudge) { s.weight = Math.min(2000, Math.max(0, Math.round((s.weight + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.w) { s.weight = Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.nudge) { s.weight = Math.min(2000, Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.r) { s.reps = Math.max(1, Math.min(1000, s.reps + Number(b.dataset.r))); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.n) { s.sets = Math.max(1, Math.min(20, s.sets + Number(b.dataset.n))); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.t) {
@@ -772,7 +829,8 @@ function readForm() {
   const s = st();
   const weight = L.parseLoad($('wIn').value), reps = parseInt($('rIn').value, 10);
   const bodyweight = s.bw ? L.parseLoad($('bwIn').value) : null;
-  if (weight == null || weight < 0 || weight > 2000) throw new Error('Enter a weight between 0 and 2000.');
+  if (weight == null) throw new Error('Enter a weight. Use 0 for bodyweight moves.');
+  if (weight < 0 || weight > 2000) throw new Error('Enter a weight between 0 and 2000.');
   if (!(reps >= 1 && reps <= 1000)) throw new Error('Reps must be at least 1.');
   if (s.bw && !(bodyweight >= 1 && bodyweight <= 1000)) throw new Error('Enter your bodyweight to count it.');
   const note = $('noteIn') ? $('noteIn').value.trim() : '';
@@ -896,11 +954,11 @@ function followCard() {
     '<div class="bar" style="margin-top:10px"><i style="width:' + (f.items.length ? (done / f.items.length) * 100 : 0) + '%"></i></div>' +
     '<ol class="steps">' + f.items.map((it, i) => {
       const d = stepDone(it), full = d >= it.sets;
-      const tg = full ? null : L.itemTarget(it, S.bestRows);
+      const tg = full ? null : suggestFor(it);
       const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log ' + (it.sets - d) + ' × ' + tg.reps + ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit + ', as planned">✓</button>' : '';
       return '<li class="step-row"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
         '<span class="tick" aria-hidden="true">' + (full ? '✓' : i + 1) + '</span>' +
-        '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(L.targetText(it, S.bestRows)) + '</small></span>' +
+        '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
     (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. The boulder rolls on.</div>'
@@ -923,7 +981,7 @@ function renderRoutines() {
       (changes ? '<span class="tag new">Updated</span>' : isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
     (changes ? '<p class="changes"><b>' + esc(ownerName(t)) + ' changed it:</b> ' + esc(changes.slice(0, 4).join(' · ')) + (changes.length > 4 ? ' · and ' + (changes.length - 4) + ' more' : '') + '</p>' : '') +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
-    '<div class="chips">' + (routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') || '<span class="muted">No exercises yet</span>') + '</div>' +
+    '<div class="chips">' + (routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') || '<span class="muted">No exercises yet</span>') + '</div>' +
     '<div class="actions">' + actions + (changes ? '<button class="btn ghost" data-seen="' + esc(t.id) + '">Got it</button>' : '') +
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
@@ -958,7 +1016,7 @@ async function copySteps(fromIds, tid) {
     const src = S.itemsById.get(id);
     if (!src) continue;
     const it = await store.addItem({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
-      load_mode: src.load_mode, load_value: src.load_value, unit: src.unit });
+      load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null });
     S.items.push(it); S.itemsById.set(it.id, it);
   }
 }
@@ -994,7 +1052,7 @@ function dayCard() {
     const done = matchRoutine([{ template_id: t.id }], today()) >= 0;
     return '<section class="card plan-card"><div class="date">On the schedule</div>' +
       '<div class="row" style="margin-top:4px"><h2>' + esc(t.name) + (done ? ' ✓' : '') + '</h2><button class="btn primary" data-start="' + esc(t.id) + '">' + (done ? 'Again' : 'Start') + '</button></div>' +
-      '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') + '</div></section>';
+      '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') + '</div></section>';
   }).join('');
 }
 async function removeDay(id, btn) {
@@ -1056,7 +1114,7 @@ async function copyRoutine(id, btn) {
     S.templates.push(t);
     for (const it of routineItems(id)) {
       const n = await store.addItem({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
-        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit });
+        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
       S.items.push(n); S.itemsById.set(n.id, n);
     }
     toast('Copied. This one’s yours to change.');
@@ -1129,13 +1187,11 @@ function drawItems() {
 }
 // One line per step; tap it to open big controls for that step (one open at a time).
 function itemSummary(it) {
-  return L.targetText(it, S.bestRows);
+  const g = suggestFor(it);
+  return stepText(it) + (g.weight != null ? ' · you: ' + loadText(g) : '');
 }
 function itemRow(it) {
   const open = D.open === it.id;
-  const pct = it.load_mode === 'percent_1rm';
-  const tgt = L.itemTarget(it, S.bestRows);
-  const step = pct ? 5 : it.unit === 'kg' ? 2.5 : 5;
   return '<li class="item' + (open ? ' open' : '') + '" data-item="' + esc(it.id) + '">' +
     '<div class="item-head"><button type="button" class="handle" data-handle aria-label="Move ' + esc(exName(it.exercise_id)) + ' (drag, or use the arrow keys)">⠿</button>' +
       '<button type="button" class="item-sum" data-toggle-item aria-expanded="' + open + '"><b>' + esc(exName(it.exercise_id)) + '</b>' +
@@ -1144,15 +1200,23 @@ function itemRow(it) {
     (open ?
       '<div class="item-edit">' +
         '<div class="two">' + bigStep('Sets', 'sets', it.sets) + bigStep('Reps', 'reps', it.reps) + '</div>' +
-        '<div class="field-label"><span>Load</span><span class="seg" role="group" aria-label="Load as">' + [['lb', 'lb'], ['kg', 'kg'], ['pct', '% 1RM']].map(([k, l]) =>
-          '<button type="button" data-loadmode="' + k + '" aria-pressed="' + (k === 'pct' ? pct : !pct && it.unit === k) + '">' + l + '</button>').join('') + '</span></div>' +
-        bigStep(pct ? '% of your best 1RM' : 'Weight (' + it.unit + ')', 'load_value', L.fmtLoad(it.load_value), true) +
-        '<div class="nudges" role="group" aria-label="Fine-tune">' + [-2, -1, 1, 2].map(m => '<button type="button" data-step-field="load_value" data-d="' + m + '">' + (m > 0 ? '+' : '−') + L.fmtLoad(Math.abs(m) * step) + (pct ? '%' : '') + '</button>').join('') + '</div>' +
-        '<p class="hint-line" data-pct-hint>' + (pct ? (tgt.weight ? '≈ ' + esc(L.fmtLoad(tgt.weight)) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit) : (it.load_value > 0 ? '' : 'Leave at 0 for bodyweight moves.')) + '</p>' +
+        '<div class="field-label"><span>Weight</span><span class="seg" role="group" aria-label="Weight rule">' + [['last', 'Your last'], ['progress', '+ when hit'], ['pct', '% of best']].map(([k, l]) =>
+          '<button type="button" data-loadmode="' + k + '" aria-pressed="' + ((it.load_mode === 'percent_1rm' ? 'pct' : it.load_mode) === k) + '">' + l + '</button>').join('') + '</span></div>' +
+        (it.load_mode === 'percent_1rm' ? bigStep('% of each person’s best 1-rep max', 'load_value', L.fmtLoad(it.load_value), true)
+          : it.load_mode === 'progress' ? bigStep('Add (' + it.unit + ') after a session with every rep hit', 'load_value', L.fmtLoad(it.load_value), true) : '') +
+        '<p class="hint-line" data-pct-hint>' + esc(ruleHint(it)) + '</p>' +
+        '<input class="plain-input step-note" data-note-for="' + esc(it.id) + '" maxlength="200" placeholder="Note for this step (optional)" value="' + esc(it.note || '') + '" aria-label="Note for this step">' +
         bigStep('Rest between sets (seconds)', 'rest_s', it.rest_s == null ? '' : it.rest_s, true) +
         '<div class="item-actions"><button type="button" data-swap>⇄ Swap</button><button type="button" data-dup>⧉ Duplicate</button><button type="button" class="danger" data-remove-item="' + esc(it.id) + '">✕ Remove</button></div>' +
       '</div>' : '') +
   '</li>';
+}
+function ruleHint(it) {
+  const g = suggestFor(it);
+  const base = it.load_mode === 'percent_1rm' ? 'Each person gets this percent of their own best.'
+    : it.load_mode === 'progress' ? 'Each person starts from their own last weight and adds this after a session where they hit every rep.'
+    : 'Each person uses their own last weight for this lift.';
+  return base + ' You: ' + (g.weight != null ? loadText(g) + ' (' + g.why + ').' : g.why + '.');
 }
 function bigStep(label, field, value, wide) {
   return '<label class="bs' + (wide ? ' wide' : '') + '"><small>' + esc(label) + '</small><span>' +
@@ -1162,7 +1226,7 @@ function bigStep(label, field, value, wide) {
 }
 const ITEM_BOUNDS = { sets: [1, 20], reps: [1, 100], rest_s: [0, 900] };
 function clampItem(it, field, v) {
-  if (field === 'load_value') return it.load_mode === 'percent_1rm' ? Math.min(150, Math.max(1, v)) : Math.min(2000, Math.max(0, v));
+  if (field === 'load_value') return it.load_mode === 'percent_1rm' ? Math.min(150, Math.max(1, v)) : it.load_mode === 'progress' ? Math.min(50, Math.max(0.5, v)) : 0;
   const [lo, hi] = ITEM_BOUNDS[field];
   return Math.min(hi, Math.max(lo, Math.round(v)));
 }
@@ -1177,10 +1241,7 @@ function refreshItemView(id) {
   li.querySelectorAll('input[data-field]').forEach(inp => { if (document.activeElement !== inp) inp.value = inp.dataset.field === 'load_value' ? L.fmtLoad(it.load_value) : it[inp.dataset.field]; });
   li.querySelector('.sum').textContent = itemSummary(it);
   const hint = li.querySelector('[data-pct-hint]');
-  if (hint && it.load_mode === 'percent_1rm') {
-    const tgt = L.itemTarget(it, S.bestRows);
-    hint.textContent = tgt.weight ? '≈ ' + L.fmtLoad(tgt.weight) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit;
-  } else if (hint) hint.textContent = it.load_value > 0 ? '' : 'Leave at 0 for bodyweight moves.';
+  if (hint) hint.textContent = ruleHint(it);
 }
 // Add exercises to the end of a routine, each starting from your last numbers for it.
 async function addItemsTo(tid, exIds) {
@@ -1190,8 +1251,8 @@ async function addItemsTo(tid, exIds) {
       const recent = S.recent.find(s => s.exercise_id === exId && s.is_warmup !== true);
       const it = await store.addItem({
         template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
-        sets: 3, reps: recent ? Math.min(100, recent.reps) : 8, load_mode: 'fixed',
-        load_value: recent ? Number(recent.weight) : 0, unit: recent ? recent.unit : prefs.unit,
+        sets: 3, reps: recent ? Math.min(100, recent.reps) : 8, load_mode: 'last',
+        load_value: 0, unit: recent ? recent.unit : prefs.unit,
       });
       S.items.push(it); S.itemsById.set(it.id, it);
       if (exIds.length === 1) D.open = it.id;   // one added: open it, ready to set
@@ -1253,6 +1314,8 @@ inner.addEventListener('keydown', e => {
   h.focus(); persistOrder();
 });
 inner.addEventListener('input', e => {
+  const note = e.target.closest('[data-note-for]');
+  if (note && LG.mode === 'design') return queueItem(note.dataset.noteFor, { note: note.value.trim() || null });
   const inp = e.target.closest('[data-field]');
   if (!inp || LG.mode !== 'design') return;
   const id = inp.closest('.item').dataset.item, it = S.itemsById.get(id), v = L.parseLoad(inp.value);
@@ -1276,7 +1339,7 @@ function openChunkPicker() {
           '<section class="chunk"><div class="row"><h3>' + esc(t.name) + (isMine(t) ? '' : ' <small class="muted">by ' + esc(ownerName(t)) + '</small>') + '</h3>' +
           '<button type="button" class="linkbtn" data-chunk-all="' + esc(t.id) + '">' + (isBlock(t) ? 'Whole block' : 'Tick all') + '</button></div><ul class="results">' +
           routineItems(t.id).map(it => '<li><button data-chunk="' + esc(it.id) + '" aria-pressed="false"><span><i class="tickbox" aria-hidden="true"></i>' + esc(exName(it.exercise_id)) + '</span>' +
-            '<small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></button></li>').join('') + '</ul></section>').join('')
+            '<small>' + esc(stepText(it)) + '</small></button></li>').join('') + '</ul></section>').join('')
         : '<p class="muted">No other routines with steps yet. Make one, or subscribe to one the crew shares.</p>') +
       '<div class="pick-foot"><button class="btn primary block" data-chunk-add disabled>Tick steps to add</button></div>' +
     '</div>';
@@ -1373,7 +1436,7 @@ async function designerClick(b) {
     try {
       for (const later of list.filter(x => x.position > it.position).reverse()) await store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s));
       const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
-        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit });
+        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
       S.items.push(copy); S.itemsById.set(copy.id, copy);
       D.open = copy.id;
       drawItems(); vibrate(8);
@@ -1391,21 +1454,16 @@ async function designerClick(b) {
   }
   if (b.dataset.stepField) {
     const f = b.dataset.stepField, d = Number(b.dataset.d);
-    const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' ? 5 : it.unit === 'kg' ? 2.5 : 5) : f === 'rest_s' ? 15 : 1;
+    const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' ? 5 : 2.5) : f === 'rest_s' ? 15 : 1;
     queueItem(id, { [f]: clampItem(it, f, Number(it[f]) + d * step) });
     refreshItemView(id); vibrate(5);
     return;
   }
   if (b.dataset.loadmode) {
-    const k = b.dataset.loadmode, wasPct = it.load_mode === 'percent_1rm';
-    if (k === 'pct' && !wasPct) {
-      const basis = L.bestE1rm(it.exercise_id, it.unit, S.bestRows);
-      queueItem(id, { load_mode: 'percent_1rm', load_value: basis && it.load_value > 0 ? clampItem({ load_mode: 'percent_1rm' }, 'load_value', Math.round(it.load_value / basis * 20) * 5) : 75 });
-    } else if (k !== 'pct') {
-      const weight = wasPct ? (L.itemTarget(it, S.bestRows).weight || 0) : Number(it.load_value);
-      const conv = !wasPct && it.unit !== k ? Math.round(weight * (k === 'kg' ? 1 / L.LB_PER_KG : L.LB_PER_KG) * 2) / 2 : weight;
-      queueItem(id, { load_mode: 'fixed', unit: k, load_value: Math.min(2000, conv) });
-    }
+    const k = b.dataset.loadmode;
+    if (k === 'pct') queueItem(id, { load_mode: 'percent_1rm', load_value: it.load_mode === 'percent_1rm' ? it.load_value : 75 });
+    else if (k === 'progress') queueItem(id, { load_mode: 'progress', load_value: it.load_mode === 'progress' ? it.load_value : (it.unit === 'kg' ? 2.5 : 5) });
+    else queueItem(id, { load_mode: 'last', load_value: 0 });
     redrawItem(id);
   }
 }
@@ -1520,7 +1578,7 @@ function planCard() {
   return '<section class="card plan-card">' + head +
     '<div class="row" style="margin-top:4px"><div><small class="muted">Today’s routine, ' + esc(tp.why) + '</small><h2>' + esc(t.name) + '</h2></div>' +
       '<button class="btn primary" data-start="' + esc(t.id) + '">Start</button></div>' +
-    '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') + '</div>' +
+    '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') + '</div>' +
     (others.length ? '<p class="hint-line">Or: ' + others.map(p => '<button class="linkbtn" data-start="' + esc(p.template_id) + '">' + esc(tplById(p.template_id).name) + '</button>').join(' · ') + '</p>' : '') +
   '</section>';
 }
@@ -2071,17 +2129,24 @@ function lastLoad(exId) {
   const x = S.recent.find(r => r.exercise_id === exId && r.is_warmup !== true);
   return x ? { weight: Number(x.weight), unit: x.unit } : { weight: 0, unit: prefs.unit };
 }
-// Copy a starter session into a new workout or block of yours. Loads start from your last numbers.
+// Starter steps carry no weights. Linear programs add weight when every rep was hit; 5/3/1's main
+// lifts are a percent of your best (its "% of training max" is 90% of a 1-rep max).
+function starterRule(sid, x, unit) {
+  const pct = /(\d+)(?:–\d+)?% of training max/.exec(x.note || '');
+  if (sid.startsWith('w531-') && pct) return { mode: 'percent_1rm', value: Math.round(Number(pct[1]) * 0.9 / 5) * 5 };
+  if (/^(ss|sl|gs|gz|split-s5)/.test(sid) && x.reps <= 6) return { mode: 'progress', value: unit === 'kg' ? 2.5 : 5 };
+  return { mode: 'last', value: 0 };
+}
+// Copy a starter session into a new workout or block of yours. Each person's weights come from their own history.
 async function addSession(sid, kind, name) {
   const steps = stepsOf(sid);
-  const notes = steps.filter(x => x.note).map(x => exName(x.exId) + ': ' + x.note).join('\n').slice(0, 500) || null;
-  const t = await store.addRoutine({ name: (name || SESSIONS[sid].name).slice(0, 60), kind, notes });
+  const t = await store.addRoutine({ name: (name || SESSIONS[sid].name).slice(0, 60), kind, notes: null });
   S.templates.push(t);
   let pos = 0;
   for (const x of steps) {
-    const ld = lastLoad(x.exId);
+    const ld = lastLoad(x.exId), rule = starterRule(sid, x, ld.unit);
     const it = await store.addItem({ template_id: t.id, exercise_id: x.exId, position: ++pos, sets: Math.min(20, x.sets), reps: Math.min(100, x.reps),
-      load_mode: 'fixed', load_value: Math.min(2000, ld.weight), unit: ld.unit, rest_s: x.rest == null ? null : Math.min(900, x.rest) });
+      load_mode: rule.mode, load_value: rule.value, unit: ld.unit, rest_s: x.rest == null ? null : Math.min(900, x.rest), note: x.note ? x.note.slice(0, 200) : null });
     S.items.push(it); S.itemsById.set(it.id, it);
   }
   return t;
