@@ -148,6 +148,20 @@ class SupaStore {
   async seasonWorkouts(seasonId) { return must(await this.sb.rpc('season_workouts', { p_season: seasonId })); }
   async seasonBests(seasonId) { return must(await this.sb.rpc('season_bests', { p_season: seasonId })); }
   async seasonDaily(seasonId) { return must(await this.sb.rpc('season_daily', { p_season: seasonId })); }
+
+  // ----- the stream of wins: PRs, clubs, goals, finished sessions (no reactions, no comments) -----
+  async wins() {
+    return must(await this.sb.from('lift_posts').select(POST).is('deleted_at', null)
+      .gte('performed_on', addDays(localDate(), -21)).order('created_at', { ascending: false }).limit(60));
+  }
+  // One line per person, kind, day and title: a second PR on the same lift today updates its line.
+  async postWin(f) {
+    const me = await this.userId();
+    const have = must(await this.sb.from('lift_posts').select('id').eq('created_by', me).eq('kind', f.kind).eq('performed_on', f.performed_on).eq('title', f.title).is('deleted_at', null).limit(1));
+    if (have.length) return must(await this.sb.from('lift_posts').update({ summary: f.summary }).eq('id', have[0].id).select(POST).single());
+    return must(await this.sb.from('lift_posts').insert(f).select(POST).single());
+  }
+  async removeWin(id) { must(await this.sb.from('lift_posts').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
   // Every working set you've logged for one exercise, oldest first (for its trend chart).
   async exerciseHistory(exerciseId) {
     return this.all(() => this.sb.from('lift_sets').select('performed_on,weight,reps,unit,is_warmup').is('deleted_at', null)
@@ -175,6 +189,7 @@ class SupaStore {
 const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by';
 const TPL = 'id,name,notes,is_shared,kind,created_by,updated_at';
 const PLAN = 'id,season_id,template_id,position,weekdays';
+const POST = 'id,kind,performed_on,title,summary,created_by,created_at';
 
 // ---------------------------------------------------------------------------
 // Demo: a few weeks of believable lifting, held in memory.
@@ -392,6 +407,24 @@ class DemoStore {
     return this.live().filter(s => s.exercise_id === exerciseId).sort((a, b) => a.performed_on.localeCompare(b.performed_on))
       .map(s => ({ performed_on: s.performed_on, weight: s.weight, reps: s.reps, unit: s.unit, is_warmup: s.is_warmup }));
   }
+  async wins() {
+    if (!this.winRows) {
+      const t = localDate(), at = d => new Date(d + 'T18:00:00').toISOString();
+      this.winRows = [
+        { id: uid(), kind: 'pr', performed_on: addDays(t, -1), title: 'Lat Pulldown PR', summary: { weight: 180, reps: 10, unit: 'lb' }, created_by: 'alex', created_at: at(addDays(t, -1)) },
+        { id: uid(), kind: 'session', performed_on: addDays(t, -1), title: 'Alex’s pull day', summary: { lb: 15400, sets: 18, minutes: 54 }, created_by: 'alex', created_at: at(addDays(t, -1)) },
+        { id: uid(), kind: 'club', performed_on: addDays(t, -3), title: '250K Club', summary: {}, created_by: 'alex', created_at: at(addDays(t, -3)) },
+      ];
+    }
+    return this.winRows.filter(w => !w.deleted_at).sort((a, b) => b.created_at.localeCompare(a.created_at)).map(clone);
+  }
+  async postWin(f) {
+    await this.wins();
+    const have = this.winRows.find(w => !w.deleted_at && w.created_by === 'me' && w.kind === f.kind && w.performed_on === f.performed_on && w.title === f.title);
+    if (have) { have.summary = f.summary; return clone(have); }
+    const w = { id: uid(), created_by: 'me', created_at: new Date().toISOString(), ...f }; this.winRows.push(w); return clone(w);
+  }
+  async removeWin(id) { const w = this.winRows.find(x => x.id === id); if (w) w.deleted_at = new Date().toISOString(); }
   async workoutDays(fromDate) {
     if (!this.dayRows) this.dayRows = [{ id: uid(), template_id: 't-push', on_date: addDays(localDate(), 1) }, { id: uid(), template_id: 't-pull', on_date: addDays(localDate(), 3) }];
     return this.dayRows.filter(d => !d.deleted_at && d.on_date >= fromDate).sort((a, b) => a.on_date.localeCompare(b.on_date)).map(clone);

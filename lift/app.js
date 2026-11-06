@@ -290,11 +290,14 @@ function renderLog() {
       '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>moved today</small></div>' +
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
-    '</div>' + countsLine() + '</section>' +
+    '</div>' + countsLine() + (groups.length ? '<button class="btn primary finish-btn" data-recap>Finish &amp; recap ›</button>' : '') + '</section>' +
+    weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
-    (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '');
+    (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
+    winsCard();
+  loadWins();
 }
 // Turn a day's lifting into a routine: one step per exercise, in the order you did them,
 // with the number of working sets and your heaviest set's reps and weight.
@@ -377,6 +380,10 @@ view.addEventListener('click', async e => {
   else if (b.dataset.rerun) openWizard(seasonById(b.dataset.rerun));
   else if (b.dataset.joinSeason) joinSeason(b.dataset.joinSeason, b);
   else if (b.dataset.link) copyLink(b.dataset.link);
+  else if (b.hasAttribute('data-recap')) openRecap();
+  else if (b.hasAttribute('data-week-seen')) { try { localStorage.setItem('lift.weekSeen', b.dataset.weekSeen); } catch (e) {} render(); }
+  else if (b.hasAttribute('data-share-wins')) { prefs.shareWins = prefs.shareWins === false; savePrefs(); render(); toast(prefs.shareWins ? 'Your wins go to the crew again.' : 'Your wins stay private from now on.'); }
+  else if (b.dataset.winDel) removeWin(b.dataset.winDel);
   else if (b.dataset.trend) { S.trendEx = b.dataset.trend; S.hist = S.hist || new Map(); location.hash = '#progress'; setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200); }
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
@@ -513,6 +520,9 @@ async function logSet(fields) {
   const crossed = L.MILESTONES.filter(m => before < m.lb && after >= m.lb).pop();
   saved._crossed = crossed;
   vibrate(beatsBest || crossed ? [20, 40, 20] : 12);
+  if (beatsBest) postWin('pr', exName(saved.exercise_id) + ' PR', { weight: Number(saved.weight), reps: saved.reps, unit: saved.unit });
+  if (crossed) postWin('club', crossed.title, {});
+  checkGoalWins();
   prefs.unit = saved.unit;
   if (saved.count_bodyweight) prefs.bodyweight = Number(saved.bodyweight);
   savePrefs();
@@ -535,6 +545,7 @@ function afterLogToast(saved) {
   else toast('Logged ' + what, undo);
 }
 async function removeSets(list) {
+  for (const s of list) if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);
   try {
     for (const s of list) { const gone = await store.deleteSet(s.id); syncCaches(gone, true); bumpDay(s, -1); }
   } catch (x) { fail(x); }
@@ -542,6 +553,7 @@ async function removeSets(list) {
   toast('Undone');
 }
 async function removeSet(s, quiet) {
+  if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);   // undoing a PR takes its line back
   try {
     const gone = await store.deleteSet(s.id);
     syncCaches(gone, true);
@@ -813,6 +825,7 @@ inner.addEventListener('click', async e => {
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
   if (LG.mode === 'chunk') return chunkClick(b);
+  if (LG.mode === 'recap') return recapClick(b);
   if (LG.mode === 'wizard') return wizardClick(b);
   if (LG.mode === 'newpick') return newPickClick(b);
   if (LG.mode === 'starters') return starterClick(b);
@@ -982,7 +995,7 @@ function followCard() {
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
-    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. Go in peace.</div>'
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. Go in peace.</div><button class="btn primary block" style="margin-top:10px" data-recap>Finish &amp; recap ›</button>'
       : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>') +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
@@ -2645,4 +2658,137 @@ async function newPickClick(b) {
   if (k === 'season') return openWizard();
   if (k === 'program') return openStarters();
   return newRoutine(b, k);
+}
+
+// ===========================================================================
+// The stream of wins: PRs, clubs joined, season goals hit and finished sessions, for the whole
+// crew. They post themselves as they happen (switch off in the stream's header). No reactions.
+// ===========================================================================
+const shareOn = () => prefs.shareWins !== false;
+async function postWin(kind, title, summary, day) {
+  if (!shareOn()) return;
+  try {
+    const w = await store.postWin({ kind, performed_on: day || today(), title: title.slice(0, 80), summary });
+    if (S.wins) { S.wins = S.wins.filter(x => x.id !== w.id); S.wins.unshift(w); }
+  } catch (x) { /* a win that can't post shouldn't get in the way of logging */ }
+}
+async function unpostWin(kind, title, day) {
+  const w = (S.wins || []).find(x => x.created_by === S.myId && x.kind === kind && x.title === title && x.performed_on === day);
+  if (w) { try { await store.removeWin(w.id); S.wins = S.wins.filter(x => x !== w); } catch (x) { /* fine */ } }
+}
+async function removeWin(id) {
+  try { await store.removeWin(id); S.wins = (S.wins || []).filter(x => x.id !== id); render(); toast('Removed from the stream'); } catch (x) { fail(x); }
+}
+// Season goals you just finished: compare against what was already done when the app loaded.
+function goalKeyDone() {
+  const out = new Set(), t = today();
+  for (const sn of (S.seasons || []).filter(x => inSeason(x) && x.starts_on <= t && t <= x.ends_on)) {
+    const m = seasonM(sn);
+    for (const g of goalsFor(sn, S.myId)) if (goalHave(g, m, { season: sn }) >= Number(g.target)) out.add(sn.id + '|' + g.id);
+  }
+  return out;
+}
+function checkGoalWins() {
+  if (!S.goalsDone) { S.goalsDone = goalKeyDone(); return; }
+  const now = goalKeyDone();
+  for (const k of now) if (!S.goalsDone.has(k)) {
+    const [sid, gid] = k.split('|'), g = S.goals.find(x => x.id === gid), sn = seasonById(sid);
+    if (g && sn) { postWin('goal', g.name + ' · ' + sn.name, {}); toast('✅ Goal done: ' + g.name); }
+  }
+  S.goalsDone = now;
+}
+async function loadWins() {
+  if (!S.goalsDone) S.goalsDone = goalKeyDone();
+  if (S.winsLoading || (S.wins && Date.now() - S.winsAt < 60000)) return;
+  S.winsLoading = true;
+  try { S.wins = await store.wins(); S.winsAt = Date.now(); } catch (x) { S.wins = S.wins || []; }
+  S.winsLoading = false;
+  const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard();
+}
+const WIN_ICON = { pr: '🏆', club: '🕯️', goal: '✅', session: '🏋️' };
+function winText(w) {
+  const m = w.summary || {};
+  if (w.kind === 'pr') return w.title.replace(/ PR$/, '') + ' PR: ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps;
+  if (w.kind === 'club') return 'Joined the ' + w.title;
+  if (w.kind === 'goal') return 'Hit a goal: ' + w.title;
+  return 'Finished ' + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
+}
+function winsCard() {
+  const head = '<div class="card-head"><h3 class="card-title">Wins</h3><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
+  if (!S.wins) return '<section class="card wins" id="winsBox">' + head + '<p class="muted" style="margin:0">Loading…</p></section>';
+  const people = [S.myId, ...[...S.names.keys()].filter(id => id !== S.myId)];
+  const color = id => C.SERIES[Math.max(0, people.indexOf(id)) % 3];
+  const who = id => (id === S.myId ? 'You' : S.names.get(id) || 'Someone');
+  const list = S.wins.slice(0, 25);
+  return '<section class="card wins" id="winsBox">' + head +
+    (list.length ? '<ol class="win-list">' + list.map(w =>
+      '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body"><b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b> ' + esc(winText(w)) +
+        '<small>' + esc(dayLabel(w.performed_on) === 'Today' ? 'Today' : w.performed_on === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</small></span>' +
+        (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the stream">✕</button>' : '') + '</li>').join('') + '</ol>'
+      : '<p class="muted" style="margin:0">PRs, clubs, goals and finished sessions from the crew show up here.</p>') + '</section>';
+}
+
+// ===========================================================================
+// Session recap: what today added up to, then Finish to put it in the stream.
+// ===========================================================================
+function sessionSummary() {
+  const sets = todaySets().filter(x => x.is_warmup !== true);
+  if (!sets.length) return null;
+  const lb = L.lbEquivalent(L.volumeByUnit(sets));
+  const times = sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite);
+  const minutes = times.length > 1 ? Math.round((Math.max(...times) - Math.min(...times)) / 60000) : 0;
+  const exIds = [...new Set(sets.map(x => x.exercise_id))];
+  const prs = S.bestRows.filter(r => r.first_lifted_on === today());
+  const byEx = new Map();
+  for (const r of prs) if (!byEx.has(r.exercise_id) || Number(r.heaviest) > Number(byEx.get(r.exercise_id).heaviest)) byEx.set(r.exercise_id, r);
+  const f = following();
+  const prev = S.days.find(x => x.performed_on < today() && x.sets > 0);
+  return { title: f ? f.template.name : nameFrom(exIds), lb, sets: sets.length, minutes: minutes >= 5 ? minutes : 0, exIds, prs: [...byEx.values()], prev };
+}
+function openRecap() {
+  const r = sessionSummary();
+  if (!r) return toast('Log a set first.');
+  LG.mode = 'recap';
+  const diff = r.prev ? Math.round((r.lb - lbOf(r.prev)) / Math.max(1, lbOf(r.prev)) * 100) : null;
+  const posted = (S.wins || []).some(w => w.created_by === S.myId && w.kind === 'session' && w.performed_on === today());
+  inner.innerHTML = '<div class="sheet-head"><div><small class="muted">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</small><h2 id="sheetTitle">' + esc(r.title) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      '<div class="recap-grid"><div><b>' + C.compact(r.lb) + '</b><small>lb moved</small></div><div><b>' + r.sets + '</b><small>set' + (r.sets === 1 ? '' : 's') + '</small></div>' +
+        '<div><b>' + r.exIds.length + '</b><small>lift' + (r.exIds.length === 1 ? '' : 's') + '</small></div><div><b>' + (r.minutes || '–') + '</b><small>minutes</small></div></div>' +
+      (diff != null ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' than your last session (' + esc(fmtDay(r.prev.performed_on, { month: 'short', day: 'numeric' })) + ').</p>' : '') +
+      (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">🏆 ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
+      '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
+      '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + (shareOn() ? (posted ? 'Update it in the stream' : 'Finish and add to the stream') : 'Finish') + '</button>' +
+      (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
+    '</div>';
+  openSheet();
+}
+async function recapClick(b) {
+  if (b.id !== 'recapFinish') return;
+  const r = sessionSummary();
+  b.disabled = true;
+  if (r && shareOn()) await postWin('session', r.title, { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length });
+  stopRest(); sheet.close(); render();
+  toast(shareOn() ? 'Session done. It’s in the stream.' : 'Session done. Go in peace.');
+}
+
+// ===========================================================================
+// Weekly recap: the first visit of a new week opens with last week in one card.
+// ===========================================================================
+function weeklyCard() {
+  const thisWeek = weekOf(today()), lastWeek = L.addDays(thisWeek, -7);
+  let seen = null; try { seen = localStorage.getItem('lift.weekSeen'); } catch (e) {}
+  if (seen === lastWeek) return '';
+  const [w0, w1] = weekly(3);
+  if (!w1.visits && !w0.visits) return '';
+  const prs = S.bestRows.filter(r => r.first_lifted_on >= lastWeek && r.first_lifted_on < thisWeek).length;
+  const diff = w0.lb ? Math.round((w1.lb - w0.lb) / w0.lb * 100) : null;
+  const live = (S.seasons || []).filter(x => inSeason(x) && phaseOf(x) === 'live');
+  return '<section class="card weekly"><div class="card-head"><div><div class="date">Last week · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
+      '<h3 class="card-title">' + (w1.visits ? w1.visits + ' gym day' + (w1.visits === 1 ? '' : 's') + ', ' + C.compact(w1.lb) + ' lb' : 'A rest week') + '</h3></div>' +
+      '<button class="iconbtn sm" data-week-seen="' + lastWeek + '" aria-label="Hide last week’s recap">✕</button></div>' +
+    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>PRs</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>week streak</small></div></div>' +
+    (diff != null && w1.visits ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' pounds than the week before.</p>' : '') +
+    (live.length ? '<p class="hint-line">' + live.map(x => { const g = goalsDone(x); return '<button class="linkbtn" data-season="' + esc(x.id) + '">' + esc(x.name) + '</button>: ' + g.done + ' of ' + g.of + ' goals done, ' + esc(seasonStatus(x)); }).join(' · ') + '</p>' : '') +
+  '</section>';
 }

@@ -434,6 +434,26 @@
   .wz-end { margin: 0; padding: 12px 2px; font-weight: 700; }
   .wz-foot { grid-template-columns: 1fr 1fr; }
   .quick-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 6px; }
+  /* ---------- wins, recap, weekly ---------- */
+  .finish-btn { margin-top: 14px; width: 100%; padding: 13px; font-size: 16px; }
+  .win-list { list-style: none; margin: 8px 0 0; padding: 0; }
+  .win-list li { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .win-list li:first-child { border-top: 0; }
+  .win-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--chip); display: grid; place-items: center; font-size: 17px; }
+  .win-body { font-size: 15px; min-width: 0; }
+  .win-body b { display: inline-flex; align-items: center; gap: 6px; }
+  .win-body b i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .win-body small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .wins .linkbtn { padding: 0; color: var(--muted); font-size: 13px; }
+  .recap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
+  .recap-grid div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 8px; text-align: center; }
+  .recap-grid b { display: block; font-family: var(--display); font-size: 30px; font-weight: 800; line-height: 1.05; }
+  .recap-grid small { color: var(--muted); font-size: 12px; font-weight: 600; }
+  .recap-prs { display: grid; gap: 6px; margin-top: 12px; }
+  .recap-prs .pr-flag { margin-top: 0; }
+  .weekly { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .weekly .date { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
+  .weekly .sb-stats { margin-top: 10px; }
 
   /* ---------- page title (desktop) and nav extras ---------- */
   .page-title, .nav-brand, .nav-log { display: none; }
@@ -467,7 +487,8 @@
     #view > .section-title, #view > h2.month { margin: 12px 4px -6px; }
     #view > .hero { grid-column: span 7; }
     #view > .hero:only-of-type, #view > .seg + .hero { grid-column: 1 / -1; }
-    #view > .hero + .plan-card, #view > .hero + .follow, #view > .hero + .card.empty { grid-column: span 5; }
+    #view > .hero + .plan-card, #view > .hero + .follow, #view > .hero + .card.empty, #view > .hero + .weekly { grid-column: span 5; }
+    #view > .wins { grid-column: 1 / -1; }
     #view > .plan-card + .plan-card { grid-column: span 5; }
     #view > .ex-card, #view > .routine, #view > .season, #view > .day { grid-column: span 6; }
     #view > .cal-card { grid-column: span 7; }
