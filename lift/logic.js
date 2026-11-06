@@ -144,6 +144,48 @@ export function e1rm(weight, reps) {
   return reps === 1 ? weight : weight * (1 + reps / 30);
 }
 
+// ---------- routines ----------
+// Best estimated 1RM for an exercise in one unit, from the heaviest-by-rep-count rows (lift_bests).
+export function bestE1rm(exerciseId, unit, bestRows) {
+  let top = 0;
+  for (const r of bestRows) if (r.exercise_id === exerciseId && r.unit === unit) top = Math.max(top, e1rm(Number(r.heaviest), r.reps) || 0);
+  return top || null;
+}
+const roundLoad = (w, unit) => { const step = unit === 'kg' ? 2.5 : 5; return Math.round(w / step) * step; };
+// What a routine item asks for today: { weight, reps, unit, pct?, basis? } or weight null if % needs a best first.
+export function itemTarget(item, bestRows) {
+  if (item.load_mode === 'percent_1rm') {
+    const basis = bestE1rm(item.exercise_id, item.unit, bestRows);
+    return { reps: item.reps, unit: item.unit, pct: Number(item.load_value), basis,
+      weight: basis ? roundLoad(basis * Number(item.load_value) / 100, item.unit) : null };
+  }
+  return { reps: item.reps, unit: item.unit, weight: Number(item.load_value) };
+}
+export function targetText(item, bestRows, unitShown = true) {
+  const t = itemTarget(item, bestRows);
+  const load = item.load_mode === 'percent_1rm'
+    ? ' @ ' + fmtNum(t.pct, 0) + '%' + (t.weight ? ' ≈ ' + fmtLoad(t.weight) + ' ' + t.unit : '')
+    : (t.weight > 0 ? ' @ ' + fmtLoad(t.weight) + (unitShown ? ' ' + t.unit : '') : '');
+  return item.sets + ' × ' + item.reps + load;
+}
+
+// ---------- seasons ----------
+// Totals for a date range from the per-day rows (lift_days); "bests set" counts rep-count bests
+// first reached inside the season that still stand.
+export function seasonMetrics(days, bestRows, from, to) {
+  const inside = days.filter(d => d.performed_on >= from && d.performed_on <= to && d.sets > 0);
+  const volume = { lb: 0, kg: 0 };
+  let sets = 0;
+  for (const d of inside) { volume.lb += Number(d.volume_lb); volume.kg += Number(d.volume_kg); sets += Number(d.sets); }
+  const bests = bestRows.filter(r => r.first_lifted_on >= from && r.first_lifted_on <= to).length;
+  return { volume, visits: inside.length, sets, bests };
+}
+export function goalProgress(goal, m) {
+  const have = goal.metric === 'visits' ? m.visits : (m.volume[goal.unit] || 0);
+  const need = Number(goal.target);
+  return { have, need, ratio: need > 0 ? Math.min(1, have / need) : 0, done: have >= need };
+}
+
 // ---------- plates: closest load at or under the target, fewest plates ----------
 export const PLATES = { lb: [45, 35, 25, 10, 5, 2.5], kg: [25, 20, 15, 10, 5, 2.5, 1.25] };
 export const BAR = { lb: 45, kg: 20 };

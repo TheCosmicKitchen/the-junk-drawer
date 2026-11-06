@@ -1,14 +1,14 @@
 # Supabase for the junk drawer
 
-A private, text-only database for **a weightlifting tracker** and **the family recipe box**, used by you and two friends, on Supabase's free plan.
+A private, text-only database for **a weightlifting tracker** and **the family recipe box**, used by you and one friend (hard limit: 2 accounts), on Supabase's free plan.
 
 ## Status (Nov 2026)
 
 - Project `junk-drawer` (`tjavdrqrhhvzdptlbbfv`, us-east-1) exists in the free **TheCosmicKitchen** organisation.
-- Applied: `01_lockdown`, `02_core` (plus the member cap of **3**, limits for the lift tables, and the bulk-import path), `03_lifting` (the Sisyfitness model), `04_recipes`.
+- Applied: `01_lockdown`, `02_core` (plus limits, limits for the lift tables, and the bulk-import path), `03_lifting` (the Sisyfitness model), `04_recipes`, then `07_two_accounts_and_shared_routines` (a trigger refuses any third account, and routines can be shared) and `08_routine_subscriptions`.
 - The Sisyfitness exercise catalogue (454 names, 159 aliases) was seeded straight into the database. It isn't in this repo, because it comes from a private one.
 - `05_checks.sql` comes back clean. Supabase's security advisor only flags things that are deliberate (private tables with no policies; the three functions members are meant to call).
-- **Still to do (you, in the dashboard):** steps 3 and 4 below (sign-ups off and the rest), then step 6 (create the three accounts and add them to `private.members`), then run `06_policy_tests.sql`.
+- **Still to do (you, in the dashboard):** steps 3 and 4 below (sign-ups off and the rest), then step 6 (create the two accounts and add them to `private.members`), then run `06_policy_tests.sql`.
 - The web app is in [`../lift/`](../lift/). Try it without an account at `lift/?demo`.
 
 ## The constraints this is built around

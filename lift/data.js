@@ -42,6 +42,7 @@ class SupaStore {
   }
   async verifyTotp(factorId, code) { must(await this.sb.auth.mfa.challengeAndVerify({ factorId, code })); }
   async me() { return must(await this.sb.rpc('me'))[0] || null; }
+  async updatePassword(password) { must(await this.sb.auth.updateUser({ password })); }
 
   // ----- reads -----
   async all(build) {   // PostgREST returns at most 1000 rows per request
@@ -85,6 +86,47 @@ class SupaStore {
   async addExercise(name) {
     return must(await this.sb.from('lift_exercises').insert({ name }).select('id,name,supports_bodyweight,deleted_at').single());
   }
+
+  // ----- people -----
+  async userId() { const s = await this.session(); return s && s.user.id; }
+  async memberNames() { return must(await this.sb.rpc('member_names')); }
+
+  // ----- routines (lift_templates) -----
+  // Returns your own routines plus everything the other person shares (the rules decide),
+  // their exercises, and which shared ones you've subscribed to.
+  async routines() {
+    const [templates, subs] = await Promise.all([
+      this.all(() => this.sb.from('lift_templates').select('id,name,notes,is_shared,created_by,updated_at').is('deleted_at', null).order('name')),
+      this.all(() => this.sb.from('lift_routine_subscriptions').select('id,template_id').is('deleted_at', null)),
+    ]);
+    const ids = templates.map(t => t.id);
+    const items = ids.length ? await this.all(() => this.sb.from('lift_template_items')
+      .select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').is('deleted_at', null)
+      .in('template_id', ids).order('position')) : [];
+    return { templates, items, subs };
+  }
+  async addRoutine(fields) { return must(await this.sb.from('lift_templates').insert(fields).select('id,name,notes,is_shared,created_by,updated_at').single()); }
+  async updateRoutine(id, patch) { return must(await this.sb.from('lift_templates').update(patch).eq('id', id).select('id,name,notes,is_shared,created_by,updated_at').single()); }
+  deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
+  async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').single()); }
+  async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').single()); }
+  removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
+  async subscribe(templateId) { return must(await this.sb.from('lift_routine_subscriptions').insert({ template_id: templateId }).select('id,template_id').single()); }
+  async unsubscribe(subId) { must(await this.sb.from('lift_routine_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
+
+  // ----- seasons -----
+  async seasons() {
+    const [seasons, goals] = await Promise.all([
+      this.all(() => this.sb.from('lift_seasons').select('id,name,starts_on,ends_on').is('deleted_at', null).order('starts_on', { ascending: false })),
+      this.all(() => this.sb.from('lift_season_goals').select('id,season_id,name,metric,target,unit').is('deleted_at', null)),
+    ]);
+    return { seasons, goals };
+  }
+  async addSeason(f) { return must(await this.sb.from('lift_seasons').insert(f).select('id,name,starts_on,ends_on').single()); }
+  async updateSeason(id, patch) { return must(await this.sb.from('lift_seasons').update(patch).eq('id', id).select('id,name,starts_on,ends_on').single()); }
+  deleteSeason(id) { return this.updateSeason(id, { deleted_at: new Date().toISOString() }); }
+  async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit').single()); }
+  async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +177,7 @@ class DemoStore {
   async signIn() {}
   async signOut() { location.search = ''; }
   async aal() { return { currentLevel: 'aal2', nextLevel: 'aal2' }; }
+  async updatePassword() {}
   async me() { return { display_name: 'Demo lifter', is_admin: true, mfa_required: false, mfa_ok: true }; }
   async catalog() { return { exercises: structuredClone(this.exercises), aliases: structuredClone(this.aliases) }; }
   async setsSince(date) { return this.live().filter(s => s.performed_on >= date).sort(byNewest).map(clone); }
@@ -177,6 +220,70 @@ class DemoStore {
     this.exercises.push(e);
     return clone(e);
   }
+
+  // ----- people: you, and a pretend friend who shares a routine -----
+  async userId() { return 'me'; }
+  async memberNames() { return [{ user_id: 'me', display_name: 'Demo lifter' }, { user_id: 'alex', display_name: 'Alex' }]; }
+
+  // ----- routines -----
+  seedRoutines() {
+    if (this.templates) return;
+    const now = new Date().toISOString();
+    this.templates = [
+      { id: 't-push', name: 'Push day', notes: 'Heavy bench, then accessories.', is_shared: false, created_by: 'me', updated_at: now },
+      { id: 't-legs', name: 'Alex’s leg day', notes: 'No skipping.', is_shared: true, created_by: 'alex', updated_at: now },
+      { id: 't-pull', name: 'Alex’s pull day', notes: '', is_shared: true, created_by: 'alex', updated_at: now },
+    ];
+    const it = (template_id, exercise_id, position, sets, reps, load_mode, load_value) =>
+      ({ id: uid(), template_id, exercise_id, position, sets, reps, load_mode, load_value, unit: 'lb' });
+    this.items = [
+      it('t-push', 'ex0', 1, 3, 5, 'percent_1rm', 80), it('t-push', 'ex4', 2, 3, 8, 'fixed', 95), it('t-push', 'ex6', 3, 3, 10, 'fixed', 0), it('t-push', 'ex11', 4, 3, 12, 'fixed', 50),
+      it('t-legs', 'ex1', 1, 4, 5, 'percent_1rm', 75), it('t-legs', 'ex15', 2, 3, 8, 'fixed', 155), it('t-legs', 'ex7', 3, 3, 10, 'fixed', 270),
+      it('t-pull', 'ex3', 1, 3, 10, 'fixed', 120), it('t-pull', 'ex10', 2, 3, 10, 'fixed', 110), it('t-pull', 'ex5', 3, 3, 10, 'fixed', 30),
+    ];
+    this.subs = [{ id: uid(), template_id: 't-legs' }];
+  }
+  async routines() {
+    this.seedRoutines();
+    const visible = this.templates.filter(t => !t.deleted_at && (t.created_by === 'me' || t.is_shared));
+    const ids = new Set(visible.map(t => t.id));
+    return {
+      templates: visible.map(clone),
+      items: this.items.filter(i => !i.deleted_at && ids.has(i.template_id)).sort((a, b) => a.position - b.position).map(clone),
+      subs: this.subs.filter(s => !s.deleted_at).map(clone),
+    };
+  }
+  async addRoutine(f) { this.seedRoutines(); const t = { id: uid(), notes: '', is_shared: false, created_by: 'me', updated_at: new Date().toISOString(), ...f }; this.templates.push(t); return clone(t); }
+  async updateRoutine(id, patch) {
+    const t = this.templates.find(x => x.id === id);
+    if (!t || t.created_by !== 'me') throw new Error('That isn’t allowed for your account.');
+    Object.assign(t, patch, { updated_at: new Date().toISOString() });
+    return clone(t);
+  }
+  deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
+  async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'fixed', load_value: 0, unit: 'lb', ...f }; this.items.push(i); return clone(i); }
+  async updateItem(id, patch) { const i = this.items.find(x => x.id === id); Object.assign(i, patch); return clone(i); }
+  removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
+  async subscribe(templateId) { const s = { id: uid(), template_id: templateId }; this.subs.push(s); return clone(s); }
+  async unsubscribe(subId) { const s = this.subs.find(x => x.id === subId); if (s) s.deleted_at = new Date().toISOString(); }
+
+  // ----- seasons -----
+  async seasons() {
+    if (!this.seasonRows) {
+      const t = localDate();
+      this.seasonRows = [{ id: 's-fall', name: 'Fall block', starts_on: addDays(t, -40), ends_on: addDays(t, 20) }];
+      this.goalRows = [
+        { id: uid(), season_id: 's-fall', name: 'Show up', metric: 'visits', target: 24, unit: null },
+        { id: uid(), season_id: 's-fall', name: 'Move a mountain', metric: 'volume', target: 400000, unit: 'lb' },
+      ];
+    }
+    return { seasons: this.seasonRows.filter(s => !s.deleted_at).map(clone), goals: this.goalRows.filter(g => !g.deleted_at).map(clone) };
+  }
+  async addSeason(f) { await this.seasons(); const s = { id: uid(), ...f }; this.seasonRows.push(s); return clone(s); }
+  async updateSeason(id, patch) { const s = this.seasonRows.find(x => x.id === id); Object.assign(s, patch); return clone(s); }
+  deleteSeason(id) { return this.updateSeason(id, { deleted_at: new Date().toISOString() }); }
+  async addGoal(f) { const g = { id: uid(), unit: null, ...f }; this.goalRows.push(g); return clone(g); }
+  async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }
 const clone = o => ({ ...o });
 const byNewest = (a, b) => (b.performed_on + b.logged_at).localeCompare(a.performed_on + a.logged_at);

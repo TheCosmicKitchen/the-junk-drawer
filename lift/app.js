@@ -168,9 +168,15 @@ async function afterSignIn() {
 }
 
 async function loadAll() {
-  const [cat, recent, days, bests] = await Promise.all([
+  const [cat, recent, days, bests, routines, seasons, names, myId] = await Promise.all([
     store.catalog(), store.setsSince(L.addDays(today(), -RECENT_DAYS)), store.days(), store.bests(),
+    store.routines(), store.seasons(), store.memberNames(), store.userId(),
   ]);
+  setRoutines(routines);
+  S.seasons = seasons.seasons;
+  S.goals = seasons.goals;
+  S.names = new Map(names.map(n => [n.user_id, n.display_name]));
+  S.myId = myId;
   S.exercises = cat.exercises;
   S.byId = new Map(cat.exercises.map(e => [e.id, e]));
   S.aliases = new Map();
@@ -199,7 +205,7 @@ function showApp() {
 // ===========================================================================
 let currentTab = null;
 function route() {
-  const tab = ['log', 'history', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
+  const tab = ['log', 'routines', 'history', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
   document.querySelectorAll('.tabs a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + tab ? 'page' : 'false'));
   if (tab !== currentTab) window.scrollTo(0, 0);
   currentTab = tab;
@@ -208,6 +214,7 @@ function route() {
 function render() {
   if (currentTab === 'history') renderHistory();
   else if (currentTab === 'progress') renderProgress();
+  else if (currentTab === 'routines') renderRoutines();
   else renderLog();
 }
 window.addEventListener('hashchange', route);
@@ -228,7 +235,8 @@ function renderLog() {
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
     '</div></section>' +
-    (groups.length ? groups.map(exCard).join('') : emptyToday());
+    followCard() +
+    (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday()));
 }
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
@@ -253,6 +261,19 @@ view.addEventListener('click', async e => {
   else if (b.dataset.day) toggleDay(b.dataset.day);
   else if (b.dataset.period) { S.period = b.dataset.period; renderProgress(); }
   else if (b.id === 'moreDays') { S.historyLimit += 40; renderHistory(); }
+  // routines
+  else if (b.dataset.followItem) { const it = S.itemsById.get(b.dataset.followItem); if (it) openEntry(it.exercise_id, null, it); }
+  else if (b.dataset.start) startFollowing(b.dataset.start);
+  else if (b.hasAttribute('data-stop-follow')) stopFollowing();
+  else if (b.dataset.design) openDesigner(b.dataset.design);
+  else if (b.hasAttribute('data-new-routine')) newRoutine(b);
+  else if (b.dataset.sub) subscribeTo(b.dataset.sub, b);
+  else if (b.dataset.unsub) unsubscribeFrom(b.dataset.unsub, b);
+  else if (b.dataset.copy) copyRoutine(b.dataset.copy, b);
+  // seasons
+  else if (b.dataset.season) { S.period = 'season:' + b.dataset.season; renderProgress(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (b.dataset.editSeason) openSeasonSheet(b.dataset.editSeason);
+  else if (b.hasAttribute('data-new-season')) openSeasonSheet(null);
 });
 $('fab').addEventListener('click', () => openLogger());
 const findSet = id => S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id);
@@ -345,16 +366,21 @@ async function restoreSet(s) {
 const sheet = $('sheet'), inner = $('sheetInner');
 const LG = { mode: 'pick', exId: null, editing: null };
 function openSheet() { if (!sheet.open) sheet.showModal(); }
-function closeSheet() { if (sheet.open) sheet.close(); render(); }
+function closeSheet() { flushSaves(); if (sheet.open) sheet.close(); render(); }
 sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 sheet.addEventListener('cancel', e => { e.preventDefault(); closeSheet(); });
 
 function openLogger(exId) {
-  LG.editing = null;
+  LG.editing = null; LG.item = null;
   if (exId) return openEntry(exId);
+  openPicker('What are you lifting?', null);
+}
+// The exercise search sheet. onPick = null logs a set; otherwise it hands the chosen id back.
+function openPicker(title, onPick) {
   LG.mode = 'pick';
+  LG.pickFor = onPick;
   inner.innerHTML =
-    '<div class="sheet-head"><h2 id="sheetTitle">What are you lifting?</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
     '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul></div>';
   openSheet();
@@ -385,10 +411,11 @@ function drawResults(q) {
   $('exResults').innerHTML = html;
 }
 
-async function openEntry(exId, editing) {
+async function openEntry(exId, editing, item) {
   LG.mode = editing ? 'edit' : 'entry';
   LG.exId = exId;
   LG.editing = editing || null;
+  LG.item = editing ? null : item || null;
   const base = editing || todaySets().filter(s => s.exercise_id === exId).pop();
   const unit = base ? base.unit : prefs.unit;
   const st = LG.st = {
@@ -400,10 +427,21 @@ async function openEntry(exId, editing) {
     note: editing ? editing.notes || '' : '', date: editing ? editing.performed_on : today(),
     showNote: !!(editing && editing.notes),
   };
+  // Following a routine: the step's target wins over last time.
+  const target = LG.item ? L.itemTarget(LG.item, S.bestRows) : null;
+  if (target) {
+    st.reps = target.reps; st.unit = target.unit;
+    if (target.weight != null && (target.weight > 0 || LG.item.load_mode === 'fixed')) st.weight = target.weight;
+  }
+  const planLine = LG.item
+    ? '<div class="pr-flag" style="background:var(--accent-soft);color:var(--ink);animation:none">📋 Plan: <b>' + esc(L.targetText(LG.item, S.bestRows)) + '</b>' +
+      (target.pct && !target.basis ? '<span class="muted" style="font-weight:500"> (log a set first to work out the %)</span>' : '') + '</div>'
+    : '';
   inner.innerHTML =
     '<div class="sheet-head"><div>' + (editing ? '' : '<button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-change>← Change exercise</button>') +
       '<h2 id="sheetTitle">' + esc(exName(exId)) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
+      planLine +
       '<div class="hint-line" id="lastLine">' + (editing ? 'Editing a set from ' + esc(fmtDay(editing.performed_on)) : 'Looking up last time…') + '</div>' +
       '<div class="field-label"><span>Weight' + '</span><span class="seg" role="group" aria-label="Unit">' +
         ['lb', 'kg'].map(u => '<button type="button" data-unit="' + u + '" aria-pressed="' + (u === st.unit) + '">' + u + '</button>').join('') + '</span></div>' +
@@ -435,7 +473,7 @@ async function openEntry(exId, editing) {
     if (LG.exId !== exId || LG.mode !== 'entry') return;
     LG.last = prev;
     const working = prev.find(s => s.is_warmup !== true) || prev[0];
-    if (working && !base) {
+    if (working && !base && !LG.item) {
       Object.assign(st, { weight: Number(working.weight), reps: working.reps, unit: working.unit, bw: !!working.count_bodyweight,
         bodyweight: working.bodyweight != null ? Number(working.bodyweight) : st.bodyweight });
       syncInputs();
@@ -485,18 +523,34 @@ function refreshLoggerList() {
   const box = $('doneToday');
   if (!box || LG.mode !== 'entry') return;
   const sets = todaySets().filter(s => s.exercise_id === LG.exId);
-  box.innerHTML = sets.length
+  // Following a routine: once this step's sets are in, offer the next step.
+  let next = '';
+  const f = following();
+  if (f && LG.item) {
+    const working = sets.filter(s => s.is_warmup !== true).length;
+    const nextItem = f.items.find(it => it.id !== LG.item.id && stepDone(it) < it.sets);
+    if (working >= LG.item.sets) next = nextItem
+      ? '<button class="btn primary block" style="margin-top:14px" data-next-item="' + esc(nextItem.id) + '">Next up: ' + esc(exName(nextItem.exercise_id)) + ' →</button>'
+      : '<button class="btn primary block" style="margin-top:14px" data-close>Routine done 🎉</button>';
+    else next = '<p class="hint-line">' + working + ' of ' + LG.item.sets + ' sets done for this step.</p>';
+  }
+  box.innerHTML = (sets.length
     ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + '">' + (s._pr ? '🏆 ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
-      '<button class="btn block" style="margin-top:14px" data-close>Done with ' + esc(exName(LG.exId)) + '</button>'
-    : '';
+      (next ? '' : '<button class="btn block" style="margin-top:14px" data-close>Done with ' + esc(exName(LG.exId)) + '</button>')
+    : '') + next;
 }
 inner.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.hasAttribute('data-close')) return closeSheet();
   if (b.hasAttribute('data-change')) return openLogger();
-  if (b.dataset.pick) return openEntry(b.dataset.pick);
+  if (b.dataset.pick) return LG.pickFor ? LG.pickFor(b.dataset.pick) : openEntry(b.dataset.pick);
+  if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
   if (b.dataset.add) return addExercise(b.dataset.add, b);
+  if (b.dataset.start) return startFollowing(b.dataset.start);
+  if (LG.mode === 'design') return designerClick(b);
+  if (LG.mode === 'season') return seasonClick(b);
+  if (LG.mode !== 'entry' && LG.mode !== 'edit') return;
   const s = st();
   if (b.dataset.unit && b.dataset.unit !== s.unit) {
     const factor = b.dataset.unit === 'kg' ? 1 / L.LB_PER_KG : L.LB_PER_KG;
@@ -563,8 +617,407 @@ async function addExercise(name, btn) {
     const e = await store.addExercise(name.trim().replace(/\s+/g, ' '));
     S.exercises.push(e); S.byId.set(e.id, e);
     toast('Added “' + e.name + '” to the catalogue');
-    openEntry(e.id);
+    if (LG.pickFor) LG.pickFor(e.id); else openEntry(e.id);
   } catch (x) { fail(x); btn.disabled = false; }
+}
+
+// ===========================================================================
+// Routines: yours, ones you subscribe to (they follow the owner's edits), and
+// ones the other person shares. Follow one and the Log tab becomes a checklist.
+// ===========================================================================
+function setRoutines(r) {
+  S.templates = r.templates; S.items = r.items; S.subs = r.subs;
+  S.itemsById = new Map(r.items.map(i => [i.id, i]));
+}
+const routineItems = id => S.items.filter(i => i.template_id === id).sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)));
+const isMine = t => t.created_by === S.myId;
+const ownerName = t => (isMine(t) ? 'you' : S.names.get(t.created_by) || 'a friend');
+const subFor = id => S.subs.find(s => s.template_id === id);
+
+// Which routine you're following today. Kept in this browser and forgotten tomorrow.
+function following() {
+  let f = null;
+  try { f = JSON.parse(localStorage.getItem('lift.follow') || 'null'); } catch (e) {}
+  if (!f || f.day !== today()) return null;
+  const t = S.templates.find(x => x.id === f.id);
+  return t ? { template: t, items: routineItems(t.id) } : null;
+}
+const stepDone = item => todaySets().filter(s => s.exercise_id === item.exercise_id && s.is_warmup !== true).length;
+function startFollowing(id) {
+  const t = S.templates.find(x => x.id === id);
+  if (!t) return;
+  try { localStorage.setItem('lift.follow', JSON.stringify({ id, day: today() })); } catch (e) {}
+  if (sheet.open) { flushSaves(); sheet.close(); }
+  if (location.hash !== '#log') location.hash = '#log'; else render();
+  toast('Following ' + t.name + '. Tap a step to start.');
+}
+function stopFollowing() { try { localStorage.removeItem('lift.follow'); } catch (e) {} render(); }
+function followCard() {
+  const f = following();
+  if (!f) return '';
+  const nextIdx = f.items.findIndex(it => stepDone(it) < it.sets);
+  const done = f.items.filter(it => stepDone(it) >= it.sets).length;
+  return '<section class="card follow"><div class="row"><div><div class="date">Following</div><h2>' + esc(f.template.name) + '</h2></div>' +
+      '<span class="muted num">' + done + ' / ' + f.items.length + '</span></div>' +
+    '<div class="bar" style="margin-top:10px"><i style="width:' + (f.items.length ? (done / f.items.length) * 100 : 0) + '%"></i></div>' +
+    '<ol class="steps">' + f.items.map((it, i) => {
+      const d = stepDone(it), full = d >= it.sets;
+      return '<li><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
+        '<span class="tick" aria-hidden="true">' + (full ? '✓' : i + 1) + '</span>' +
+        '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(L.targetText(it, S.bestRows)) + '</small></span>' +
+        '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button></li>';
+    }).join('') + '</ol>' +
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. The boulder rolls on.</div>' : '') +
+    '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
+}
+
+function renderRoutines() {
+  const mine = S.templates.filter(isMine);
+  const subscribed = S.templates.filter(t => !isMine(t) && subFor(t.id));
+  const shared = S.templates.filter(t => !isMine(t) && !subFor(t.id));
+  const f = following();
+  const start = t => routineItems(t.id).length
+    ? '<button class="btn primary" data-start="' + esc(t.id) + '">' + (f && f.template.id === t.id ? 'Following ✓' : 'Start') + '</button>' : '';
+  const card = (t, actions) => '<section class="card routine"><div class="row"><h3>' + esc(t.name) + '</h3>' +
+      (isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
+    (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
+    '<div class="chips">' + (routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') || '<span class="muted">No exercises yet</span>') + '</div>' +
+    '<div class="actions">' + actions + '</div></section>';
+  view.innerHTML =
+    '<div class="row" style="margin-top:8px"><h2 style="font-size:28px">Routines</h2><button class="btn primary" data-new-routine>+ New routine</button></div>' +
+    (mine.length ? '<h3 class="section-title">Yours</h3>' + mine.map(t => card(t, start(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
+      : '<section class="card empty"><h2>No routines yet.</h2><p class="muted">Make one, or subscribe to one the crew shares.</p></section>') +
+    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + subscribed.map(t => card(t, start(t) +
+      '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')).join('') : '') +
+    (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + shared.map(t => card(t,
+      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button><button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')).join('') : '');
+}
+async function newRoutine(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const t = await store.addRoutine({ name: 'New routine' });
+    S.templates.push(t);
+    openDesigner(t.id, true);
+  } catch (x) { fail(x); } finally { if (btn) btn.disabled = false; }
+}
+async function subscribeTo(id, btn) {
+  btn.disabled = true;
+  try { S.subs.push(await store.subscribe(id)); toast('Subscribed. It follows their edits.'); render(); }
+  catch (x) { fail(x); btn.disabled = false; }
+}
+async function unsubscribeFrom(subId, btn) {
+  btn.disabled = true;
+  try { await store.unsubscribe(subId); S.subs = S.subs.filter(s => s.id !== subId); toast('Unsubscribed'); render(); }
+  catch (x) { fail(x); btn.disabled = false; }
+}
+async function copyRoutine(id, btn) {
+  btn.disabled = true;
+  try {
+    const src = S.templates.find(t => t.id === id);
+    const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null });
+    S.templates.push(t);
+    for (const it of routineItems(id)) {
+      const n = await store.addItem({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
+        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit });
+      S.items.push(n); S.itemsById.set(n.id, n);
+    }
+    toast('Copied. This one’s yours to change.');
+    openDesigner(t.id);
+  } catch (x) { fail(x); btn.disabled = false; }
+}
+
+// ----- the designer: saves as you go -----
+const D = { id: null, timers: new Map(), jobs: new Map(), pending: new Map() };
+function debounceSave(key, job) {
+  clearTimeout(D.timers.get(key));
+  D.jobs.set(key, job);
+  D.timers.set(key, setTimeout(() => runSave(key), 500));
+}
+async function runSave(key) {
+  const job = D.jobs.get(key);
+  D.jobs.delete(key); D.timers.delete(key);
+  if (job) { try { await job(); } catch (x) { fail(x); } }
+}
+function flushSaves() { for (const key of [...D.jobs.keys()]) { clearTimeout(D.timers.get(key)); runSave(key); } }
+async function saveRoutine(patch) {
+  const t = S.templates.find(x => x.id === D.id);
+  Object.assign(t, patch);
+  await store.updateRoutine(t.id, patch);
+}
+function queueItem(id, patch) {
+  Object.assign(S.itemsById.get(id), patch);
+  D.pending.set(id, { ...(D.pending.get(id) || {}), ...patch });
+  debounceSave('item:' + id, async () => {
+    const p = D.pending.get(id);
+    D.pending.delete(id);
+    if (p) await store.updateItem(id, p);
+  });
+}
+function openDesigner(id, fresh) {
+  const t = S.templates.find(x => x.id === id);
+  if (!t || !isMine(t)) return;
+  D.id = id; LG.mode = 'design'; LG.pickFor = null;
+  inner.innerHTML =
+    '<div class="sheet-head"><input class="title-input" id="rtName" maxlength="60" value="' + esc(t.name) + '" aria-label="Routine name"><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      '<input class="plain-input" id="rtNotes" maxlength="500" placeholder="Notes (optional)" value="' + esc(t.notes || '') + '" aria-label="Notes">' +
+      '<div class="toggles"><button type="button" class="toggle" id="rtShare" aria-pressed="' + !!t.is_shared + '">' + (t.is_shared ? '✓ Shared with the crew' : 'Share with the crew') + '</button></div>' +
+      '<ol class="items" id="rtItems"></ol>' +
+      '<button class="btn block" id="rtAdd">+ Add exercise</button>' +
+      '<div class="actions" style="margin-top:16px"><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start this routine</button><button class="btn ghost" id="rtDelete" style="color:var(--accent)">Delete routine</button></div>' +
+      '<p class="hint-line" id="rtHint"></p>' +
+    '</div>';
+  openSheet();
+  drawItems();
+  const name = $('rtName'), notes = $('rtNotes');
+  name.addEventListener('input', () => debounceSave('name', () => saveRoutine({ name: name.value.trim() || 'Untitled routine' })));
+  notes.addEventListener('input', () => debounceSave('notes', () => saveRoutine({ notes: notes.value.trim() || null })));
+  if (fresh) setTimeout(() => { name.focus(); name.select(); }, 60);
+}
+function drawItems() {
+  const list = routineItems(D.id), t = S.templates.find(x => x.id === D.id);
+  $('rtItems').innerHTML = list.length ? list.map(itemRow).join('') : '<li class="muted" style="padding:14px 4px">Add the exercises you do, in order. Drag ⠿ to reorder.</li>';
+  $('rtStart').disabled = !list.length;
+  $('rtHint').textContent = 'Changes save as you go.' + (t && t.is_shared ? ' Anyone subscribed sees them straight away.' : '');
+}
+function itemRow(it) {
+  const pct = it.load_mode === 'percent_1rm';
+  const tgt = L.itemTarget(it, S.bestRows);
+  return '<li class="item" data-item="' + esc(it.id) + '">' +
+    '<div class="row"><button type="button" class="handle" data-handle aria-label="Move ' + esc(exName(it.exercise_id)) + ' (drag, or use the arrow keys)">⠿</button>' +
+      '<b class="grow">' + esc(exName(it.exercise_id)) + '</b><button type="button" class="iconbtn sm" data-remove-item="' + esc(it.id) + '" aria-label="Remove ' + esc(exName(it.exercise_id)) + '">✕</button></div>' +
+    '<div class="mini">' + miniStep('Sets', 'sets', it.sets) + miniStep('Reps', 'reps', it.reps) +
+      miniStep(pct ? '% of 1RM' : 'Load (' + it.unit + ')', 'load_value', L.fmtLoad(it.load_value)) +
+      '<span class="seg mini-seg" role="group" aria-label="Load as">' + [['lb', 'lb'], ['kg', 'kg'], ['pct', '%1RM']].map(([k, l]) =>
+        '<button type="button" data-loadmode="' + k + '" aria-pressed="' + (k === 'pct' ? pct : !pct && it.unit === k) + '">' + l + '</button>').join('') + '</span>' +
+    '</div>' +
+    (pct ? '<p class="hint-line">' + (tgt.weight ? '≈ ' + esc(L.fmtLoad(tgt.weight)) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit) + '</p>' : '') +
+  '</li>';
+}
+function miniStep(label, field, value) {
+  return '<label class="ms"><small>' + esc(label) + '</small><span>' +
+    '<button type="button" data-step-field="' + field + '" data-d="-1" aria-label="Less">−</button>' +
+    '<input data-field="' + field + '" inputmode="decimal" value="' + esc(value) + '" aria-label="' + esc(label) + '">' +
+    '<button type="button" data-step-field="' + field + '" data-d="1" aria-label="More">+</button></span></label>';
+}
+const ITEM_BOUNDS = { sets: [1, 20], reps: [1, 100] };
+function clampItem(it, field, v) {
+  if (field === 'load_value') return it.load_mode === 'percent_1rm' ? Math.min(150, Math.max(1, v)) : Math.min(2000, Math.max(0, v));
+  const [lo, hi] = ITEM_BOUNDS[field];
+  return Math.min(hi, Math.max(lo, Math.round(v)));
+}
+function redrawItem(id) {
+  const li = inner.querySelector('.item[data-item="' + id + '"]');
+  if (li) li.outerHTML = itemRow(S.itemsById.get(id));
+}
+async function addItemTo(tid, exId) {
+  try {
+    const list = routineItems(tid);
+    const recent = S.recent.find(s => s.exercise_id === exId && s.is_warmup !== true);
+    const it = await store.addItem({
+      template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
+      sets: 3, reps: recent ? Math.min(100, recent.reps) : 8, load_mode: 'fixed',
+      load_value: recent ? Number(recent.weight) : 0, unit: recent ? recent.unit : prefs.unit,
+    });
+    S.items.push(it); S.itemsById.set(it.id, it);
+  } catch (x) { fail(x); }
+  openDesigner(tid);
+}
+function persistOrder() {
+  [...$('rtItems').querySelectorAll('.item')].forEach((li, i) => {
+    const it = S.itemsById.get(li.dataset.item);
+    if (it && it.position !== i + 1) queueItem(it.id, { position: i + 1 });
+  });
+}
+// Drag to reorder: works with mouse and touch (the handle has touch-action: none).
+inner.addEventListener('pointerdown', e => {
+  const h = e.target.closest('[data-handle]');
+  if (!h) return;
+  e.preventDefault();
+  const row = h.closest('.item'), list = row.parentNode;
+  row.classList.add('dragging');
+  const move = ev => {
+    const after = [...list.querySelectorAll('.item:not(.dragging)')].find(o => { const r = o.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+    if (after) { if (after !== row.nextElementSibling) list.insertBefore(row, after); } else if (row !== list.lastElementChild) list.appendChild(row);
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
+    row.classList.remove('dragging'); persistOrder(); vibrate(8);
+  };
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+});
+inner.addEventListener('keydown', e => {
+  const h = e.target.closest('[data-handle]');
+  if (!h || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault();
+  const row = h.closest('.item'), sib = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+  if (!sib) return;
+  if (e.key === 'ArrowUp') row.parentNode.insertBefore(row, sib); else row.parentNode.insertBefore(sib, row);
+  h.focus(); persistOrder();
+});
+inner.addEventListener('input', e => {
+  const inp = e.target.closest('[data-field]');
+  if (!inp || LG.mode !== 'design') return;
+  const id = inp.closest('.item').dataset.item, it = S.itemsById.get(id), v = L.parseLoad(inp.value);
+  if (v == null) return;
+  queueItem(id, { [inp.dataset.field]: clampItem(it, inp.dataset.field, v) });
+});
+async function designerClick(b) {
+  if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, exId => addItemTo(D.id, exId)); }
+  if (b.id === 'rtShare') {
+    const t = S.templates.find(x => x.id === D.id);
+    try { await saveRoutine({ is_shared: !t.is_shared }); } catch (x) { return fail(x); }
+    b.setAttribute('aria-pressed', t.is_shared); b.textContent = t.is_shared ? '✓ Shared with the crew' : 'Share with the crew';
+    drawItems(); toast(t.is_shared ? 'Shared. The crew can follow or subscribe to it.' : 'Not shared any more.');
+    return;
+  }
+  if (b.id === 'rtDelete') {
+    const t = S.templates.find(x => x.id === D.id);
+    if (!confirm('Delete “' + t.name + '”?' + (t.is_shared ? ' Anyone subscribed loses it too.' : ''))) return;
+    try { await store.deleteRoutine(t.id); } catch (x) { return fail(x); }
+    S.templates = S.templates.filter(x => x.id !== t.id);
+    const f = following(); if (f && f.template.id === t.id) stopFollowing();
+    sheet.close(); render(); toast('Routine deleted');
+    return;
+  }
+  const li = b.closest('.item');
+  if (!li) return;
+  const id = li.dataset.item, it = S.itemsById.get(id);
+  if (b.dataset.removeItem) {
+    try { await store.removeItem(id); } catch (x) { return fail(x); }
+    S.items = S.items.filter(x => x.id !== id);
+    drawItems();
+    toast('Removed ' + exName(it.exercise_id), { label: 'Undo', run: async () => {
+      try { const back = await store.updateItem(id, { deleted_at: null }); S.items.push(back); S.itemsById.set(id, back); drawItems(); } catch (x) { fail(x); }
+    } });
+    return;
+  }
+  if (b.dataset.stepField) {
+    const f = b.dataset.stepField, d = Number(b.dataset.d);
+    const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' ? 5 : it.unit === 'kg' ? 2.5 : 5) : 1;
+    queueItem(id, { [f]: clampItem(it, f, Number(it[f]) + d * step) });
+    redrawItem(id); vibrate(5);
+    return;
+  }
+  if (b.dataset.loadmode) {
+    const k = b.dataset.loadmode, wasPct = it.load_mode === 'percent_1rm';
+    if (k === 'pct' && !wasPct) {
+      const basis = L.bestE1rm(it.exercise_id, it.unit, S.bestRows);
+      queueItem(id, { load_mode: 'percent_1rm', load_value: basis && it.load_value > 0 ? clampItem({ load_mode: 'percent_1rm' }, 'load_value', Math.round(it.load_value / basis * 20) * 5) : 75 });
+    } else if (k !== 'pct') {
+      const weight = wasPct ? (L.itemTarget(it, S.bestRows).weight || 0) : Number(it.load_value);
+      const conv = !wasPct && it.unit !== k ? Math.round(weight * (k === 'kg' ? 1 / L.LB_PER_KG : L.LB_PER_KG) * 2) / 2 : weight;
+      queueItem(id, { load_mode: 'fixed', unit: k, load_value: Math.min(2000, conv) });
+    }
+    redrawItem(id);
+  }
+}
+
+// ===========================================================================
+// Seasons: your own date ranges with visit and volume goals
+// ===========================================================================
+const seasonById = id => (S.seasons || []).find(s => s.id === id);
+const seasonM = s => L.seasonMetrics(S.days, S.bestRows, s.starts_on, s.ends_on);
+function seasonStatus(s) {
+  const t = today();
+  if (t < s.starts_on) return 'starts ' + fmtDay(s.starts_on, { month: 'short', day: 'numeric' });
+  if (t > s.ends_on) return 'ended ' + fmtDay(s.ends_on, { month: 'short', day: 'numeric' });
+  const left = L.daysBetween(t, s.ends_on);
+  return left === 0 ? 'last day' : left + ' day' + (left === 1 ? '' : 's') + ' left';
+}
+function goalLine(g, m) {
+  const p = L.goalProgress(g, m);
+  const label = g.metric === 'visits' ? L.fmtNum(p.have, 0) + ' / ' + L.fmtNum(p.need, 0) + ' visits' : L.fmtBig(p.have) + ' / ' + L.fmtBig(p.need) + ' ' + g.unit;
+  return '<div class="goal"><div class="row"><span>' + (p.done ? '✅ ' : '') + esc(g.name) + '</span><span class="muted num">' + esc(label) + '</span></div>' +
+    '<div class="bar"><i style="width:' + (p.ratio * 100).toFixed(1) + '%"></i></div></div>';
+}
+function seasonsSection() {
+  const list = S.seasons || [];
+  return '<div class="row" style="margin-top:22px"><h3 class="section-title" style="margin:0">Seasons</h3><button class="btn" data-new-season>+ New season</button></div>' +
+    (list.length ? list.map(s => {
+      const m = seasonM(s), goals = S.goals.filter(g => g.season_id === s.id);
+      return '<section class="card season' + (S.period === 'season:' + s.id ? ' on' : '') + '"><div class="row"><div><h3>' + esc(s.name) + '</h3>' +
+        '<span class="muted" style="font-size:14px">' + esc(fmtDay(s.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(s.ends_on, { month: 'short', day: 'numeric', year: 'numeric' })) + ' · ' + esc(seasonStatus(s)) + '</span></div></div>' +
+        '<p class="hint-line">' + m.visits + ' visits · ' + esc(volText(m.volume)) + (m.volume.kg ? '' : ' lb') + ' moved · ' + m.bests + ' bests set</p>' +
+        goals.map(g => goalLine(g, m)).join('') +
+        '<div class="actions"><button class="btn primary" data-season="' + esc(s.id) + '">View season</button><button class="btn" data-edit-season="' + esc(s.id) + '">Edit</button></div></section>';
+    }).join('') : '<section class="card"><p class="muted" style="margin:0">A season is any stretch you choose: a training block, a month, a year. Give it goals and watch them fill.</p></section>');
+}
+const SG = { id: null, pending: [] };
+function openSeasonSheet(id) {
+  LG.mode = 'season';
+  SG.id = id; SG.pending = [];
+  const s = id ? seasonById(id) : { name: '', starts_on: today(), ends_on: L.addDays(today(), 55) };
+  inner.innerHTML =
+    '<div class="sheet-head"><h2 id="sheetTitle">' + (id ? 'Edit season' : 'New season') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      '<div class="field-label"><span>Name</span></div><input class="plain-input" id="snName" maxlength="60" value="' + esc(s.name) + '" placeholder="e.g. Winter bulk">' +
+      '<div class="grid2"><div><div class="field-label"><span>Starts</span></div><input class="plain-input" id="snStart" type="date" value="' + esc(s.starts_on) + '"></div>' +
+        '<div><div class="field-label"><span>Ends</span></div><input class="plain-input" id="snEnd" type="date" value="' + esc(s.ends_on) + '"></div></div>' +
+      '<div class="field-label"><span>Goals</span><small>optional</small></div><div id="snGoals"></div>' +
+      '<div class="goal-add"><select class="plain-input" id="gMetric" aria-label="Goal type"><option value="visits">Visits</option><option value="volume:lb">Volume (lb)</option><option value="volume:kg">Volume (kg)</option></select>' +
+        '<input class="plain-input" id="gTarget" inputmode="numeric" placeholder="Target" aria-label="Target"><button class="btn" id="gAdd" type="button">Add</button></div>' +
+      '<p class="warn" id="snErr" role="alert"></p>' +
+      '<button class="btn primary block" id="snSave">' + (id ? 'Save season' : 'Start season') + '</button>' +
+      (id ? '<button class="btn block" style="margin-top:10px;color:var(--accent)" id="snDelete">Delete season</button>' : '') +
+    '</div>';
+  openSheet();
+  drawGoals();
+  if (!id) setTimeout(() => $('snName').focus(), 60);
+}
+function drawGoals() {
+  const goals = SG.id ? S.goals.filter(g => g.season_id === SG.id) : SG.pending;
+  $('snGoals').innerHTML = goals.length ? goals.map((g, i) => '<div class="row goal-row"><span>' + esc(g.name) + '</span>' +
+      '<button class="iconbtn sm" data-goal-del="' + esc(g.id || 'p' + i) + '" aria-label="Remove goal">✕</button></div>').join('')
+    : '<p class="hint-line" style="margin:0 2px 8px">e.g. 24 visits, or 400,000 lb moved.</p>';
+}
+async function seasonClick(b) {
+  if (b.id === 'gAdd') {
+    const [metric, unit] = $('gMetric').value.split(':');
+    const target = L.parseLoad($('gTarget').value);
+    if (!(target > 0) || (metric === 'visits' && target % 1)) { $('snErr').textContent = metric === 'visits' ? 'Visits must be a whole number above zero.' : 'Enter a target above zero.'; return; }
+    const g = { metric, unit: unit || null, target, name: metric === 'visits' ? 'Show up ' + target + ' times' : 'Move ' + L.fmtBig(target) + ' ' + unit };
+    $('snErr').textContent = '';
+    if (SG.id) { try { S.goals.push(await store.addGoal({ ...g, season_id: SG.id })); } catch (x) { return fail(x); } }
+    else SG.pending.push(g);
+    $('gTarget').value = ''; drawGoals();
+    return;
+  }
+  if (b.dataset.goalDel) {
+    const key = b.dataset.goalDel;
+    if (SG.id) { try { await store.deleteGoal(key); } catch (x) { return fail(x); } S.goals = S.goals.filter(g => g.id !== key); }
+    else SG.pending.splice(Number(key.slice(1)), 1);
+    drawGoals();
+    return;
+  }
+  if (b.id === 'snSave') {
+    const name = $('snName').value.trim(), starts_on = $('snStart').value, ends_on = $('snEnd').value;
+    if (!name) { $('snErr').textContent = 'Give your season a name.'; return; }
+    if (!starts_on || !ends_on || ends_on < starts_on) { $('snErr').textContent = 'The end date must be on or after the start date.'; return; }
+    b.disabled = true;
+    try {
+      let s;
+      if (SG.id) { s = await store.updateSeason(SG.id, { name, starts_on, ends_on }); S.seasons = S.seasons.map(x => (x.id === s.id ? s : x)); }
+      else {
+        s = await store.addSeason({ name, starts_on, ends_on });
+        S.seasons.unshift(s);
+        for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
+      }
+      S.period = 'season:' + s.id;
+      sheet.close();
+      if (location.hash !== '#progress') location.hash = '#progress'; else render();
+      toast(SG.id ? 'Season saved' : 'Season started. Go get it.');
+    } catch (x) { $('snErr').textContent = x.message; b.disabled = false; }
+    return;
+  }
+  if (b.id === 'snDelete') {
+    const s = seasonById(SG.id);
+    if (!confirm('Delete the season “' + s.name + '”? Your sets aren’t touched.')) return;
+    try { await store.deleteSeason(s.id); } catch (x) { return fail(x); }
+    S.seasons = S.seasons.filter(x => x.id !== s.id);
+    if (S.period === 'season:' + s.id) S.period = 'all';
+    sheet.close(); render(); toast('Season deleted');
+  }
 }
 
 // ===========================================================================
@@ -609,19 +1062,24 @@ async function toggleDay(day) {
 // Progress
 // ===========================================================================
 function renderProgress() {
+  const season = S.period.startsWith('season:') ? seasonById(S.period.slice(7)) : null;
+  if (S.period.startsWith('season:') && !season) S.period = 'all';
   const from = S.period === 'year' ? L.addDays(today(), -364) : S.period === '30' ? L.addDays(today(), -29) : null;
-  const t = totals(from);
+  const t = season ? seasonM(season) : totals(from);
   const lbEq = L.lbEquivalent(t.volume);
   const ms = L.milestoneProgress(lbEq);
   const cmp = L.compareTo(lbEq);
-  const ach = L.achievements({ volume: t.volume, visits: t.visits, prs: S.bests.size });
+  const ach = L.achievements({ volume: t.volume, visits: t.visits, prs: season ? t.bests : S.bests.size });
   const earnedClubs = ach.filter(a => a.milestone && a.earned);
   const shown = ach.filter(a => !a.milestone).concat(earnedClubs.slice(-5)).concat(ach.filter(a => a.milestone && !a.earned).slice(0, 1));
   const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : '🪨') : a.id === 'first_pr' ? '🏆' : '⭐';
   view.innerHTML =
     '<div class="seg" role="group" aria-label="Period" style="margin-top:6px">' +
-      [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
-    '<section class="card hero">' + hillSVG(ms.ratio, 'Progress to the ' + (ms.next ? ms.next.title : 'top')) +
+      [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') +
+      (season ? '<button data-period="' + esc(S.period) + '" aria-pressed="true">' + esc(season.name) + '</button>' : '') + '</div>' +
+    '<section class="card hero">' +
+      (season ? '<div class="date">' + esc(season.name) + ' · ' + esc(seasonStatus(season)) + '</div>' : '') +
+      hillSVG(ms.ratio, 'Progress to the ' + (ms.next ? ms.next.title : 'top')) +
       '<h1 class="num">' + esc(L.fmtBig(Math.round(lbEq))) + ' lb</h1>' +
       '<p class="muted" style="margin:4px 0 12px">' + (lbEq > 0 ? 'moved' + (t.volume.kg ? ' (kg counted as lb)' : '') + ', about ' + esc(L.fmtNum(cmp.times, cmp.times < 10 ? 1 : 0)) + ' × a ' + esc(cmp.thing) : 'Nothing moved yet. The hill awaits.') + '</p>' +
       (ms.next ? '<div class="row" style="font-size:14px;font-weight:600"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
@@ -633,10 +1091,12 @@ function renderProgress() {
         '<div class="stat"><b>' + ms.count + '</b><small>club' + (ms.count === 1 ? '' : 's') + ' joined</small></div>' +
       '</div>' +
       (t.volume.lb && t.volume.kg ? '<p class="hint-line">' + esc(L.fmtBig(t.volume.lb)) + ' lb + ' + esc(L.fmtBig(t.volume.kg)) + ' kg, kept separate.</p>' : '') +
+      (season ? S.goals.filter(g => g.season_id === season.id).map(g => goalLine(g, t)).join('') : '') +
     '</section>' +
     '<h3 class="section-title">Badges</h3><div class="badges">' +
       shown.map(a => '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) +
         (a.earned ? '' : '<br><span class="muted" style="font-weight:500">' + esc(L.fmtNum(Math.min(a.have, a.need), 0)) + ' / ' + esc(L.fmtNum(a.need, 0)) + '</span>') + '</div>').join('') + '</div>' +
+    seasonsSection() +
     '<h3 class="section-title">Personal bests</h3>' +
     '<input class="search" id="bestSearch" type="search" placeholder="Find an exercise" style="margin-top:10px" value="' + esc(S.bestQuery) + '" aria-label="Find an exercise">' +
     '<section class="card" id="bestsBox"></section>';
@@ -678,10 +1138,23 @@ $('menuBtn').addEventListener('click', () => {
       '<div class="field-label"><span>Default unit</span><span class="seg" role="group" aria-label="Default unit">' +
         ['lb', 'kg'].map(u => '<button type="button" data-pref-unit="' + u + '" aria-pressed="' + (prefs.unit === u) + '">' + u + '</button>').join('') + '</span></div>' +
       '<p class="hint-line">Each set keeps its own unit, and lb and kg totals are never mixed. This is just where new exercises start.</p>' +
-      (store.demo ? '<p class="hint-line"><b>This is the demo.</b> Nothing is saved; reload to start over.</p>' : '') +
+      (store.demo ? '<p class="hint-line"><b>This is the demo.</b> Nothing is saved; reload to start over.</p>'
+        : '<div class="field-label" style="margin-top:22px"><span>Change password</span><small>12+ characters</small></div>' +
+          '<form id="pwForm"><input class="plain-input" id="newPw" type="password" autocomplete="new-password" minlength="12" required aria-label="New password">' +
+          '<button class="btn block" style="margin-top:8px" type="submit">Change password</button><p class="warn" id="pwMsg" role="alert"></p></form>') +
       '<button class="btn block" style="margin-top:18px" id="signOutBtn">' + (store.demo ? 'Leave the demo' : 'Sign out') + '</button>' +
     '</div>';
   openSheet();
+  const form = $('pwForm');
+  if (form) form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const pw = $('newPw').value, msg = $('pwMsg'), btn = form.querySelector('button');
+    if (pw.length < 12) { msg.textContent = 'Use at least 12 characters.'; return; }
+    btn.disabled = true; msg.textContent = '';
+    try { await store.updatePassword(pw); $('newPw').value = ''; msg.style.color = 'var(--good)'; msg.textContent = 'Password changed.'; }
+    catch (x) { msg.style.color = ''; msg.textContent = x.message; }
+    btn.disabled = false;
+  });
 });
 inner.addEventListener('click', async e => {
   const b = e.target.closest('button');
