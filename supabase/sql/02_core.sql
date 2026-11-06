@@ -26,6 +26,25 @@ create table if not exists private.members (
 alter table private.members enable row level security;  -- and no policies: app roles can't touch it at all
 revoke all on private.members from public, anon, authenticated;
 
+-- Hard cap on how many people can be active at once: you and two friends.
+-- Raise the number here if the group grows.
+create or replace function private.members_cap()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if (select count(*) from private.members where active) > 3 then
+    raise exception 'The group is capped at 3 active members. Change private.members_cap() to allow more.';
+  end if;
+  return null;
+end;
+$$;
+revoke all on function private.members_cap() from public, anon, authenticated;
+drop trigger if exists members_cap on private.members;
+create constraint trigger members_cap after insert or update on private.members
+  for each row execute function private.members_cap();
+
 -- Is the person making this request an active member (who has passed MFA, if
 -- their row requires it)? SECURITY DEFINER so it can read the private table;
 -- search_path = '' so nobody can trick it with look-alike functions.
@@ -85,15 +104,23 @@ alter table private.limits enable row level security;
 revoke all on private.limits from public, anon, authenticated;
 
 insert into private.limits (table_name, per_minute, per_day, max_live_rows) values
-  ('lift_exercises',   30,  200,    500),
-  ('lift_workouts',    30,  100,  10000),
-  ('lift_sets',       120, 2000, 100000),
-  ('recipe_families',  10,   50,     50),
-  ('recipes',          20,  200,   2000)
+  ('lift_exercises',          30,  200,   1000),   -- admin only
+  ('lift_exercise_aliases',   30,  200,   2000),   -- admin only
+  ('lift_import_batches',      5,    6,    500),   -- 3 imports a day, plus room to undo them
+  ('lift_sets',              120, 2000, 100000),   -- imports have their own allowance, see 03
+  ('lift_seasons',            10,   50,    200),
+  ('lift_season_goals',       20,  100,    500),
+  ('lift_templates',          10,   50,    100),
+  ('lift_template_items',     60,  300,   2000),
+  ('lift_challenges',          5,   20,    200),
+  ('lift_challenge_entries',  10,   50,    500),
+  ('recipe_families',         10,   50,     50),
+  ('recipes',                 20,  200,   2000)
 on conflict (table_name) do update
   set per_minute = excluded.per_minute,
       per_day = excluded.per_day,
       max_live_rows = excluded.max_live_rows;
+delete from private.limits where table_name = 'lift_workouts';   -- from the first draft
 
 -- Recent writes per person, for the rate limits. Pruned as it goes, so it stays tiny.
 create table if not exists private.write_events (
@@ -127,6 +154,12 @@ begin
   -- The row rules refuse non-members too; this just stops them earlier, before any counting.
   if not private.is_member() then
     raise exception 'Not allowed.';
+  end if;
+
+  -- Rows written by import_sets()/undo_import() in 03: that call has its own
+  -- allowance (20,000 sets a batch, 3 batches a day), checked there.
+  if tg_table_name = 'lift_sets' and current_setting('app.bulk_import', true) = 'on' then
+    return coalesce(new, old);
   end if;
 
   select * into lim from private.limits where table_name = tg_table_name;
@@ -224,6 +257,10 @@ as $$
 declare
   rid text;
 begin
+  -- A bulk import or undo is logged once for the whole batch, not per set.
+  if current_setting('app.bulk_import', true) = 'on' then
+    return null;
+  end if;
   if tg_op = 'DELETE' then
     rid := (to_jsonb(old) ->> 'id');
     insert into private.audit_log (user_id, table_name, row_id, action, old_row, new_row)
