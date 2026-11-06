@@ -20,6 +20,7 @@
     --accent: #2a5fd3; --accent-ink: #ffffff; --accent-soft: #e1eafb; --good: #1d8754; --gold: #a97a06; --gold-soft: #f7eed2;
     --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 10px 28px rgba(16, 24, 40, .08); --radius: 18px;
     --lift: 0 1px 2px rgba(16, 24, 40, .04);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #2a78d6; --seq-5: #184f95; --grid: #e7ebf0; --axis: #c7cfd8;
     --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
     --body: Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
@@ -27,13 +28,13 @@
     :root:not([data-theme="light"]) {
       --bg: #0e1217; --card: #161b22; --ink: #e8edf3; --muted: #95a0ad; --line: #262d37; --chip: #1e252f;
       --accent: #6e9cff; --accent-ink: #0a1222; --accent-soft: #19253d; --good: #5cd197; --gold: #f0c04a; --gold-soft: #31280f;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45); --lift: none;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45); --lift: none; --s1: #3987e5; --s2: #d95926; --s3: #199e70; --seq-2: #184f95; --seq-3: #256abf; --seq-4: #3987e5; --seq-5: #86b6ef; --grid: #222a33; --axis: #36404c;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0e1217; --card: #161b22; --ink: #e8edf3; --muted: #95a0ad; --line: #262d37; --chip: #1e252f;
     --accent: #6e9cff; --accent-ink: #0a1222; --accent-soft: #19253d; --good: #5cd197; --gold: #f0c04a; --gold-soft: #31280f;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45); --lift: none;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45); --lift: none; --s1: #3987e5; --s2: #d95926; --s3: #199e70; --seq-2: #184f95; --seq-3: #256abf; --seq-4: #3987e5; --seq-5: #86b6ef; --grid: #222a33; --axis: #36404c;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); }
@@ -56,8 +57,8 @@
   .demo-flag { font-size: 12px; font-weight: 600; background: var(--gold-soft); color: var(--gold); border-radius: 99px; padding: 3px 10px; }
 
   .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); }
-  .tabs > div:not(.nav-brand) { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
-  .tabs a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600; }
+  .tabs > div:not(.nav-brand) { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); }
+  .tabs a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 11.5px; font-weight: 700; }
   .tabs a svg { width: 24px; height: 24px; }
   .tabs a[aria-current="page"] { color: var(--accent); }
   .tabs a[aria-current="page"] svg { background: var(--accent-soft); border-radius: 99px; padding: 2px 14px; width: 52px; }
@@ -314,6 +315,78 @@
   .goal-row { padding: 8px 2px; border-bottom: 1px solid var(--line); }
 
 
+  /* ---------- charts ---------- */
+  .chart { width: 100%; height: auto; display: block; margin-top: 8px; overflow: visible; }
+  .chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .chart .axis { stroke: var(--axis); stroke-width: 1; }
+  .chart .tick { fill: var(--muted); font: 600 11px var(--body); }
+  .chart .endlab { fill: var(--ink); font: 700 12px var(--body); }
+  .chart .hit { fill: transparent; cursor: crosshair; }
+  .chart .hx .cross { stroke: var(--axis); stroke-width: 1; opacity: 0; }
+  .chart .hx:hover .cross { opacity: 1; }
+  .heat { max-width: 460px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i, .tip-pop i, .who i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .legend.scale { gap: 4px; align-items: center; font-weight: 500; font-size: 12px; }
+  .legend.scale i { width: 12px; height: 12px; }
+  .tip-pop { position: fixed; z-index: 100; pointer-events: none; background: var(--ink); color: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.45; box-shadow: var(--shadow); max-width: 240px; }
+  .tip-pop i { margin-right: 6px; vertical-align: -1px; }
+  .spark { width: 100%; height: 32px; display: block; margin-top: 8px; }
+  .card-title { font-family: var(--display); font-size: 21px; font-weight: 700; margin: 0; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .trend-pick { width: auto; max-width: 60%; padding: 8px 12px; font-weight: 600; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .kpi { margin-top: 0; padding: 14px; display: flex; flex-direction: column; min-width: 0; }
+  .kpi small { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .kpi b { font-family: var(--display); font-size: 34px; font-weight: 800; line-height: 1.05; margin-top: 4px; }
+  .kpi .kpi-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .kpis .kpi:first-child { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .kpis .kpi:first-child small, .kpis .kpi:first-child .kpi-sub { color: inherit; opacity: .85; }
+  .kpis .kpi:first-child .spark polyline { stroke: currentColor; }
+  table.lifts { margin-top: 10px; }
+  table.lifts td small { display: inline; }
+  .rank { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--chip); font-size: 12px; font-weight: 800; margin-right: 8px; }
+  .clubs .hill { max-height: 150px; }
+  .clubs .badges { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+
+  /* ---------- seasons ---------- */
+  .page-actions { flex-wrap: wrap; margin-top: 8px; }
+  .page-actions p { flex: 1 1 240px; }
+  .season-grid { display: grid; gap: 14px; margin-top: 12px; }
+  .sbanner { padding: 0; overflow: hidden; margin-top: 0; }
+  .sbanner .band { background: var(--band); color: #fff; padding: 16px 16px 14px; background-image: linear-gradient(135deg, rgba(255,255,255,.14), transparent 55%); }
+  .sbanner .band h2 { font-size: 30px; font-weight: 800; margin-top: 10px; color: #fff; }
+  .sbanner .band h1 { font-size: 44px; font-weight: 800; margin-top: 10px; color: #fff; }
+  .sbanner .band p { margin: 2px 0 0; opacity: .85; font-weight: 600; font-size: 14px; }
+  .band-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .band-who { font-size: 13px; font-weight: 700; opacity: .85; }
+  .pill { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 99px; background: rgba(255,255,255,.2); letter-spacing: .02em; }
+  .pill.live { background: #fff; color: #0f1720; }
+  .elapsed { height: 6px; border-radius: 99px; background: rgba(255,255,255,.25); margin-top: 12px; overflow: hidden; }
+  .elapsed i { display: block; height: 100%; background: #fff; border-radius: 99px; }
+  .sb-body { padding: 14px 16px 16px; }
+  .sb-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .sb-stats b { display: block; font-family: var(--display); font-size: 26px; font-weight: 800; line-height: 1.05; }
+  .sb-stats small { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .sbanner .actions { margin-top: 12px; }
+  .sbanner.big { margin-top: 10px; }
+  .linkbtn.back { padding: 6px 0 0; color: var(--muted); }
+  .goal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
+  .goal-tile { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--bg); }
+  .goal-tile.done { border-color: var(--good); background: color-mix(in srgb, var(--good) 8%, var(--bg)); }
+  .gt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .gt-head small { flex-basis: 100%; margin-left: 34px; margin-top: -4px; }
+  .gt-icon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--card); font-size: 14px; }
+  .gt-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 8px; font-size: 13.5px; font-weight: 600; }
+  .gt-bar { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--chip); overflow: hidden; }
+  .gt-bar i { display: block; height: 100%; border-radius: 99px; }
+  .who { display: inline-flex; align-items: center; gap: 6px; }
+  .cmp.standings td, .cmp.standings th { font-size: 14.5px; }
+  .cmp tr.me td { font-weight: 700; }
+  .plan-list { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+  .plan-list small { display: block; color: var(--muted); }
+
   /* ---------- page title (desktop) and nav extras ---------- */
   .page-title, .nav-brand, .nav-log { display: none; }
 
@@ -360,8 +433,17 @@
     .hill { max-height: 240px; }
     #view > .row:first-child > h2 { display: none; }
     #view > .row:first-child { justify-content: flex-end; }
-    #bestsBox { columns: 2; column-gap: 32px; }
-    #bestsBox .best { break-inside: avoid; }
+    #view > .kpis { margin-top: 0; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    #view > .c-wide { grid-column: span 8; }
+    #view > .c-side { grid-column: span 4; }
+    #view > .c-half { grid-column: span 6; }
+    #view > .c-full { grid-column: 1 / -1; }
+    #view > .season-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; margin-top: 0; }
+    #view > .linkbtn.back { margin-bottom: -8px; }
+    .sbanner.big .band { padding: 22px 24px 18px; }
+    .sbanner.big .band h1 { font-size: 56px; }
+    .kpi b { font-size: 40px; }
+    .page-actions { margin-top: 0; }
     .cal-grid button { font-size: 16px; }
 
     /* Sheets open as centered dialogs instead of sliding up from the bottom. */
@@ -420,6 +502,7 @@
   <a href="#log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>Log</a>
   <a href="#routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Routines</a>
   <a href="#history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendar</a>
+  <a href="#seasons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Seasons</a>
   <a href="#progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 20 L21 8"/><circle cx="15" cy="9" r="3.5"/></svg>Progress</a>
 </div></nav>
 

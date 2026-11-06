@@ -2,6 +2,7 @@
 import * as L from './logic.js';
 import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
+import * as C from './charts.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -227,18 +228,19 @@ let currentTab = null;
 function route() {
   const h = location.hash.slice(1);
   if (/^[rs]-[A-Za-z0-9-]+$/.test(h)) return openLink(h);
-  const tab = ['log', 'routines', 'history', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
+  const tab = ['log', 'routines', 'history', 'seasons', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
   document.querySelectorAll('.tabs a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + tab ? 'page' : 'false'));
   if (tab !== currentTab) window.scrollTo(0, 0);
   $('fab').hidden = tab !== 'log';   // only on Log, so it never covers buttons elsewhere
   currentTab = tab;
-  $('pageTitle').textContent = { log: 'Log', routines: 'Routines', history: 'Calendar', progress: 'Progress' }[tab];
+  $('pageTitle').textContent = { log: 'Log', routines: 'Routines', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' }[tab];
   render();
 }
 function render() {
   syncTabDot();
   if (currentTab === 'history') renderHistory();
   else if (currentTab === 'progress') renderProgress();
+  else if (currentTab === 'seasons') renderSeasons();
   else if (currentTab === 'routines') renderRoutines();
   else renderLog();
 }
@@ -256,8 +258,8 @@ function openLink(h) {
     el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2400);
   } else {
     const sn = seasonById(id);
-    if (sn) S.period = 'season:' + id;
-    history.replaceState(null, '', location.pathname + location.search + '#progress');
+    S.seasonOpen = sn ? id : null;
+    history.replaceState(null, '', location.pathname + location.search + '#seasons');
     route();
     if (!sn) toast('That season isn’t shared with you, or it was deleted.');
   }
@@ -360,7 +362,9 @@ view.addEventListener('click', async e => {
   else if (b.dataset.unsub) unsubscribeFrom(b.dataset.unsub, b);
   else if (b.dataset.copy) copyRoutine(b.dataset.copy, b);
   // seasons
-  else if (b.dataset.season) { S.period = 'season:' + b.dataset.season; if (location.hash !== '#progress') location.hash = '#progress'; else renderProgress(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (b.dataset.season) openSeason(b.dataset.season);
+  else if (b.hasAttribute('data-season-back')) { S.seasonOpen = null; renderSeasons(); window.scrollTo(0, 0); }
+  else if (b.hasAttribute('data-programs')) openStarters();
   else if (b.dataset.editSeason) openSeasonSheet(b.dataset.editSeason);
   else if (b.hasAttribute('data-new-season')) openSeasonSheet(null);
   else if (b.dataset.joinSeason) joinSeason(b.dataset.joinSeason, b);
@@ -1522,38 +1526,11 @@ function planCard() {
 }
 const inSeason = s => isMine(s) || !!seasonSub(s.id);
 const seasonDates = s => fmtDay(s.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(s.ends_on, { month: 'short', day: 'numeric', year: 'numeric' });
-function seasonsSection() {
-  const all = S.seasons || [];
-  const list = all.filter(inSeason), crew = all.filter(s => !inSeason(s));
-  return '<div class="row" style="margin-top:22px"><h3 class="section-title" style="margin:0">Seasons</h3><button class="btn" data-new-season>+ New season</button></div>' +
-    '<p class="hint-line">A season is a stretch of dates. Every set you log counts toward every season running that day, so there’s nothing to pick when you log.</p>' +
-    crew.map(s => {
-      const goals = S.goals.filter(g => g.season_id === s.id);
-      return '<section class="card season"><span class="tag new">From ' + esc(ownerName(s)) + '</span><h3 style="margin-top:8px">' + esc(s.name) + '</h3>' +
-        '<span class="muted" style="font-size:14px">' + esc(seasonDates(s)) + ' · ' + esc(seasonStatus(s)) + '</span>' +
-        (seasonGoals(s).length ? '<p class="hint-line">Goals: ' + esc(seasonGoals(s).map(g => g.name).join(', ')) + '</p>' : '') + planLine(s) +
-        '<p class="hint-line">Join to compare totals side by side. Only totals are shared, never your sets.</p>' +
-        '<div class="actions"><button class="btn primary" data-join-season="' + esc(s.id) + '">Join season</button></div></section>';
-    }).join('') +
-    (list.length ? list.map(s => {
-      const m = seasonM(s), goals = S.goals.filter(g => g.season_id === s.id);
-      const who = isMine(s) ? (s.is_shared ? '<span class="tag">Shared with the crew</span>' : '') : '<span class="tag">' + esc(ownerName(s)) + '’s season</span>';
-      return '<section class="card season' + (S.period === 'season:' + s.id ? ' on' : '') + '">' + who + '<h3' + (who ? ' style="margin-top:8px"' : '') + '>' + esc(s.name) + '</h3>' +
-        '<span class="muted" style="font-size:14px">' + esc(seasonDates(s)) + ' · ' + esc(seasonStatus(s)) + '</span>' +
-        '<p class="hint-line">' + m.visits + ' visits · ' + esc(volText(m.volume)) + (m.volume.kg ? '' : ' lb') + ' moved · ' + m.bests + ' bests set</p>' +
-        myGoalsHtml(s, m) + planLine(s) +
-        '<div class="actions"><button class="btn primary" data-season="' + esc(s.id) + '">View season</button>' +
-        (isMine(s) ? '<button class="btn" data-edit-season="' + esc(s.id) + '">Edit</button>'
-          : '<button class="btn" data-my-goals="' + esc(s.id) + '">My goals</button><button class="btn ghost" data-leave-season="' + esc(s.id) + '">Leave</button>') +
-        (s.is_shared ? '<button class="btn ghost" data-link="s-' + esc(s.id) + '" aria-label="Copy a link to ' + esc(s.name) + '">🔗</button>' : '') + '</div></section>';
-    }).join('') : crew.length ? '' : '<section class="card"><p class="muted" style="margin:0">A season is any stretch you choose: a training block, a month, a year. Give it goals and watch them fill. Share it and the crew can join in.</p></section>');
-}
 async function joinSeason(id, b) {
   b.disabled = true;
   try { S.seasonSubs.push(await store.joinSeason(id)); } catch (x) { b.disabled = false; return fail(x); }
   delete S.standings[id];
-  S.period = 'season:' + id;
-  render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  openSeason(id);
   toast('You’re in. Game on.');
 }
 async function leaveSeason(id, b) {
@@ -1563,47 +1540,8 @@ async function leaveSeason(id, b) {
   try { await store.leaveSeason(sub.id); } catch (x) { b.disabled = false; return fail(x); }
   S.seasonSubs = S.seasonSubs.filter(x => x.id !== sub.id);
   delete S.standings[id];
-  if (S.period === 'season:' + id) S.period = 'all';
+  if (S.seasonOpen === id) S.seasonOpen = null;
   render(); toast('Left the season');
-}
-// The crew scoreboard for a shared season: totals per person, how often each did each planned
-// workout, and best lifts. All worked out by the database; it never hands over anyone's sets.
-function crewCard(season) {
-  if (!season.is_shared || !inSeason(season)) return '';
-  const st = S.standings[season.id];
-  if (!st) {
-    Promise.all([store.standings(season.id), store.seasonWorkouts(season.id), store.seasonBests(season.id)]).then(([rows, w, b]) => {
-      S.standings[season.id] = { rows, w, b };
-      const box = $('crewBox'); if (box && S.period === 'season:' + season.id) box.outerHTML = crewCard(season);
-    }).catch(x => { const box = $('crewBox'); if (box) box.innerHTML = '<h3>The crew</h3><p class="warn">Couldn’t load the crew: ' + esc(x.message) + '</p>'; });
-    return '<section class="card" id="crewBox"><h3>The crew</h3><p class="muted" style="margin:0">Loading…</p></section>';
-  }
-  const people = st.rows.map(r => ({ ...r, m: { visits: Number(r.visits), volume: { lb: Number(r.volume_lb), kg: Number(r.volume_kg) } } }))
-    .sort((a, b) => L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
-  const who = p => (p.user_id === S.myId ? 'You' : p.display_name);
-  // One row per thing compared, one column per person; the leader in each row is highlighted.
-  const table = (title, rows) => rows.length ? '<tr class="grp"><th colspan="' + (people.length + 1) + '">' + title + '</th></tr>' + rows.map(r => {
-    const top = Math.max(...people.map(p => r.score(p)));
-    return '<tr><td>' + esc(r.label) + '</td>' + people.map(p => '<td class="num' + (top > 0 && r.score(p) === top && people.length > 1 ? ' lead' : '') + '">' + r.cell(p) + '</td>').join('') + '</tr>';
-  }).join('') : '';
-  const wt = [...new Set(st.w.map(x => x.template_id))].map(id => {
-    const t = tplById(id), times = p => Number((st.w.find(x => x.template_id === id && x.user_id === p.user_id) || {}).times || 0);
-    return { label: t ? t.name : 'A private workout', score: times, cell: p => String(times(p)) };
-  });
-  const bt = [...new Set(st.b.map(x => x.exercise_id))].map(id => {
-    const of = p => st.b.find(x => x.exercise_id === id && x.user_id === p.user_id);
-    const sc = p => { const r = of(p); return r ? Number(r.best_weight) * (r.unit === 'kg' ? L.LB_PER_KG : 1) : 0; };
-    return { label: exName(id), score: sc, cell: p => { const r = of(p); return r ? '<b>' + esc(L.fmtLoad(Number(r.best_weight))) + '</b> <small>' + esc(r.unit) + ' × ' + r.reps + '</small>' : '<span class="muted">–</span>'; } };
-  }).sort((a, b) => Math.max(...people.map(b.score)) - Math.max(...people.map(a.score)));
-  return '<section class="card" id="crewBox"><h3>The crew</h3>' +
-    people.map((p, i) => '<div class="crew-row' + (p.user_id === S.myId ? ' me' : '') + '"><div class="row"><b>' +
-      (i === 0 && people.length > 1 && L.lbEquivalent(p.m.volume) > 0 ? '👑 ' : '') + esc(who(p)) + '</b>' +
-      '<span class="muted num">' + p.m.visits + ' visits · ' + esc(L.fmtNum(Number(p.sets), 0)) + ' sets</span></div>' +
-      '<div class="crew-vol num">' + esc(volText(p.m.volume)) + (p.m.volume.kg ? '' : ' lb') + '</div>' +
-      goalsFor(season, p.user_id).map(g => goalLine(g, p.m, { season, person: p.user_id, st })).join('') + '</div>').join('') +
-    (wt.length || bt.length ? '<div class="cmp-wrap"><table class="cmp"><thead><tr><th></th>' + people.map(p => '<th>' + esc(who(p)) + '</th>').join('') + '</tr></thead><tbody>' +
-      table('Workouts done', wt) + table('Best lifts', bt) + '</tbody></table></div>' : '') +
-    '<p class="hint-line">Totals, workouts done and best lifts only. Nobody sees anyone’s individual sets. Warm-ups don’t count.</p></section>';
 }
 // ----- bodyweight: private weigh-ins, a trend line, and the latest feeds the logger -----
 function bodyweightCard() {
@@ -1616,16 +1554,9 @@ function bodyweightCard() {
     if (old) { const d = Number(last.weight) - Number(old.weight); delta = (d > 0 ? '+' : d < 0 ? '−' : '±') + L.fmtLoad(Math.abs(Math.round(d * 10) / 10)) + ' ' + unit + ' since ' + fmtDay(old.measured_on, { month: 'short', day: 'numeric' }); }
   }
   const pts = same.filter(b => b.measured_on >= L.addDays(today(), -180)).slice().reverse();
-  let chart = '';
-  if (pts.length > 1) {
-    const x0 = L.parseDate(pts[0].measured_on).getTime(), x1 = L.parseDate(pts[pts.length - 1].measured_on).getTime() || x0 + 1;
-    const ws = pts.map(b => Number(b.weight)), lo = Math.min(...ws), hi = Math.max(...ws), span = Math.max(1, hi - lo);
-    const xy = pts.map(b => [8 + (L.parseDate(b.measured_on).getTime() - x0) / Math.max(1, x1 - x0) * 284, 62 - (Number(b.weight) - lo) / span * 52]);
-    chart = '<svg class="bw-chart" viewBox="0 0 300 70" role="img" aria-label="Bodyweight over the last ' + pts.length + ' weigh-ins, from ' + L.fmtLoad(ws[0]) + ' to ' + L.fmtLoad(ws[ws.length - 1]) + ' ' + unit + '">' +
-      '<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="' + xy.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ') + '"/>' +
-      '<circle cx="' + xy[xy.length - 1][0].toFixed(1) + '" cy="' + xy[xy.length - 1][1].toFixed(1) + '" r="4" fill="var(--accent)"/></svg>';
-  }
-  return '<h3 class="section-title">Bodyweight</h3><section class="card bw">' +
+  const chart = pts.length > 1 ? C.lines({ labels: pts.map(b => fmtDay(b.measured_on, { month: 'short', day: 'numeric' })), series: [{ name: 'Bodyweight', values: pts.map(b => Number(b.weight)) }],
+    height: 150, zero: false, every: Math.ceil(pts.length / 5), fmt: v => L.fmtLoad(Math.round(v * 10) / 10), label: 'Bodyweight over the last six months, in ' + unit }) : '';
+  return '<section class="card bw c-half"><h3 class="card-title">Bodyweight</h3>' +
     (last ? '<div class="row"><div><div class="crew-vol num">' + esc(L.fmtLoad(Number(last.weight))) + ' ' + esc(last.unit) + '</div>' +
       '<small class="muted">' + esc(dayLabel(last.measured_on)) + (delta ? ' · ' + esc(delta) : '') + '</small></div></div>' + chart
       : '<p class="muted" style="margin:0 0 6px">Weigh in now and then to see the trend. Only you can see this.</p>') +
@@ -1810,9 +1741,8 @@ async function seasonClick(b) {
         for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
         for (const p of SG.planPending) S.plan.push(await store.addPlan({ ...p, season_id: s.id }));
       }
-      S.period = 'season:' + s.id;
       sheet.close();
-      if (location.hash !== '#progress') location.hash = '#progress'; else render();
+      openSeason(s.id);
       toast(SG.id ? 'Season saved' : 'Season started. Go get it.');
     } catch (x) { $('snErr').textContent = x.message; b.disabled = false; }
     return;
@@ -1822,7 +1752,7 @@ async function seasonClick(b) {
     if (!confirm('Delete the season “' + s.name + '”? Your sets aren’t touched.')) return;
     try { await store.deleteSeason(s.id); } catch (x) { return fail(x); }
     S.seasons = S.seasons.filter(x => x.id !== s.id);
-    if (S.period === 'season:' + s.id) S.period = 'all';
+    if (S.seasonOpen === s.id) S.seasonOpen = null;
     sheet.close(); render(); toast('Season deleted');
   }
 }
@@ -1934,72 +1864,144 @@ async function toggleDay(day) {
 // ===========================================================================
 // Progress
 // ===========================================================================
+// Progress: you, over time. Totals for a period, volume by week or month, a training calendar,
+// a trend for any lift, your best lifts, the clubs, and bodyweight.
+const lbOf = d => L.lbEquivalent({ lb: Number(d.volume_lb) || 0, kg: Number(d.volume_kg) || 0 });
+const weekOf = iso => L.addDays(iso, -((L.parseDate(iso).getDay() + 6) % 7));   // Monday
+function weekly(n) {
+  const start = L.addDays(weekOf(today()), -7 * (n - 1)), out = [];
+  for (let i = 0; i < n; i++) out.push({ start: L.addDays(start, 7 * i), lb: 0, visits: 0, sets: 0 });
+  for (const d of S.days) {
+    if (!(d.sets > 0) || d.performed_on < start) continue;
+    const w = out[Math.floor(L.daysBetween(start, d.performed_on) / 7)];
+    if (w) { w.lb += lbOf(d); w.visits++; w.sets += Number(d.sets); }
+  }
+  return out;
+}
+function streakWeeks() {
+  const w = weekly(104).reverse();
+  let i = w[0].visits ? 0 : 1, n = 0;
+  while (i < w.length && w[i].visits) { n++; i++; }
+  return n;
+}
+const kpi = (label, value, sub, sparkVals) =>
+  '<div class="kpi card"><small>' + esc(label) + '</small><b>' + esc(value) + '</b>' + (sub ? '<span class="kpi-sub">' + sub + '</span>' : '') + (sparkVals ? C.spark(sparkVals) : '') + '</div>';
 function renderProgress() {
-  const season = S.period.startsWith('season:') ? seasonById(S.period.slice(7)) : null;
-  if (S.period.startsWith('season:') && !season) S.period = 'all';
+  if (!['all', 'year', '30'].includes(S.period)) S.period = 'all';
   const from = S.period === 'year' ? L.addDays(today(), -364) : S.period === '30' ? L.addDays(today(), -29) : null;
-  const t = season ? seasonM(season) : totals(from);
-  const lbEq = L.lbEquivalent(t.volume);
-  const ms = L.milestoneProgress(lbEq);
+  const t = totals(from), lbEq = L.lbEquivalent(t.volume);
+  const prs = S.bestRows.filter(r => !from || r.first_lifted_on >= from).length;
+  const w12 = weekly(12);
   const cmp = L.compareTo(lbEq);
-  const ach = L.achievements({ volume: t.volume, visits: t.visits, prs: season ? t.bests : S.bests.size });
-  const earnedClubs = ach.filter(a => a.milestone && a.earned);
-  const shown = ach.filter(a => !a.milestone).concat(earnedClubs.slice(-5)).concat(ach.filter(a => a.milestone && !a.earned).slice(0, 1));
+  // Volume chart: daily for 30 days, weekly for a year, monthly for all time.
+  let vol;
+  if (S.period === '30') {
+    const byDay = new Map(S.days.map(d => [d.performed_on, lbOf(d)]));
+    const data = Array.from({ length: 30 }, (_, i) => { const d = L.addDays(today(), i - 29); return { label: fmtDay(d, { month: 'short', day: 'numeric' }), value: byDay.get(d) || 0 }; });
+    vol = { title: 'Pounds moved per day', html: C.columns({ data, every: 6, label: 'Pounds moved per day, last 30 days' }) };
+  } else if (S.period === 'year') {
+    const data = weekly(52).map(w => ({ label: fmtDay(w.start, { month: 'short', day: 'numeric' }), value: w.lb, tip: 'Week of ' + esc(fmtDay(w.start, { month: 'short', day: 'numeric' })) + ': <b>' + C.compact(w.lb) + ' lb</b> · ' + w.visits + ' days' }));
+    vol = { title: 'Pounds moved per week', html: C.columns({ data, every: 9, label: 'Pounds moved per week, past year' }) };
+  } else {
+    const first = S.days.length ? S.days[S.days.length - 1].performed_on : today();
+    const months = [];
+    for (let m = first.slice(0, 7); m <= today().slice(0, 7);) { months.push(m); const [y, mo] = m.split('-').map(Number); m = (mo === 12 ? y + 1 : y) + '-' + String(mo === 12 ? 1 : mo + 1).padStart(2, '0'); }
+    const by = new Map(months.map(m => [m, { lb: 0, visits: 0 }]));
+    for (const d of S.days) { const b = by.get(d.performed_on.slice(0, 7)); if (b && d.sets > 0) { b.lb += lbOf(d); b.visits++; } }
+    const data = months.slice(-24).map(m => ({ label: L.parseDate(m + '-01').toLocaleDateString('en-US', { month: 'short' }), value: by.get(m).lb,
+      tip: esc(L.parseDate(m + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })) + ': <b>' + C.compact(by.get(m).lb) + ' lb</b> · ' + by.get(m).visits + ' days' }));
+    vol = { title: 'Pounds moved per month', html: C.columns({ data, every: data.length > 12 ? 3 : 1, label: 'Pounds moved per month' }) };
+  }
+  const heatVals = new Map(S.days.filter(d => d.sets > 0).map(d => [d.performed_on, lbOf(d)]));
+  const best = w12.reduce((m, w) => (w.lb > m.lb ? w : m), w12[0]);
+  const ms = L.milestoneProgress(L.lbEquivalent(totals().volume));
+  const ach = L.achievements({ volume: totals().volume, visits: totals().visits, prs: S.bests.size });
+  const earned = ach.filter(a => a.earned), nextClub = ach.find(a => a.milestone && !a.earned);
   const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : '🪨') : a.id === 'first_pr' ? '🏆' : '⭐';
   view.innerHTML =
-    '<div class="seg" role="group" aria-label="Period" style="margin-top:6px">' +
-      [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') +
-      (season ? '<button data-period="' + esc(S.period) + '" aria-pressed="true">' + esc(season.name) + '</button>' : '') + '</div>' +
-    '<section class="card hero">' +
-      (season ? '<div class="date">' + esc(season.name) + ' · ' + esc(seasonStatus(season)) + '</div>' : '') +
+    '<div class="seg" role="group" aria-label="Period">' +
+      [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
+    '<div class="kpis">' +
+      kpi('Pounds moved', C.compact(lbEq) + ' lb', lbEq > 0 ? 'about ' + esc(L.fmtNum(cmp.times, cmp.times < 10 ? 1 : 0)) + ' × a ' + esc(cmp.thing) : 'nothing yet', w12.map(w => w.lb)) +
+      kpi('Gym days', L.fmtNum(t.visits, 0), streakWeeks() ? '🔥 ' + streakWeeks() + '-week streak' : 'no streak going', w12.map(w => w.visits)) +
+      kpi('Sets', L.fmtNum(t.sets, 0), t.visits ? Math.round(t.sets / t.visits) + ' a session' : '', w12.map(w => w.sets)) +
+      kpi('Personal bests', L.fmtNum(prs, 0), 'set ' + (from ? 'in this period' : 'all time'), null) +
+    '</div>' +
+    '<section class="card c-wide"><div class="card-head"><h3 class="card-title">' + vol.title + '</h3><small class="muted">Warm-ups excluded</small></div>' + vol.html + '</section>' +
+    '<section class="card c-side"><div class="card-head"><h3 class="card-title">Training calendar</h3><small class="muted">26 weeks</small></div>' + C.heatmap({ values: heatVals, end: today(), label: 'Days lifted in the last 26 weeks, shaded by pounds moved' }) +
+      '<p class="hint-line">Best of the last 12 weeks: week of ' + esc(fmtDay(best.start, { month: 'short', day: 'numeric' })) + ', <b>' + C.compact(best.lb) + ' lb</b> over ' + best.visits + ' days.</p></section>' +
+    '<section class="card c-wide" id="trendBox"></section>' +
+    '<section class="card c-side"><div class="card-head"><h3 class="card-title">Top lifts</h3><small class="muted">by estimated 1-rep max</small></div>' +
+      '<input class="search" id="bestSearch" type="search" placeholder="Find a lift" value="' + esc(S.bestQuery) + '" aria-label="Find a lift"><div id="bestsBox"></div></section>' +
+    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">Clubs</h3><small class="muted">' + ms.count + ' joined</small></div>' +
       hillSVG(ms.ratio, 'Progress to the ' + (ms.next ? ms.next.title : 'top')) +
-      '<h1 class="num">' + esc(L.fmtBig(Math.round(lbEq))) + ' lb</h1>' +
-      '<p class="muted" style="margin:4px 0 12px">' + (lbEq > 0 ? 'moved' + (t.volume.kg ? ' (kg counted as lb)' : '') + ', about ' + esc(L.fmtNum(cmp.times, cmp.times < 10 ? 1 : 0)) + ' × a ' + esc(cmp.thing) : 'Nothing moved yet. The hill awaits.') + '</p>' +
-      (ms.next ? '<div class="row" style="font-size:14px;font-weight:600"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
-        '<div class="bar" style="margin-top:6px"><i style="width:' + (ms.ratio * 100).toFixed(1) + '%"></i></div>' +
-        '<p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
-      '<div class="stats">' +
-        '<div class="stat"><b>' + t.visits + '</b><small>visits</small></div>' +
-        '<div class="stat"><b>' + esc(L.fmtNum(t.sets, 0)) + '</b><small>sets</small></div>' +
-        '<div class="stat"><b>' + ms.count + '</b><small>club' + (ms.count === 1 ? '' : 's') + ' joined</small></div>' +
-      '</div>' +
-      (t.volume.lb && t.volume.kg ? '<p class="hint-line">' + esc(L.fmtBig(t.volume.lb)) + ' lb + ' + esc(L.fmtBig(t.volume.kg)) + ' kg, kept separate.</p>' : '') +
-      (season ? myGoalsHtml(season, t) : '') +
-    '</section>' +
-    (season ? crewCard(season) : '') +
-    bodyweightCard() +
-    '<h3 class="section-title">Badges</h3><div class="badges">' +
-      shown.map(a => '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) +
-        (a.earned ? '' : '<br><span class="muted" style="font-weight:500">' + esc(L.fmtNum(Math.min(a.have, a.need), 0)) + ' / ' + esc(L.fmtNum(a.need, 0)) + '</span>') + '</div>').join('') + '</div>' +
-    seasonsSection() +
-    '<h3 class="section-title">Personal bests</h3>' +
-    '<input class="search" id="bestSearch" type="search" placeholder="Find an exercise" style="margin-top:10px" value="' + esc(S.bestQuery) + '" aria-label="Find an exercise">' +
-    '<section class="card" id="bestsBox"></section>';
+      (ms.next ? '<div class="row" style="font-size:14px;font-weight:700"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
+        '<div class="bar" style="margin-top:6px"><i style="width:' + (ms.ratio * 100).toFixed(1) + '%"></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
+      '<div class="badges">' + earned.filter(a => !a.milestone).concat(earned.filter(a => a.milestone).slice(-4)).concat(nextClub ? [nextClub] : []).map(a =>
+        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) + '</div>').join('') + '</div></section>' +
+    bodyweightCard();
   const input = $('bestSearch');
   input.addEventListener('input', () => { S.bestQuery = input.value; drawBests(); });
   drawBests();
+  drawTrend();
 }
+// Lift trend: top set and estimated 1-rep max per day, for any lift you've done.
+function trendChoices() {
+  const count = new Map();
+  for (const r of S.recent) if (r.is_warmup !== true) count.set(r.exercise_id, (count.get(r.exercise_id) || 0) + 1);
+  for (const r of S.bestRows) if (!count.has(r.exercise_id)) count.set(r.exercise_id, 0.5);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 40);
+}
+async function drawTrend() {
+  const box = $('trendBox'); if (!box) return;
+  const ids = trendChoices();
+  if (!ids.length) { box.innerHTML = '<h3 class="card-title">Lift trends</h3><p class="muted">Log a few sessions and your lifts chart here.</p>'; return; }
+  if (!S.trendEx || !ids.includes(S.trendEx)) S.trendEx = ids[0];
+  const head = '<div class="card-head"><h3 class="card-title">Lift trend</h3><select class="plain-input trend-pick" id="trendEx" aria-label="Lift to chart">' +
+    ids.map(id => '<option value="' + esc(id) + '"' + (id === S.trendEx ? ' selected' : '') + '>' + esc(exName(id)) + '</option>').join('') + '</select></div>';
+  S.hist = S.hist || new Map();
+  if (!S.hist.has(S.trendEx)) {
+    box.innerHTML = head + '<p class="muted">Loading…</p>';
+    const id = S.trendEx;
+    try { S.hist.set(id, await store.exerciseHistory(id)); } catch (x) { box.innerHTML = head + '<p class="warn">Couldn’t load it: ' + esc(x.message) + '</p>'; return; }
+    if (id !== S.trendEx || !$('trendBox')) return;
+  }
+  const rows = S.hist.get(S.trendEx).filter(r => r.is_warmup !== true && Number(r.weight) > 0);
+  const unit = rows.filter(r => r.unit === 'kg').length > rows.length / 2 ? 'kg' : 'lb';
+  const byDay = new Map();
+  for (const r of rows.filter(r => r.unit === unit)) {
+    const d = byDay.get(r.performed_on) || { top: 0, reps: 0, e1: 0 };
+    if (Number(r.weight) > d.top) { d.top = Number(r.weight); d.reps = r.reps; }
+    d.e1 = Math.max(d.e1, L.e1rm(Number(r.weight), r.reps) || 0);
+    byDay.set(r.performed_on, d);
+  }
+  const days = [...byDay.keys()].sort().slice(-40);
+  if (days.length < 2) { box.innerHTML = head + '<p class="muted">Only one session of this so far. Do it again and the trend appears.</p>'; return; }
+  const pts = days.map(d => byDay.get(d));
+  const bestE = Math.max(...pts.map(p => p.e1)), bestTop = pts.reduce((m, p, i) => (p.top > m.p.top ? { p, i } : m), { p: pts[0], i: 0 });
+  const firstE = pts.find(p => p.e1)?.e1 || 0, change = bestE && firstE ? Math.round((pts[pts.length - 1].e1 - firstE) / firstE * 100) : null;
+  box.innerHTML = head +
+    C.lines({ labels: days.map(d => fmtDay(d, { month: 'short', day: 'numeric' })), series: [{ name: 'Top set', values: pts.map(p => p.top) }, { name: 'Est. 1-rep max', values: pts.map(p => p.e1 || null) }],
+      zero: false, every: Math.ceil(days.length / 6), fmt: v => L.fmtLoad(Math.round(v)), label: exName(S.trendEx) + ' over time, in ' + unit }) +
+    '<p class="hint-line">Heaviest: <b>' + esc(L.fmtLoad(bestTop.p.top) + ' ' + unit + ' × ' + bestTop.p.reps) + '</b> on ' + esc(fmtDay(days[bestTop.i], { month: 'short', day: 'numeric', year: 'numeric' })) +
+      (bestE ? ' · best est. 1-rep max <b>' + esc(L.fmtLoad(Math.round(bestE))) + ' ' + unit + '</b>' : '') +
+      (change != null ? ' · ' + (change >= 0 ? '+' : '') + change + '% since ' + esc(fmtDay(days[0], { month: 'short', day: 'numeric' })) : '') + '</p>';
+}
+view.addEventListener('change', e => { if (e.target.id === 'trendEx') { S.trendEx = e.target.value; drawTrend(); } });
 function drawBests() {
+  const q = L.norm(S.bestQuery);
   const byEx = new Map();
   for (const r of S.bestRows) {
-    if (!byEx.has(r.exercise_id)) byEx.set(r.exercise_id, []);
-    byEx.get(r.exercise_id).push(r);
+    const e1 = r.reps <= 12 ? L.e1rm(Number(r.heaviest), r.reps) : 0;
+    const score = (e1 || Number(r.heaviest)) * (r.unit === 'kg' ? L.LB_PER_KG : 1);
+    const cur = byEx.get(r.exercise_id);
+    if (!cur || score > cur.score) byEx.set(r.exercise_id, { r, e1, score });
   }
-  const q = L.norm(S.bestQuery);
-  const rows = [...byEx.entries()]
-    .filter(([id]) => !q || L.norm(exName(id)).includes(q))
-    .map(([id, list]) => ({ id, list, latest: list.reduce((m, r) => (r.first_lifted_on > m ? r.first_lifted_on : m), '') }))
-    .sort((a, b) => b.latest.localeCompare(a.latest))
-    .slice(0, 30);
-  $('bestsBox').innerHTML = rows.length ? rows.map(({ id, list }) => {
-    const units = [...new Set(list.map(r => r.unit))];
-    return '<div class="best"><b>' + esc(exName(id)) + '</b>' + units.map(u => {
-      const mine = list.filter(r => r.unit === u).sort((a, b) => a.reps - b.reps);
-      const top = Math.max(...mine.map(r => L.e1rm(Number(r.heaviest), r.reps) || 0));
-      return '<div class="chips">' + mine.slice(0, 10).map(r => '<span class="chip"><small>' + r.reps + '×</small> ' + esc(L.fmtLoad(r.heaviest)) + (units.length > 1 || u !== prefs.unit ? ' ' + u : '') + '</span>').join('') + '</div>' +
-        (top ? '<p class="hint-line">Estimated 1-rep max ' + esc(L.fmtLoad(Math.round(top))) + ' ' + u + ' (Epley, from sets of 12 or fewer)</p>' : '');
-    }).join('') + '</div>';
-  }).join('') : '<p class="muted">' + (q ? 'No bests for that yet.' : 'Your bests show up here as you log.') + '</p>';
+  const rows = [...byEx.entries()].filter(([id]) => !q || L.norm(exName(id)).includes(q)).sort((a, b) => b[1].score - a[1].score).slice(0, q ? 30 : 12);
+  $('bestsBox').innerHTML = rows.length ? '<table class="cmp lifts"><thead><tr><th>Lift</th><th>Best set</th><th>Est. 1RM</th></tr></thead><tbody>' +
+    rows.map(([id, { r, e1 }], i) => '<tr><td><span class="rank">' + (i + 1) + '</span>' + esc(exName(id)) + '<br><small>' + esc(fmtDay(r.first_lifted_on, { month: 'short', day: 'numeric', year: 'numeric' })) + '</small></td>' +
+      '<td class="num">' + esc(L.fmtLoad(r.heaviest)) + ' <small>' + r.unit + ' × ' + r.reps + '</small></td><td class="num"><b>' + (e1 ? esc(L.fmtLoad(Math.round(e1))) : '–') + '</b></td></tr>').join('') + '</tbody></table>'
+    : '<p class="muted">' + (q ? 'No bests for that yet.' : 'Your bests show up here as you log.') + '</p>';
 }
 
 // ===========================================================================
@@ -2157,9 +2159,8 @@ async function programClick(b) {
     let pos = 0;
     for (const [sid, mask] of bySession) S.plan.push(await store.addPlan({ season_id: sn.id, template_id: made.get(sid).id, position: ++pos, weekdays: mask }));
     S.goals.push(await store.addGoal({ season_id: sn.id, metric: 'visits', unit: null, target: p.days.length * weeks, name: 'Show up ' + p.days.length * weeks + ' times', exercise_id: null, template_id: null }));
-    S.period = 'season:' + sn.id;
     sheet.close();
-    if (location.hash !== '#progress') location.hash = '#progress'; else render();
+    openSeason(sn.id);
     toast(name + ' is set up. The Log tab shows each day’s workout.');
   } catch (x) { $('pgErr').textContent = x.message; b.disabled = false; b.textContent = 'Start program'; }
 }
@@ -2195,3 +2196,149 @@ function tickRest() {
   el.querySelector('#restTime').textContent = 'Rest ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
 }
 function stopRest() { clearInterval(REST.timer); if (REST.el) REST.el.hidden = true; }
+
+// ===========================================================================
+// Seasons: achievements and head-to-heads inside a stretch of dates
+// ===========================================================================
+const BANNERS = ['#2a5fd3', '#c8423b', '#1d7f50', '#5a49c9', '#38475a'];
+const bannerOf = sn => BANNERS[[...String(sn.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % BANNERS.length];
+const phaseOf = sn => (today() < sn.starts_on ? 'upcoming' : today() > sn.ends_on ? 'done' : 'live');
+function elapsedOf(sn) {
+  const total = L.daysBetween(sn.starts_on, sn.ends_on) + 1;
+  return Math.min(1, Math.max(0, (L.daysBetween(sn.starts_on, today()) + 1) / total));
+}
+const initials = n => String(n || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+function goalsDone(sn) {
+  const m = seasonM(sn);
+  const list = goalsFor(sn, S.myId);
+  return { done: list.filter(g => goalHave(g, m, { season: sn }) >= Number(g.target)).length, of: list.length };
+}
+function openSeason(id) {
+  S.seasonOpen = id;
+  if (location.hash !== '#seasons') location.hash = '#seasons'; else renderSeasons();
+  window.scrollTo(0, 0);
+}
+function bannerHtml(sn, big) {
+  const ph = phaseOf(sn), pct = Math.round(elapsedOf(sn) * 100);
+  const who = isMine(sn) ? (sn.is_shared ? 'Shared · yours' : 'Private') : 'By ' + ownerName(sn);
+  return '<div class="band" style="--band:' + bannerOf(sn) + '">' +
+    '<div class="band-top"><span class="pill ' + ph + '">' + (ph === 'live' ? '● Live' : ph === 'upcoming' ? 'Coming up' : 'Finished') + ' · ' + esc(seasonStatus(sn)) + '</span><span class="band-who">' + esc(who) + '</span></div>' +
+    (big ? '<h1>' : '<h2>') + esc(sn.name) + (big ? '</h1>' : '</h2>') +
+    '<p>' + esc(fmtDay(sn.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(sn.ends_on, { month: 'short', day: 'numeric', year: 'numeric' })) + '</p>' +
+    '<div class="elapsed" role="img" aria-label="' + pct + '% of the season gone"><i style="width:' + pct + '%"></i></div></div>';
+}
+function renderSeasons() {
+  const sn = S.seasonOpen && seasonById(S.seasonOpen);
+  if (sn && inSeason(sn)) return renderSeasonPage(sn);
+  if (sn && !inSeason(sn)) S.seasonOpen = null;
+  const all = S.seasons || [];
+  const mine = all.filter(inSeason), invites = all.filter(x => !inSeason(x) && phaseOf(x) !== 'done');
+  const card = x => {
+    const m = seasonM(x), g = goalsDone(x);
+    return '<section class="card sbanner">' + bannerHtml(x) +
+      '<div class="sb-body"><div class="sb-stats">' +
+        '<div><b>' + m.visits + '</b><small>your gym days</small></div><div><b>' + C.compact(L.lbEquivalent(m.volume)) + '</b><small>lb moved</small></div>' +
+        '<div><b>' + g.done + '/' + g.of + '</b><small>goals done</small></div></div>' +
+        '<div class="actions"><button class="btn primary" data-season="' + esc(x.id) + '">Open season</button>' +
+        (x.is_shared ? '<button class="btn ghost" data-link="s-' + esc(x.id) + '" aria-label="Copy a link to ' + esc(x.name) + '">🔗</button>' : '') + '</div></div></section>';
+  };
+  const group = (title, list) => list.length ? '<h3 class="section-title">' + title + '</h3><div class="season-grid">' + list.map(card).join('') + '</div>' : '';
+  view.innerHTML =
+    '<div class="row page-actions"><p class="muted" style="margin:0">A season is a stretch of dates with goals. Every set you log counts toward every season running that day.</p>' +
+      '<span class="head-actions"><button class="btn" data-programs>📚 Start a program</button><button class="btn primary" data-new-season>+ New season</button></span></div>' +
+    (invites.length ? '<h3 class="section-title">Join the crew</h3><div class="season-grid">' + invites.map(x => '<section class="card sbanner">' + bannerHtml(x) +
+      '<div class="sb-body">' + (seasonGoals(x).length ? '<p class="hint-line" style="margin-top:0">Goals: ' + esc(seasonGoals(x).map(g => g.name).join(', ')) + '</p>' : '') + planLine(x) +
+      '<div class="actions"><button class="btn primary" data-join-season="' + esc(x.id) + '">Join season</button></div></div></section>').join('') + '</div>' : '') +
+    group('Live now', mine.filter(x => phaseOf(x) === 'live')) +
+    group('Coming up', mine.filter(x => phaseOf(x) === 'upcoming')) +
+    group('Finished', mine.filter(x => phaseOf(x) === 'done')) +
+    (mine.length || invites.length ? '' : '<section class="card empty"><h2>No seasons yet.</h2><p class="muted">Start one for a training block, a month or a challenge with the crew, or start a program and it makes the season for you.</p></section>');
+}
+// One season: header, your numbers, achievements, standings, race and weekly charts, head-to-head.
+function renderSeasonPage(sn) {
+  const st = S.standings[sn.id];
+  const head = '<button class="linkbtn back" data-season-back>← All seasons</button>' +
+    '<section class="card sbanner big">' + bannerHtml(sn, true) + '<div class="sb-body"><div class="actions">' +
+      (isMine(sn) ? '<button class="btn" data-edit-season="' + esc(sn.id) + '">Edit season</button>' : '<button class="btn" data-my-goals="' + esc(sn.id) + '">My goals</button><button class="btn ghost" data-leave-season="' + esc(sn.id) + '">Leave</button>') +
+      (sn.is_shared ? '<button class="btn ghost" data-link="s-' + esc(sn.id) + '">🔗 Copy link</button>' : '') + '</div></div></section>';
+  if (!st || !st.d) {
+    view.innerHTML = head + '<section class="card"><p class="muted" style="margin:0">Loading the season…</p></section>';
+    Promise.all([store.standings(sn.id), store.seasonWorkouts(sn.id), store.seasonBests(sn.id), store.seasonDaily(sn.id)]).then(([rows, w, b, d]) => {
+      S.standings[sn.id] = { rows, w, b, d };
+      if (currentTab === 'seasons' && S.seasonOpen === sn.id) renderSeasonPage(sn);
+    }).catch(x => { if (S.seasonOpen === sn.id) view.innerHTML = head + '<section class="card"><p class="warn">Couldn’t load the season: ' + esc(x.message) + '</p></section>'; });
+    return;
+  }
+  // People, in a fixed order (you first) so each keeps one color everywhere.
+  const people = st.rows.map(r => ({ ...r, m: { visits: Number(r.visits), volume: { lb: Number(r.volume_lb), kg: Number(r.volume_kg) } } }))
+    .sort((a, b) => (a.user_id === S.myId ? -1 : b.user_id === S.myId ? 1 : String(a.display_name).localeCompare(b.display_name))).slice(0, 3);
+  people.forEach((p, i) => { p.color = C.SERIES[i]; p.name = p.user_id === S.myId ? 'You' : p.display_name; });
+  const solo = people.length < 2;
+  const me = people.find(p => p.user_id === S.myId) || { m: seasonM(sn), sets: 0 };
+  const myM = seasonM(sn), g = goalsDone(sn);
+  // Day-by-day totals -> cumulative race and weekly columns, up to today.
+  const endDay = today() < sn.ends_on ? today() : sn.ends_on;
+  const days = [];
+  for (let d = sn.starts_on; d <= endDay; d = L.addDays(d, 1)) days.push(d);
+  const daily = new Map(people.map(p => [p.user_id, new Map()]));
+  for (const r of st.d) { const m = daily.get(r.user_id); if (m) m.set(String(r.performed_on).slice(0, 10), lbOf(r)); }
+  let race = '', weeks = '';
+  if (days.length > 1) {
+    race = C.lines({ labels: days.map(d => fmtDay(d, { month: 'short', day: 'numeric' })), every: Math.ceil(days.length / 6),
+      series: people.map(p => { let c = 0; return { name: p.name, color: p.color, values: days.map(d => (c += daily.get(p.user_id).get(d) || 0)) }; }),
+      label: 'Pounds moved since the season started, by person' });
+    const wk = [];
+    for (let w = weekOf(sn.starts_on); w <= endDay; w = L.addDays(w, 7)) wk.push(w);
+    weeks = C.columns({ data: wk.map(w => ({ label: fmtDay(w, { month: 'short', day: 'numeric' }) })), every: Math.max(1, Math.ceil(wk.length / 8)),
+      series: people.map(p => ({ name: p.name, values: wk.map(w => { let t = 0; for (let i = 0; i < 7; i++) t += daily.get(p.user_id).get(L.addDays(w, i)) || 0; return t; }) })),
+      label: 'Pounds moved each week of the season, by person' });
+  }
+  // Achievements: every goal, everyone's progress on it.
+  const goals = S.goals.filter(x => x.season_id === sn.id && (!x.created_by || x.created_by === sn.created_by || people.some(p => p.user_id === x.created_by)));
+  const icon = { visits: '📅', volume: '🏋️', lift: '🏆', workout: '🔁' };
+  const goalTile = x => {
+    const own = x.created_by && x.created_by !== sn.created_by;
+    const who = own ? people.filter(p => p.user_id === x.created_by) : people;
+    const rows = who.map(p => {
+      const have = goalHave(x, p.m, { season: sn, person: p.user_id, st }), need = Number(x.target), ratio = Math.min(1, need ? have / need : 0);
+      const txt = x.metric === 'lift' ? (have ? L.fmtLoad(have) : '–') + ' / ' + L.fmtLoad(need) + ' ' + x.unit : x.metric === 'volume' ? C.compact(have) + ' / ' + C.compact(need) + ' ' + x.unit : L.fmtNum(have, 0) + ' / ' + L.fmtNum(need, 0);
+      return '<div class="gt-row"><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span><span class="num">' + (have >= need ? '✅ ' : '') + esc(txt) + '</span>' +
+        '<div class="gt-bar"><i style="width:' + (ratio * 100).toFixed(1) + '%;background:' + p.color + '"></i></div></div>';
+    }).join('');
+    const doneAll = who.length && who.every(p => goalHave(x, p.m, { season: sn, person: p.user_id, st }) >= Number(x.target));
+    return '<div class="goal-tile' + (doneAll ? ' done' : '') + '"><div class="gt-head"><span class="gt-icon">' + (icon[x.metric] || '🎯') + '</span><b>' + esc(x.name) + '</b>' +
+      (own ? '<small class="muted">' + esc(who[0] ? who[0].name : '') + '’s own goal</small>' : '') + '</div>' + rows + '</div>';
+  };
+  // Standings table.
+  const goalCount = p => goals.filter(x => (!x.created_by || x.created_by === sn.created_by || x.created_by === p.user_id) && goalHave(x, p.m, { season: sn, person: p.user_id, st }) >= Number(x.target)).length;
+  const ranked = people.slice().sort((a, b) => L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
+  const standings = '<table class="cmp standings"><thead><tr><th>#</th><th>Lifter</th><th>Days</th><th>Sets</th><th>Pounds</th><th>Goals</th></tr></thead><tbody>' +
+    ranked.map((p, i) => '<tr' + (p.user_id === S.myId ? ' class="me"' : '') + '><td>' + (i === 0 && !solo ? '👑' : i + 1) + '</td><td><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span></td>' +
+      '<td class="num">' + p.m.visits + '</td><td class="num">' + L.fmtNum(Number(p.sets), 0) + '</td><td class="num"><b>' + C.compact(L.lbEquivalent(p.m.volume)) + '</b></td><td class="num">' + goalCount(p) + '</td></tr>').join('') + '</tbody></table>';
+  // Head-to-head: planned workouts done, best lifts.
+  const wt = [...new Set(st.w.map(x => x.template_id))].map(id => { const t = tplById(id); return { label: t ? t.name : 'A private workout', vals: people.map(p => Number((st.w.find(x => x.template_id === id && x.user_id === p.user_id) || {}).times || 0)) }; });
+  const bt = [...new Set(st.b.map(x => x.exercise_id))].map(id => ({ label: exName(id), raw: people.map(p => st.b.find(x => x.exercise_id === id && x.user_id === p.user_id)) }))
+    .map(r => ({ ...r, vals: r.raw.map(x => (x ? Number(x.best_weight) * (x.unit === 'kg' ? L.LB_PER_KG : 1) : 0)) })).sort((a, b) => Math.max(...b.vals) - Math.max(...a.vals));
+  const h2h = (wt.length || bt.length) ? '<table class="cmp"><thead><tr><th></th>' + people.map(p => '<th><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span></th>').join('') + '</tr></thead><tbody>' +
+    (wt.length ? '<tr class="grp"><th colspan="' + (people.length + 1) + '">Workouts done</th></tr>' + wt.map(r => { const top = Math.max(...r.vals); return '<tr><td>' + esc(r.label) + '</td>' + r.vals.map(v => '<td class="num' + (!solo && v === top && top > 0 ? ' lead' : '') + '">' + v + '</td>').join('') + '</tr>'; }).join('') : '') +
+    (bt.length ? '<tr class="grp"><th colspan="' + (people.length + 1) + '">Best lifts</th></tr>' + bt.map(r => { const top = Math.max(...r.vals); return '<tr><td>' + esc(r.label) + '</td>' + r.raw.map((x, i) => '<td class="num' + (!solo && r.vals[i] === top && top > 0 ? ' lead' : '') + '">' + (x ? '<b>' + esc(L.fmtLoad(Number(x.best_weight))) + '</b> <small>' + x.unit + ' × ' + x.reps + '</small>' : '<span class="muted">–</span>') + '</td>').join('') + '</tr>'; }).join('') : '') +
+    '</tbody></table>' : '<p class="muted">Add workouts to the season’s plan, or a lift goal, and the head-to-head fills in.</p>';
+  const plan = planFor(sn.id);
+  view.innerHTML = head +
+    '<div class="kpis">' +
+      kpi('Your gym days', L.fmtNum(myM.visits, 0), phaseOf(sn) === 'live' ? esc(seasonStatus(sn)) : '', null) +
+      kpi('Your pounds', C.compact(L.lbEquivalent(myM.volume)) + ' lb', '', null) +
+      kpi('Your sets', L.fmtNum(Number(me.sets) || myM.sets, 0), '', null) +
+      kpi('Goals done', g.done + ' / ' + g.of, myM.bests ? myM.bests + ' bests set' : '', null) +
+    '</div>' +
+    '<section class="card c-full"><div class="card-head"><h3 class="card-title">Achievements</h3>' +
+      (isMine(sn) ? '<button class="btn sm" data-edit-season="' + esc(sn.id) + '">+ Goal</button>' : '<button class="btn sm" data-my-goals="' + esc(sn.id) + '">+ My goal</button>') + '</div>' +
+      (goals.length ? '<div class="goal-grid">' + goals.map(goalTile).join('') + '</div>' : '<p class="muted">No goals yet. Add one: show up N times, move N pounds, lift a weight, or do a workout N times.</p>') + '</section>' +
+    (solo ? '' : '<section class="card c-side"><h3 class="card-title">Standings</h3>' + standings + '</section>') +
+    (race ? '<section class="card ' + (solo ? 'c-half' : 'c-wide') + '"><div class="card-head"><h3 class="card-title">' + (solo ? 'Pounds moved this season' : 'The race') + '</h3><small class="muted">running total</small></div>' + race + '</section>' +
+      '<section class="card c-half"><div class="card-head"><h3 class="card-title">Week by week</h3><small class="muted">pounds moved</small></div>' + weeks + '</section>'
+      : '<section class="card c-full"><p class="muted" style="margin:0">' + (phaseOf(sn) === 'upcoming' ? 'Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'long', day: 'numeric' })) + '. The charts fill in once it’s running.' : 'The charts fill in after the first couple of days.') + '</p></section>') +
+    '<section class="card c-half"><h3 class="card-title">' + (solo ? 'Workouts and best lifts' : 'Head to head') + '</h3>' + h2h + '</section>' +
+    '<section class="card c-full"><h3 class="card-title">The plan</h3>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => { const t = tplById(x.template_id); return '<li><b>' + esc(t ? t.name : 'A private workout') + '</b><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></li>'; }).join('') + '</ol>'
+      : '<p class="muted">No workouts planned.' + (isMine(sn) ? ' Add some in Edit season.' : '') + '</p>') + '</section>';
+}

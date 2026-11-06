@@ -147,6 +147,12 @@ class SupaStore {
   async standings(seasonId) { return must(await this.sb.rpc('season_standings', { p_season: seasonId })); }
   async seasonWorkouts(seasonId) { return must(await this.sb.rpc('season_workouts', { p_season: seasonId })); }
   async seasonBests(seasonId) { return must(await this.sb.rpc('season_bests', { p_season: seasonId })); }
+  async seasonDaily(seasonId) { return must(await this.sb.rpc('season_daily', { p_season: seasonId })); }
+  // Every working set you've logged for one exercise, oldest first (for its trend chart).
+  async exerciseHistory(exerciseId) {
+    return this.all(() => this.sb.from('lift_sets').select('performed_on,weight,reps,unit,is_warmup').is('deleted_at', null)
+      .eq('exercise_id', exerciseId).order('performed_on'));
+  }
 
   // ----- workout days: a workout put on a date -----
   async workoutDays(fromDate) {
@@ -368,6 +374,23 @@ class DemoStore {
     const ids = Object.keys(best).slice(0, 6);
     return ids.flatMap((e, i) => people.map(p => ({ user_id: p.user_id, display_name: p.display_name, exercise_id: e, ...best[e],
       best_weight: p.user_id === 'me' ? best[e].best_weight : best[e].best_weight + (i % 2 ? 10 : -15) })));
+  }
+  async seasonDaily(seasonId) {
+    const sn = this.seasonRows.find(x => x.id === seasonId);
+    const people = await this.standings(seasonId);
+    const mine = new Map();
+    for (const x of this.live()) if (!x.is_warmup && x.performed_on >= sn.starts_on && x.performed_on <= sn.ends_on) {
+      const d = mine.get(x.performed_on) || { performed_on: x.performed_on, sets: 0, volume_lb: 0, volume_kg: 0 };
+      d.sets++; d['volume_' + x.unit] += setVolume(x); mine.set(x.performed_on, d);
+    }
+    const out = [...mine.values()].map(d => ({ user_id: 'me', display_name: 'Demo lifter', ...d }));
+    if (people.some(p => p.user_id === 'alex'))
+      for (const d of mine.values()) out.push({ user_id: 'alex', display_name: 'Alex', performed_on: addDays(d.performed_on, 1), sets: d.sets + 2, volume_lb: Math.round(d.volume_lb * 0.95), volume_kg: 0 });
+    return out;
+  }
+  async exerciseHistory(exerciseId) {
+    return this.live().filter(s => s.exercise_id === exerciseId).sort((a, b) => a.performed_on.localeCompare(b.performed_on))
+      .map(s => ({ performed_on: s.performed_on, weight: s.weight, reps: s.reps, unit: s.unit, is_warmup: s.is_warmup }));
   }
   async workoutDays(fromDate) {
     if (!this.dayRows) this.dayRows = [{ id: uid(), template_id: 't-push', on_date: addDays(localDate(), 1) }, { id: uid(), template_id: 't-pull', on_date: addDays(localDate(), 3) }];
