@@ -117,8 +117,9 @@ function gateForm(g, onSubmit) {
   const signOut = g.querySelector('[data-signout]');
   if (signOut) signOut.onclick = async () => { await store.signOut(); showSignIn(); };
 }
-function showSignIn() {
+function showSignIn(problem) {
   const g = gate(
+    (problem ? '<p class="warn" style="text-align:center">' + esc(problem) + '</p>' : '') +
     '<form autocomplete="on"><label for="em">Email</label><input class="plain-input" id="em" name="email" type="email" autocomplete="username" required>' +
     '<label for="pw">Password</label><input class="plain-input" id="pw" name="password" type="password" autocomplete="current-password" required>' +
     '<button class="btn primary block" type="submit">Sign in</button><p class="warn" role="alert"></p></form>' +
@@ -198,6 +199,11 @@ function showApp() {
   $('app').hidden = false; $('tabs').hidden = false; $('fab').hidden = false;
   $('demoFlag').hidden = !store.demo;
   route();
+  // Signed in from an email link: get a password set while we're here.
+  if (typeof store.link === 'string') {
+    store.link = null;
+    openSettings('You’re in from an email link. Set a password below so you can sign in normally next time.');
+  }
 }
 
 // ===========================================================================
@@ -1325,11 +1331,14 @@ function drawBests() {
 // ===========================================================================
 // Settings sheet
 // ===========================================================================
-$('menuBtn').addEventListener('click', () => {
+$('menuBtn').addEventListener('click', () => openSettings());
+// note: shown at the top, e.g. after signing in from an email link, with the password box ready.
+function openSettings(note) {
   LG.mode = 'menu';
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(me ? me.display_name : 'You') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
+      (note ? '<div class="pr-flag" style="background:var(--accent-soft);color:var(--ink);animation:none">' + esc(note) + '</div>' : '') +
       '<div class="field-label"><span>Default unit</span><span class="seg" role="group" aria-label="Default unit">' +
         ['lb', 'kg'].map(u => '<button type="button" data-pref-unit="' + u + '" aria-pressed="' + (prefs.unit === u) + '">' + u + '</button>').join('') + '</span></div>' +
       '<p class="hint-line">Each set keeps its own unit, and lb and kg totals are never mixed. This is just where new exercises start.</p>' +
@@ -1346,11 +1355,12 @@ $('menuBtn').addEventListener('click', () => {
     const pw = $('newPw').value, msg = $('pwMsg'), btn = form.querySelector('button');
     if (pw.length < 12) { msg.textContent = 'Use at least 12 characters.'; return; }
     btn.disabled = true; msg.textContent = '';
-    try { await store.updatePassword(pw); $('newPw').value = ''; msg.style.color = 'var(--good)'; msg.textContent = 'Password changed.'; }
+    try { await store.updatePassword(pw); $('newPw').value = ''; msg.style.color = 'var(--good)'; msg.textContent = 'Password saved. Use it to sign in from now on.'; }
     catch (x) { msg.style.color = ''; msg.textContent = x.message; }
     btn.disabled = false;
   });
-});
+  if (note && $('newPw')) setTimeout(() => $('newPw').focus(), 80);
+}
 inner.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
@@ -1367,6 +1377,7 @@ inner.addEventListener('click', async e => {
 (async function boot() {
   try {
     store = await connect(DEMO);
+    if (store.link && store.link.error) return showSignIn('That email link didn’t work (' + store.link.error + '). Links expire after a while; ask for a new one, or sign in with your password.');
     if (!(await store.session())) return showSignIn();
     await afterSignIn();
   } catch (e) {

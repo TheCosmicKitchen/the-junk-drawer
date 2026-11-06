@@ -8,10 +8,21 @@ const SET_COLS = 'id,exercise_id,performed_on,logged_at,date_only,weight,reps,un
 
 export async function connect(demo) {
   if (demo) return new DemoStore();
+  // Arrived from a Supabase email link (magic link, password reset, invite)? The link puts
+  // the sign-in in the address after '#'. Note what kind it was before supabase-js reads it.
+  const params = new URLSearchParams(location.hash.slice(1));
+  const link = params.get('access_token') ? params.get('type') || 'link'
+    : params.get('error_description') ? { error: params.get('error_description') } : null;
   const { createClient } = await import(SUPABASE_JS);
-  return new SupaStore(createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  const store = new SupaStore(createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   }));
+  store.link = link;
+  if (link) {
+    await store.sb.auth.getSession();   // let supabase-js finish reading the link
+    history.replaceState(null, '', location.pathname + location.search + '#log');   // and get the token out of the address bar
+  }
+  return store;
 }
 
 // Turn Supabase/Postgres errors into something a person can act on.
