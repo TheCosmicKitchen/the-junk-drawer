@@ -208,6 +208,7 @@ function route() {
   const tab = ['log', 'routines', 'history', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
   document.querySelectorAll('.tabs a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + tab ? 'page' : 'false'));
   if (tab !== currentTab) window.scrollTo(0, 0);
+  $('fab').hidden = tab !== 'log';   // only on Log, so it never covers buttons elsewhere
   currentTab = tab;
   render();
 }
@@ -390,7 +391,12 @@ async function restoreSet(s) {
 // ===========================================================================
 const sheet = $('sheet'), inner = $('sheetInner');
 const LG = { mode: 'pick', exId: null, editing: null };
-function openSheet() { if (!sheet.open) sheet.showModal(); }
+// Sheets with something to type in (search, routine editor, seasons) open full height,
+// so the text box sits at the top instead of down where the phone keyboard pops up.
+function openSheet() {
+  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season'].includes(LG.mode));
+  if (!sheet.open) sheet.showModal();
+}
 function closeSheet() { flushSaves(); if (sheet.open) sheet.close(); render(); }
 sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 sheet.addEventListener('cancel', e => { e.preventDefault(); closeSheet(); });
@@ -855,50 +861,68 @@ function queueItem(id, patch) {
 function openDesigner(id, fresh) {
   const t = S.templates.find(x => x.id === id);
   if (!t || !isMine(t)) return;
-  D.id = id; LG.mode = 'design'; LG.pickFor = null;
+  if (D.id !== id) D.open = null;
+  D.id = id; LG.mode = 'design'; LG.pickFor = null; LG.multi = null;
   inner.innerHTML =
-    '<div class="sheet-head"><input class="title-input" id="rtName" maxlength="60" value="' + esc(t.name) + '" aria-label="Routine name"><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
-    '<div class="sheet-body">' +
-      '<input class="plain-input" id="rtNotes" maxlength="500" placeholder="Notes (optional)" value="' + esc(t.notes || '') + '" aria-label="Notes">' +
-      '<div class="toggles"><button type="button" class="toggle" id="rtShare" aria-pressed="' + !!t.is_shared + '">' + (t.is_shared ? '✓ Shared with the crew' : 'Share with the crew') + '</button></div>' +
+    '<div class="sheet-head"><input class="title-input" id="rtName" maxlength="60" value="' + esc(t.name) + '" aria-label="Routine name" enterkeyhint="done"><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body design-body">' +
+      '<div class="design-meta">' +
+        '<button type="button" class="toggle" id="rtShare" aria-pressed="' + !!t.is_shared + '">' + (t.is_shared ? '✓ Shared with the crew' : 'Share with the crew') + '</button>' +
+        (t.notes ? '' : '<button type="button" class="toggle" id="rtNoteBtn">+ Add a note</button>') +
+      '</div>' +
+      '<textarea class="plain-input" id="rtNotes" rows="2" maxlength="500" placeholder="Notes: warm-up, rest times, anything" aria-label="Notes"' + (t.notes ? '' : ' hidden') + '>' + esc(t.notes || '') + '</textarea>' +
       '<ol class="items" id="rtItems"></ol>' +
-      '<button class="btn block" id="rtAdd">+ Add exercise</button>' +
-      '<div class="actions" style="margin-top:16px"><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start this routine</button><button class="btn ghost" id="rtDelete" style="color:var(--accent)">Delete routine</button></div>' +
       '<p class="hint-line" id="rtHint"></p>' +
-    '</div>';
+      '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
+    '</div>' +
+    '<div class="design-foot"><button class="btn" id="rtAdd">+ Add exercises</button><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button></div>';
   openSheet();
   drawItems();
   const name = $('rtName'), notes = $('rtNotes');
   name.addEventListener('input', () => debounceSave('name', () => saveRoutine({ name: name.value.trim() || 'Untitled routine' })));
+  name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
   notes.addEventListener('input', () => debounceSave('notes', () => saveRoutine({ notes: notes.value.trim() || null })));
   if (fresh) setTimeout(() => { name.focus(); name.select(); }, 60);
 }
 function drawItems() {
   const list = routineItems(D.id), t = S.templates.find(x => x.id === D.id);
-  $('rtItems').innerHTML = list.length ? list.map(itemRow).join('') : '<li class="muted" style="padding:14px 4px">Add the exercises you do, in order. Drag ⠿ to reorder.</li>';
+  $('rtItems').innerHTML = list.length ? list.map(itemRow).join('')
+    : '<li class="empty-steps"><b>No exercises yet.</b><br>Tap <b>+ Add exercises</b> below and tick the ones you do, in order.</li>';
   $('rtStart').disabled = !list.length;
-  $('rtHint').textContent = 'Changes save as you go.' + (t && t.is_shared ? ' Anyone subscribed sees them straight away.' : '');
+  $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
+    'Saves as you go.' + (t && t.is_shared ? ' Anyone subscribed sees changes straight away.' : '');
+}
+// One line per step; tap it to open big controls for that step (one open at a time).
+function itemSummary(it) {
+  return L.targetText(it, S.bestRows);
 }
 function itemRow(it) {
+  const open = D.open === it.id;
   const pct = it.load_mode === 'percent_1rm';
   const tgt = L.itemTarget(it, S.bestRows);
-  return '<li class="item" data-item="' + esc(it.id) + '">' +
-    '<div class="row"><button type="button" class="handle" data-handle aria-label="Move ' + esc(exName(it.exercise_id)) + ' (drag, or use the arrow keys)">⠿</button>' +
-      '<b class="grow">' + esc(exName(it.exercise_id)) + '</b><button type="button" class="iconbtn sm" data-remove-item="' + esc(it.id) + '" aria-label="Remove ' + esc(exName(it.exercise_id)) + '">✕</button></div>' +
-    '<div class="mini">' + miniStep('Sets', 'sets', it.sets) + miniStep('Reps', 'reps', it.reps) +
-      miniStep(pct ? '% of 1RM' : 'Load (' + it.unit + ')', 'load_value', L.fmtLoad(it.load_value)) +
-      '<span class="seg mini-seg" role="group" aria-label="Load as">' + [['lb', 'lb'], ['kg', 'kg'], ['pct', '%1RM']].map(([k, l]) =>
-        '<button type="button" data-loadmode="' + k + '" aria-pressed="' + (k === 'pct' ? pct : !pct && it.unit === k) + '">' + l + '</button>').join('') + '</span>' +
-    '</div>' +
-    (pct ? '<p class="hint-line">' + (tgt.weight ? '≈ ' + esc(L.fmtLoad(tgt.weight)) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit) + '</p>' : '') +
-    '<div class="item-actions"><button type="button" data-swap>⇄ Swap exercise</button><button type="button" data-dup>⧉ Duplicate</button></div>' +
+  const step = pct ? 5 : it.unit === 'kg' ? 2.5 : 5;
+  return '<li class="item' + (open ? ' open' : '') + '" data-item="' + esc(it.id) + '">' +
+    '<div class="item-head"><button type="button" class="handle" data-handle aria-label="Move ' + esc(exName(it.exercise_id)) + ' (drag, or use the arrow keys)">⠿</button>' +
+      '<button type="button" class="item-sum" data-toggle-item aria-expanded="' + open + '"><b>' + esc(exName(it.exercise_id)) + '</b>' +
+        '<span class="sum">' + esc(itemSummary(it)) + '</span></button>' +
+      '<span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></div>' +
+    (open ?
+      '<div class="item-edit">' +
+        '<div class="two">' + bigStep('Sets', 'sets', it.sets) + bigStep('Reps', 'reps', it.reps) + '</div>' +
+        '<div class="field-label"><span>Load</span><span class="seg" role="group" aria-label="Load as">' + [['lb', 'lb'], ['kg', 'kg'], ['pct', '% 1RM']].map(([k, l]) =>
+          '<button type="button" data-loadmode="' + k + '" aria-pressed="' + (k === 'pct' ? pct : !pct && it.unit === k) + '">' + l + '</button>').join('') + '</span></div>' +
+        bigStep(pct ? '% of your best 1RM' : 'Weight (' + it.unit + ')', 'load_value', L.fmtLoad(it.load_value), true) +
+        '<div class="nudges" role="group" aria-label="Fine-tune">' + [-2, -1, 1, 2].map(m => '<button type="button" data-step-field="load_value" data-d="' + m + '">' + (m > 0 ? '+' : '−') + L.fmtLoad(Math.abs(m) * step) + (pct ? '%' : '') + '</button>').join('') + '</div>' +
+        '<p class="hint-line" data-pct-hint>' + (pct ? (tgt.weight ? '≈ ' + esc(L.fmtLoad(tgt.weight)) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit) : (it.load_value > 0 ? '' : 'Leave at 0 for bodyweight moves.')) + '</p>' +
+        '<div class="item-actions"><button type="button" data-swap>⇄ Swap</button><button type="button" data-dup>⧉ Duplicate</button><button type="button" class="danger" data-remove-item="' + esc(it.id) + '">✕ Remove</button></div>' +
+      '</div>' : '') +
   '</li>';
 }
-function miniStep(label, field, value) {
-  return '<label class="ms"><small>' + esc(label) + '</small><span>' +
-    '<button type="button" data-step-field="' + field + '" data-d="-1" aria-label="Less">−</button>' +
+function bigStep(label, field, value, wide) {
+  return '<label class="bs' + (wide ? ' wide' : '') + '"><small>' + esc(label) + '</small><span>' +
+    '<button type="button" data-step-field="' + field + '" data-d="-1" aria-label="Less ' + esc(label) + '">−</button>' +
     '<input data-field="' + field + '" inputmode="decimal" value="' + esc(value) + '" aria-label="' + esc(label) + '">' +
-    '<button type="button" data-step-field="' + field + '" data-d="1" aria-label="More">+</button></span></label>';
+    '<button type="button" data-step-field="' + field + '" data-d="1" aria-label="More ' + esc(label) + '">+</button></span></label>';
 }
 const ITEM_BOUNDS = { sets: [1, 20], reps: [1, 100] };
 function clampItem(it, field, v) {
@@ -909,6 +933,18 @@ function clampItem(it, field, v) {
 function redrawItem(id) {
   const li = inner.querySelector('.item[data-item="' + id + '"]');
   if (li) li.outerHTML = itemRow(S.itemsById.get(id));
+}
+// Update a step's numbers in place (no re-render), so held buttons keep working.
+function refreshItemView(id) {
+  const li = inner.querySelector('.item[data-item="' + id + '"]'), it = S.itemsById.get(id);
+  if (!li || !it) return;
+  li.querySelectorAll('input[data-field]').forEach(inp => { if (document.activeElement !== inp) inp.value = inp.dataset.field === 'load_value' ? L.fmtLoad(it.load_value) : it[inp.dataset.field]; });
+  li.querySelector('.sum').textContent = itemSummary(it);
+  const hint = li.querySelector('[data-pct-hint]');
+  if (hint && it.load_mode === 'percent_1rm') {
+    const tgt = L.itemTarget(it, S.bestRows);
+    hint.textContent = tgt.weight ? '≈ ' + L.fmtLoad(tgt.weight) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit;
+  } else if (hint) hint.textContent = it.load_value > 0 ? '' : 'Leave at 0 for bodyweight moves.';
 }
 // Add exercises to the end of a routine, each starting from your last numbers for it.
 async function addItemsTo(tid, exIds) {
@@ -922,8 +958,9 @@ async function addItemsTo(tid, exIds) {
         load_value: recent ? Number(recent.weight) : 0, unit: recent ? recent.unit : prefs.unit,
       });
       S.items.push(it); S.itemsById.set(it.id, it);
+      if (exIds.length === 1) D.open = it.id;   // one added: open it, ready to set
     }
-    if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises');
+    if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises. Tap one to set its numbers.');
   } catch (x) { fail(x); }
   openDesigner(tid);
 }
@@ -937,7 +974,7 @@ function persistOrder() {
 // The real click that ends a hold is swallowed, so it doesn't add one extra step.
 const HOLD = { timer: null, every: null, held: false };
 inner.addEventListener('pointerdown', e => {
-  const b = e.target.closest('[data-w], [data-r], [data-nudge]');
+  const b = e.target.closest('[data-w], [data-r], [data-nudge], [data-step-field]');
   if (!b) return;
   HOLD.held = false;
   clearTimeout(HOLD.timer); clearInterval(HOLD.every);
@@ -988,6 +1025,7 @@ inner.addEventListener('input', e => {
 });
 async function designerClick(b) {
   if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
+  if (b.id === 'rtNoteBtn') { b.remove(); const n = $('rtNotes'); n.hidden = false; n.focus(); return; }
   if (b.id === 'rtShare') {
     const t = S.templates.find(x => x.id === D.id);
     try { await saveRoutine({ is_shared: !t.is_shared }); } catch (x) { return fail(x); }
@@ -1007,6 +1045,14 @@ async function designerClick(b) {
   const li = b.closest('.item');
   if (!li) return;
   const id = li.dataset.item, it = S.itemsById.get(id);
+  if (b.hasAttribute('data-toggle-item')) {
+    flushSaves();
+    D.open = D.open === id ? null : id;
+    drawItems();
+    const now = inner.querySelector('.item[data-item="' + id + '"]');
+    if (now && D.open) now.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
   if (b.hasAttribute('data-swap')) {
     // Swap keeps the step's place, sets, reps and load; only the exercise changes.
     flushSaves();
@@ -1027,6 +1073,7 @@ async function designerClick(b) {
       const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
         load_mode: it.load_mode, load_value: it.load_value, unit: it.unit });
       S.items.push(copy); S.itemsById.set(copy.id, copy);
+      D.open = copy.id;
       drawItems(); vibrate(8);
     } catch (x) { fail(x); }
     return;
@@ -1044,7 +1091,7 @@ async function designerClick(b) {
     const f = b.dataset.stepField, d = Number(b.dataset.d);
     const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' ? 5 : it.unit === 'kg' ? 2.5 : 5) : 1;
     queueItem(id, { [f]: clampItem(it, f, Number(it[f]) + d * step) });
-    redrawItem(id); vibrate(5);
+    refreshItemView(id); vibrate(5);
     return;
   }
   if (b.dataset.loadmode) {

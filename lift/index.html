@@ -189,6 +189,38 @@
   .tickbox { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 10px; border-radius: 7px; border: 2px solid var(--line); font-style: normal; font-size: 13px; font-weight: 800; vertical-align: -6px; }
   .sel .tickbox { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .pick-foot { position: sticky; bottom: 0; padding: 10px 0 4px; background: linear-gradient(transparent, var(--bg) 30%); }
+  /* ---------- routine editor, phone-first ---------- */
+  #sheetInner { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  #sheetInner .sheet-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .sheet.tall { height: 94dvh; max-height: 94dvh; }
+  .design-body { flex: 1; padding-bottom: 12px; }
+  .design-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  #rtNotes { margin-bottom: 4px; resize: vertical; }
+  .design-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
+  .design-foot .btn { padding: 14px; font-size: 16px; border-radius: 14px; }
+  .item { padding: 0; overflow: hidden; }
+  .item-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 6px; }
+  .item-head .handle { width: 40px; height: 44px; flex: none; background: transparent; font-size: 20px; }
+  .item-sum { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 8px 4px; display: flex; flex-direction: column; gap: 1px; }
+  .item-sum b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-sum .sum { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chev { color: var(--muted); font-size: 14px; width: 18px; text-align: center; }
+  .item.open { border-color: var(--accent); }
+  .item.open .item-sum .sum { color: var(--accent); font-weight: 600; }
+  .item-edit { padding: 4px 14px 14px; border-top: 1px solid var(--line); }
+  .item-edit .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .bs { display: flex; flex-direction: column; gap: 4px; }
+  .bs.wide { margin-top: 8px; }
+  .bs small { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .bs span { display: grid; grid-template-columns: 46px 1fr 46px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+  .bs button { border: 0; background: transparent; height: 50px; font-size: 22px; font-weight: 600; user-select: none; touch-action: manipulation; }
+  .bs button:active { background: var(--chip); }
+  .bs input { min-width: 0; border: 0; background: transparent; text-align: center; font-family: var(--display); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .item-edit .nudges { grid-template-columns: repeat(4, 1fr); }
+  .item-edit .item-actions { margin-top: 12px; }
+  .item-actions .danger, .linkbtn.danger { color: var(--accent); }
+  .linkbtn { border: 0; background: none; padding: 10px 2px; font-weight: 600; font-size: 14px; }
+  .empty-steps { padding: 18px 8px; text-align: center; color: var(--muted); line-height: 1.6; }
   /* ---------- seasons ---------- */
   .season.on { border-color: var(--accent); }
   .season h3 { font-size: 19px; }

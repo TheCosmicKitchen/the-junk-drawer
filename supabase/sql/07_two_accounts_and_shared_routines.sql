@@ -11,7 +11,16 @@
 -- by mistake, the dashboard, the admin API). The lock makes two simultaneous
 -- sign-ups wait for each other, so they can't both slip under the limit.
 -- To allow more one day: change the 2 here and in private.members_cap().
+-- It also checks the invite list (09), so re-running this file keeps that check.
 -- ---------------------------------------------------------------------------
+create table if not exists private.invited_emails (
+  email      text primary key check (email = lower(btrim(email)) and email like '%_@_%'),
+  note       text,
+  added_at   timestamptz not null default now()
+);
+alter table private.invited_emails enable row level security;
+revoke all on private.invited_emails from public, anon, authenticated;
+
 create or replace function private.accounts_cap()
 returns trigger
 language plpgsql
@@ -20,6 +29,9 @@ set search_path = ''
 as $$
 begin
   perform pg_advisory_xact_lock(727274);
+  if new.email is null or not exists (select 1 from private.invited_emails i where i.email = lower(btrim(new.email))) then
+    raise exception 'This email hasn''t been invited.';
+  end if;
   if (select count(*) from auth.users) >= 2 then
     raise exception 'This project is limited to 2 accounts.';
   end if;
