@@ -232,6 +232,7 @@ function route() {
   if (tab !== currentTab) window.scrollTo(0, 0);
   $('fab').hidden = tab !== 'log';   // only on Log, so it never covers buttons elsewhere
   currentTab = tab;
+  $('pageTitle').textContent = { log: 'Log', routines: 'Routines', history: 'Calendar', progress: 'Progress' }[tab];
   render();
 }
 function render() {
@@ -372,6 +373,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.leaveSeason) leaveSeason(b.dataset.leaveSeason, b);
 });
 $('fab').addEventListener('click', () => openLogger());
+$('navLog').addEventListener('click', () => { if (location.hash !== '#log' && location.hash !== '') location.hash = '#log'; openLogger(); });
 const findSet = id => S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id);
 
 // Log what's left of a routine step at its planned reps and weight, in one tap.
