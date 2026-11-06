@@ -411,6 +411,20 @@
   details.more[open] summary::before { content: "− "; }
   .more-body { padding: 6px 0 4px; }
   .more-body .toggles { margin-top: 12px; }
+  /* ---------- quick flows: + New, season wizard, type-to-add ---------- */
+  .new-list .new-opt { align-items: center; justify-content: flex-start; gap: 14px; padding: 14px; }
+  .new-list .new-opt > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+  .new-list .new-opt b { font-size: 17px; }
+  .new-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; font-size: 22px; flex: none; }
+  .wz-dots { display: flex; gap: 6px; padding: 0 16px 6px; }
+  .wz-dots i { flex: 1; height: 4px; border-radius: 99px; background: var(--chip); }
+  .wz-dots i.on { background: var(--accent); }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+  .choice { border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 12px 16px; font-weight: 700; font-size: 16px; }
+  .choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .wz-end { margin: 0; padding: 12px 2px; font-weight: 700; }
+  .wz-foot { grid-template-columns: 1fr 1fr; }
+  .quick-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 6px; }
 
   /* ---------- page title (desktop) and nav extras ---------- */
   .page-title, .nav-brand, .nav-log { display: none; }

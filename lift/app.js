@@ -289,7 +289,7 @@ function renderLog() {
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
-    (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Save today as a routine</button>' : '');
+    (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '');
 }
 // Turn a day's lifting into a routine: one step per exercise, in the order you did them,
 // with the number of working sets and your heaviest set's reps and weight.
@@ -299,7 +299,7 @@ async function saveDayAsRoutine(day, btn) {
   if (!groups.length) return toast('Nothing to save from that day.');
   btn.disabled = true;
   try {
-    const t = await store.addRoutine({ name: fmtDay(day, { weekday: 'long', month: 'short', day: 'numeric' }) + ' workout' });
+    const t = await store.addRoutine({ name: nameFrom(groups.map(g => g.exercise_id)), kind: 'workout' });
     S.templates.push(t);
     let position = 0;
     for (const g of groups.slice(0, 100)) {
@@ -308,8 +308,8 @@ async function saveDayAsRoutine(day, btn) {
         sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit });
       S.items.push(it); S.itemsById.set(it.id, it);
     }
-    toast('Saved. Give it a name and tweak away.');
-    openDesigner(t.id, true);
+    toast('Saved as “' + t.name + '”. Rename it or tweak away.');
+    openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
 }
 function exCard(g) {
@@ -366,7 +366,9 @@ view.addEventListener('click', async e => {
   else if (b.hasAttribute('data-season-back')) { S.seasonOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.hasAttribute('data-programs')) openStarters();
   else if (b.dataset.editSeason) openSeasonSheet(b.dataset.editSeason);
-  else if (b.hasAttribute('data-new-season')) openSeasonSheet(null);
+  else if (b.hasAttribute('data-new-season')) openWizard();
+  else if (b.hasAttribute('data-new-any')) openNewChooser();
+  else if (b.dataset.rerun) openWizard(seasonById(b.dataset.rerun));
   else if (b.dataset.joinSeason) joinSeason(b.dataset.joinSeason, b);
   else if (b.dataset.link) copyLink(b.dataset.link);
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
@@ -561,7 +563,7 @@ const LG = { mode: 'pick', exId: null, editing: null };
 // Sheets with something to type in (search, routine editor, seasons) open full height,
 // so the text box sits at the top instead of down where the phone keyboard pops up.
 function openSheet() {
-  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk'].includes(LG.mode));
+  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk', 'wizard'].includes(LG.mode));
   if (!sheet.open) sheet.showModal();
 }
 function closeSheet() { flushSaves(); if (sheet.open) sheet.close(); render(); }
@@ -804,6 +806,8 @@ inner.addEventListener('click', async e => {
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
   if (LG.mode === 'chunk') return chunkClick(b);
+  if (LG.mode === 'wizard') return wizardClick(b);
+  if (LG.mode === 'newpick') return newPickClick(b);
   if (LG.mode === 'starters') return starterClick(b);
   if (LG.mode === 'program') return programClick(b);
   if (LG.mode === 'pickwk') return pickWkClick(b);
@@ -996,8 +1000,7 @@ function renderRoutines() {
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
   view.innerHTML =
-    '<div class="row" style="margin-top:8px"><h2 style="font-size:28px">Routines</h2><span class="head-actions"><button class="btn" data-new-block>+ Block</button><button class="btn primary" data-new-routine>+ Workout</button></span></div>' +
-    '<button class="btn block starter-btn" data-starters>📚 Starter library and programs</button>' +
+    '<div class="row page-actions"><h2 style="font-size:28px">Routines</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
     comingUp() +
     '<h3 class="section-title">Workouts</h3>' +
     (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
@@ -1012,12 +1015,38 @@ function renderRoutines() {
       (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>'))).join('')
       : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
 }
+// A name from what's in it: "Bench Press + Rows", "+ 2 more" when there's more.
+const shortName = id => exName(id).replace(/^(Barbell|Dumbbell|Cable|Machine|Seated|Standing) /, '');
+function nameFrom(exIds) {
+  const u = [...new Set(exIds)];
+  if (!u.length) return 'New workout';
+  return (u.slice(0, 2).map(shortName).join(' + ') + (u.length > 2 ? ' + ' + (u.length - 2) + ' more' : '')).slice(0, 60);
+}
+const DEFAULT_NAMES = new Set(['New workout', 'New block', 'Untitled routine']);
+async function autoName(tid) {
+  const t = S.templates.find(x => x.id === tid);
+  if (!t || !DEFAULT_NAMES.has(t.name)) return;
+  const name = nameFrom(routineItems(tid).map(i => i.exercise_id));
+  if (DEFAULT_NAMES.has(name)) return;
+  try { Object.assign(t, await store.updateRoutine(tid, { name })); } catch (x) { return; }
+  const inp = $('rtName'); if (inp && D.id === tid) inp.value = t.name;
+}
+// What you usually do for a lift: your typical number of working sets per session and most common reps.
+function usualFor(exId) {
+  const sets = S.recent.filter(x => x.exercise_id === exId && x.is_warmup !== true);
+  if (!sets.length) return { sets: 3, reps: 8, unit: prefs.unit };
+  const perDay = new Map(), reps = new Map();
+  for (const x of sets) { perDay.set(x.performed_on, (perDay.get(x.performed_on) || 0) + 1); reps.set(x.reps, (reps.get(x.reps) || 0) + 1); }
+  const counts = [...perDay.values()].sort((a, b) => a - b);
+  return { sets: Math.min(10, Math.max(1, counts[Math.floor(counts.length / 2)])), reps: [...reps.entries()].sort((a, b) => b[1] - a[1])[0][0], unit: sets[0].unit };
+}
 async function newRoutine(btn, kind) {
   if (btn) btn.disabled = true;
   try {
     const t = await store.addRoutine({ name: kind === 'block' ? 'New block' : 'New workout', kind: kind || 'workout' });
     S.templates.push(t);
-    openDesigner(t.id, true);
+    openDesigner(t.id);
+    setTimeout(() => { const q = $('qaIn'); if (q) q.focus(); }, 80);   // the name fills itself in from what you add
   } catch (x) { fail(x); } finally { if (btn) btn.disabled = false; }
 }
 async function copySteps(fromIds, tid) {
@@ -1174,6 +1203,8 @@ function openDesigner(id, fresh) {
         (t.notes ? '' : '<button type="button" class="toggle" id="rtNoteBtn">+ Add a note</button>') +
       '</div>' +
       '<textarea class="plain-input" id="rtNotes" rows="2" maxlength="500" placeholder="Notes: warm-up, rest times, anything" aria-label="Notes"' + (t.notes ? '' : ' hidden') + '>' + esc(t.notes || '') + '</textarea>' +
+      '<div class="quick-add"><input class="plain-input" id="qaIn" placeholder="Type to add: bench 3x5, ohp 3x8, rows" aria-label="Type exercises to add" enterkeyhint="go" autocomplete="off">' +
+        '<button type="button" class="btn" id="qaGo">Add</button></div>' +
       '<ol class="items" id="rtItems"></ol>' +
       '<p class="hint-line" id="rtHint"></p>' +
       '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
@@ -1184,6 +1215,7 @@ function openDesigner(id, fresh) {
   const name = $('rtName'), notes = $('rtNotes');
   name.addEventListener('input', () => debounceSave('name', () => saveRoutine({ name: name.value.trim() || 'Untitled routine' })));
   name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
+  $('qaIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('qaGo').click(); } });
   notes.addEventListener('input', () => debounceSave('notes', () => saveRoutine({ notes: notes.value.trim() || null })));
   if (fresh) setTimeout(() => { name.focus(); name.select(); }, 60);
 }
@@ -1258,16 +1290,16 @@ async function addItemsTo(tid, exIds) {
   try {
     for (const exId of exIds) {
       const list = routineItems(tid);
-      const recent = S.recent.find(s => s.exercise_id === exId && s.is_warmup !== true);
+      const u = usualFor(exId);
       const it = await store.addItem({
         template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
-        sets: 3, reps: recent ? Math.min(100, recent.reps) : 8, load_mode: 'last',
-        load_value: 0, unit: recent ? recent.unit : prefs.unit,
+        sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit,
       });
       S.items.push(it); S.itemsById.set(it.id, it);
       if (exIds.length === 1) D.open = it.id;   // one added: open it, ready to set
     }
-    if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises. Tap one to set its numbers.');
+    if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises at your usual sets and reps.');
+    await autoName(tid);
   } catch (x) { fail(x); }
   openDesigner(tid);
 }
@@ -1384,14 +1416,52 @@ async function chunkClick(b) {
     if (list.length + CH.picked.length > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
     try {
       await copySteps(CH.picked, tid);
+      await autoName(tid);
       toast('Added ' + CH.picked.length + ' step' + (CH.picked.length === 1 ? '' : 's') + '.');
     } catch (x) { fail(x); }
     openDesigner(tid);
   }
 }
+// "bench 3x5, ohp 3x8, rows" -> steps. Names match the catalogue and its search words; a step
+// without NxM gets your usual sets and reps for that lift.
+function parseQuick(text) {
+  const out = [], missing = [];
+  for (const raw of text.split(/[,;\n]+/).map(x => x.trim()).filter(Boolean)) {
+    const m = /^(.*?)\s*(?:(\d{1,2})\s*[x×*]\s*(\d{1,3}))?\s*$/i.exec(raw);
+    const name = (m && m[1] ? m[1] : raw).trim();
+    let id = S.nameIndex.get(L.norm(name));
+    for (const q of [name, name.replace(/e?s$/i, '')]) {   // "rows" finds "Row", "presses" finds "Press"
+      if (id || !q) break;
+      id = S.nameIndex.get(L.norm(q));
+      if (!id) { const hit = L.searchExercises(q, S.exercises, S.aliases, recentExerciseIds())[0]; id = hit && hit.id; }
+    }
+    if (!id) { missing.push(name); continue; }
+    out.push({ exId: id, sets: m && m[2] ? Math.min(20, Math.max(1, +m[2])) : null, reps: m && m[3] ? Math.min(100, Math.max(1, +m[3])) : null });
+  }
+  return { out, missing };
+}
+async function quickAdd(b) {
+  const tid = D.id, text = $('qaIn').value;
+  const { out, missing } = parseQuick(text);
+  if (!out.length) return toast(missing.length ? 'Couldn’t find: ' + missing.join(', ') : 'Type exercises, like: bench 3x5, rows');
+  if (routineItems(tid).length + out.length > 100) return toast('That would be more than 100 steps.');
+  b.disabled = true;
+  let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
+  try {
+    for (const x of out) {
+      const u = usualFor(x.exId);
+      const it = await store.addItem({ template_id: tid, exercise_id: x.exId, position: ++pos, sets: x.sets || u.sets, reps: x.reps || Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit });
+      S.items.push(it); S.itemsById.set(it.id, it);
+    }
+    await autoName(tid);
+  } catch (x) { b.disabled = false; return fail(x); }
+  openDesigner(tid);
+  toast('Added ' + out.map(x => shortName(x.exId)).join(', ') + (missing.length ? '. Couldn’t find: ' + missing.join(', ') : ''));
+}
 async function designerClick(b) {
   if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
   if (b.id === 'rtFrom') { flushSaves(); return openChunkPicker(); }
+  if (b.id === 'qaGo') return quickAdd(b);
   if (b.dataset.kind) {
     const t = S.templates.find(x => x.id === D.id);
     if ((t.kind || 'workout') === b.dataset.kind) return;
@@ -1918,7 +1988,7 @@ function dayBody(day) {
   if (!sets) return '<p class="muted">Loading…</p>';
   return groupByExercise(sets).map(g => '<div class="ex"><b>' + esc(exName(g.exercise_id)) + '</b><div class="chips">' +
     g.sets.map(s => '<button class="chip' + (s.is_warmup ? ' warm' : '') + '" data-edit="' + esc(s.id) + '">' + esc(setText(s)) + (s.notes ? ' <small>✎</small>' : '') + '</button>').join('') +
-    '</div></div>').join('') + (sets.length ? '<button class="btn" style="margin-top:14px" data-save-day="' + esc(day) + '">Save as a routine</button>' : '') || '<p class="muted">No sets.</p>';
+    '</div></div>').join('') + (sets.length ? '<button class="btn" style="margin-top:14px" data-save-day="' + esc(day) + '">Save as a workout</button>' : '') || '<p class="muted">No sets.</p>';
 }
 async function toggleDay(day) {
   if (S.open.has(day)) S.open.delete(day); else S.open.add(day);
@@ -2315,12 +2385,13 @@ function renderSeasons() {
         '<div><b>' + m.visits + '</b><small>your gym days</small></div><div><b>' + C.compact(L.lbEquivalent(m.volume)) + '</b><small>lb moved</small></div>' +
         '<div><b>' + g.done + '/' + g.of + '</b><small>goals done</small></div></div>' +
         '<div class="actions"><button class="btn primary" data-season="' + esc(x.id) + '">Open season</button>' +
+        (phaseOf(x) === 'done' && isMine(x) ? '<button class="btn" data-rerun="' + esc(x.id) + '">↻ Run it again</button>' : '') +
         (x.is_shared ? '<button class="btn ghost" data-link="s-' + esc(x.id) + '" aria-label="Copy a link to ' + esc(x.name) + '">🔗</button>' : '') + '</div></div></section>';
   };
   const group = (title, list) => list.length ? '<h3 class="section-title">' + title + '</h3><div class="season-grid">' + list.map(card).join('') + '</div>' : '';
   view.innerHTML =
     '<div class="row page-actions"><p class="muted" style="margin:0">A season is a stretch of dates with goals. Every set you log counts toward every season running that day.</p>' +
-      '<span class="head-actions"><button class="btn" data-programs>📚 Start a program</button><button class="btn primary" data-new-season>+ New season</button></span></div>' +
+      '<span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
     (invites.length ? '<h3 class="section-title">Join the crew</h3><div class="season-grid">' + invites.map(x => '<section class="card sbanner">' + bannerHtml(x) +
       '<div class="sb-body">' + (seasonGoals(x).length ? '<p class="hint-line" style="margin-top:0">Goals: ' + esc(seasonGoals(x).map(g => g.name).join(', ')) + '</p>' : '') + planLine(x) +
       '<div class="actions"><button class="btn primary" data-join-season="' + esc(x.id) + '">Join season</button></div></div></section>').join('') + '</div>' : '') +
@@ -2335,6 +2406,7 @@ function renderSeasonPage(sn) {
   const head = '<button class="linkbtn back" data-season-back>← All seasons</button>' +
     '<section class="card sbanner big">' + bannerHtml(sn, true) + '<div class="sb-body"><div class="actions">' +
       (isMine(sn) ? '<button class="btn" data-edit-season="' + esc(sn.id) + '">Edit season</button>' : '<button class="btn" data-my-goals="' + esc(sn.id) + '">My goals</button><button class="btn ghost" data-leave-season="' + esc(sn.id) + '">Leave</button>') +
+      (isMine(sn) ? '<button class="btn ghost" data-rerun="' + esc(sn.id) + '">↻ Run it again</button>' : '') +
       (sn.is_shared ? '<button class="btn ghost" data-link="s-' + esc(sn.id) + '">🔗 Copy link</button>' : '') + '</div></div></section>';
   if (!st || !st.d) {
     view.innerHTML = head + '<section class="card"><p class="muted" style="margin:0">Loading the season…</p></section>';
@@ -2416,4 +2488,147 @@ function renderSeasonPage(sn) {
     '<section class="card c-half"><h3 class="card-title">' + (solo ? 'Workouts and best lifts' : 'Head to head') + '</h3>' + h2h + '</section>' +
     '<section class="card c-full"><h3 class="card-title">The plan</h3>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => { const t = tplById(x.template_id); return '<li><b>' + esc(t ? t.name : 'A private workout') + '</b><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></li>'; }).join('') + '</ol>'
       : '<p class="muted">No workouts planned.' + (isMine(sn) ? ' Add some in Edit season.' : '') + '</p>') + '</section>';
+}
+
+// ===========================================================================
+// New season in three steps: how long, which workouts, which goals (suggested from your history).
+// "Run it again" opens the same steps filled in from an earlier season.
+// ===========================================================================
+const WZ = {};
+const MONTHS3 = d => fmtDay(d, { month: 'short' });
+function wzEnd() {
+  if (WZ.len === 'month') { const d = L.parseDate(WZ.start); return L.addDays(WZ.start, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate()); }
+  if (WZ.len === 'year') return WZ.start.slice(0, 4) + '-12-31';
+  return L.addDays(WZ.start, WZ.len * 7 - 1);
+}
+function wzName() {
+  const a = MONTHS3(WZ.start), b = MONTHS3(wzEnd());
+  return a === b ? fmtDay(WZ.start, { month: 'long' }) + ' block' : a + ' – ' + b + ' block';
+}
+const wzWeeks = () => Math.max(1, Math.round((L.daysBetween(WZ.start, wzEnd()) + 1) / 7));
+const niceRound = v => { const m = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.max(1, v))) - 1)); return Math.round(v / m) * m; };
+// Goals from what you actually do: your pace of gym days and pounds over the last 8 weeks, and a
+// little above your best on the lifts in the chosen workouts.
+function wzSuggestions() {
+  const w8 = weekly(8), weeks = wzWeeks();
+  const pace = Math.max(1, w8.reduce((a, w) => a + w.visits, 0) / 8);
+  const perWeek = WZ.mode === 'days' && WZ.picked.length ? WZ.picked.reduce((a, id) => a + bitCount(WZ.days.get(id) || 0), 0) || pace : pace;
+  const visits = Math.max(1, Math.round(perWeek * weeks));
+  const lbWeek = w8.reduce((a, w) => a + w.lb, 0) / 8;
+  const out = [{ key: 'visits', metric: 'visits', unit: null, target: visits, name: 'Show up ' + visits + ' times' }];
+  if (lbWeek > 0) { const v = niceRound(lbWeek * weeks * 1.1); out.push({ key: 'volume', metric: 'volume', unit: 'lb', target: v, name: 'Move ' + L.fmtBig(v) + ' lb' }); }
+  const exs = [...new Set(WZ.picked.flatMap(id => routineItems(id).map(i => i.exercise_id)))];
+  const pool = exs.length ? exs : trendChoices().slice(0, 6);
+  const lifts = pool.map(id => {
+    const rows = S.bestRows.filter(r => r.exercise_id === id && r.unit === 'lb' && r.reps <= 8);
+    const top = rows.reduce((m, r) => Math.max(m, Number(r.heaviest)), 0);
+    return { id, top, freq: S.recent.filter(x => x.exercise_id === id).length };
+  }).filter(x => x.top >= 20).sort((a, b) => b.freq - a.freq).slice(0, 3);
+  for (const x of lifts) { const t = Math.ceil((x.top * 1.05) / 5) * 5; out.push({ key: 'lift:' + x.id, metric: 'lift', unit: 'lb', exercise_id: x.id, target: t, name: (exName(x.id) + ' ' + t + ' lb').slice(0, 60) }); }
+  return out;
+}
+const bitCount = m => { let n = 0; for (let i = 0; i < 7; i++) if (m & (1 << i)) n++; return n; };
+function openWizard(from) {
+  const plan = from ? planFor(from.id) : [];
+  Object.assign(WZ, {
+    step: 1, from: from || null, start: today(), shared: from ? !!from.is_shared : true, nameTouched: !!from,
+    len: from ? Math.max(1, Math.round((L.daysBetween(from.starts_on, from.ends_on) + 1) / 7)) : 8,
+    name: from ? from.name.replace(/\s*\(again( \d+)?\)$/, '') + ' (again)' : '',
+    picked: plan.map(x => x.template_id).filter(id => tplById(id)),
+    days: new Map(plan.map(x => [x.template_id, x.weekdays])),
+    mode: plan.some(x => x.weekdays) ? 'days' : 'rotate',
+    goals: null, carry: from ? seasonGoals(from).map(g => ({ ...g, key: 'carry:' + g.id })) : [],
+  });
+  LG.mode = 'wizard';
+  drawWizard();
+  openSheet();
+}
+function drawWizard() {
+  if (!WZ.nameTouched) WZ.name = wzName();
+  const steps = ['How long', 'Workouts', 'Goals'];
+  const head = '<div class="sheet-head"><div><small class="muted">' + (WZ.from ? 'Run it again' : 'New season') + ' · step ' + WZ.step + ' of 3</small><h2 id="sheetTitle">' + steps[WZ.step - 1] + '</h2></div>' +
+    '<button class="iconbtn" data-close aria-label="Close">✕</button></div><div class="wz-dots">' + steps.map((x, i) => '<i class="' + (i < WZ.step ? 'on' : '') + '"></i>').join('') + '</div>';
+  let body = '';
+  if (WZ.step === 1) {
+    const opt = (v, l) => '<button type="button" class="choice" data-wz-len="' + v + '" aria-pressed="' + (String(WZ.len) === String(v)) + '">' + l + '</button>';
+    body = '<div class="choices">' + opt(4, '4 weeks') + opt(8, '8 weeks') + opt(12, '12 weeks') + opt('month', 'To month end') + opt('year', 'To year end') + '</div>' +
+      '<div class="grid2"><div><div class="field-label"><span>Starts</span></div><input class="plain-input" id="wzStart" type="date" value="' + esc(WZ.start) + '"></div>' +
+        '<div><div class="field-label"><span>Ends</span></div><p class="wz-end">' + esc(fmtDay(wzEnd(), { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) + '</p></div></div>' +
+      '<div class="field-label"><span>Name</span></div><input class="plain-input" id="wzName" maxlength="60" value="' + esc(WZ.name) + '">' +
+      '<div class="toggles"><button type="button" class="toggle" id="wzShare" aria-pressed="' + WZ.shared + '">' + shareLabel(WZ.shared) + '</button></div>';
+  } else if (WZ.step === 2) {
+    const list = S.templates.filter(t => !isBlock(t) && routineItems(t.id).length);
+    body = (list.length ? '<p class="hint-line" style="margin-top:0">Tick the workouts for this season, in the order you’ll do them. Skip this if you just want goals.</p>' +
+        '<ul class="results">' + list.map(t => { const i = WZ.picked.indexOf(t.id); return '<li><button data-wz-pick="' + esc(t.id) + '" class="' + (i >= 0 ? 'sel' : '') + '" aria-pressed="' + (i >= 0) + '"><span><i class="tickbox" aria-hidden="true">' + (i >= 0 ? i + 1 : '') + '</i>' + esc(t.name) + '</span><small>' + routineItems(t.id).length + ' exercises</small></button></li>'; }).join('') + '</ul>'
+      : '<p class="muted">No workouts yet. You can add them to the season later, or start from a program in the starter library.</p>') +
+      (WZ.picked.length ? '<div class="field-label"><span>Schedule</span></div><span class="seg" role="group" aria-label="Schedule">' +
+        [['rotate', 'Take turns'], ['days', 'Set days']].map(([k, l]) => '<button type="button" data-wz-mode="' + k + '" aria-pressed="' + (WZ.mode === k) + '">' + l + '</button>').join('') + '</span>' +
+        (WZ.mode === 'days' ? WZ.picked.map(id => '<div class="plan-row"><b>' + esc(tplById(id).name) + '</b><div class="days">' + DAY_NAMES.map((d, bit) =>
+          '<button type="button" data-wz-day="' + esc(id) + '" data-bit="' + bit + '" aria-pressed="' + !!((WZ.days.get(id) || 0) & (1 << bit)) + '" aria-label="' + d + '">' + d.slice(0, 2) + '</button>').join('') + '</div></div>').join('')
+          : '<p class="hint-line">They take turns in this order. The Log tab suggests the next one.</p>') : '');
+  } else {
+    if (!WZ.goals) {
+      const sug = wzSuggestions();
+      WZ.goals = WZ.carry.length ? WZ.carry.concat(sug.filter(x => !WZ.carry.some(c => c.metric === x.metric && (c.exercise_id || null) === (x.exercise_id || null)))) : sug;
+      WZ.on = new Set(WZ.carry.length ? WZ.carry.map(g => g.key) : sug.slice(0, 2).map(g => g.key));
+    }
+    body = '<p class="hint-line" style="margin-top:0">' + (WZ.carry.length ? 'Last time’s goals are ticked. ' : '') + 'Suggestions come from your last 8 weeks. Tick what you want; you can add more on the season page.</p>' +
+      '<ul class="results">' + WZ.goals.map(g => '<li><button data-wz-goal="' + esc(g.key) + '" class="' + (WZ.on.has(g.key) ? 'sel' : '') + '" aria-pressed="' + WZ.on.has(g.key) + '"><span><i class="tickbox" aria-hidden="true">' + (WZ.on.has(g.key) ? '✓' : '') + '</i>' + esc(g.name) + '</span><small>' +
+        ({ visits: 'gym days', volume: 'pounds moved', lift: 'a lift', workout: 'a workout' }[g.metric] || '') + '</small></button></li>').join('') + '</ul>';
+  }
+  inner.innerHTML = head + '<div class="sheet-body">' + body + '<p class="warn" id="wzErr" role="alert"></p></div>' +
+    '<div class="design-foot wz-foot">' + (WZ.step > 1 ? '<button class="btn" data-wz-back>← Back</button>' : '<span></span>') +
+      (WZ.step < 3 ? '<button class="btn primary" data-wz-next>Next →</button>' : '<button class="btn primary" data-wz-go>' + (WZ.from ? 'Start it again' : 'Start season') + '</button>') + '</div>';
+  const nm = $('wzName'); if (nm) nm.addEventListener('input', () => { WZ.name = nm.value; WZ.nameTouched = true; });
+  const sd = $('wzStart'); if (sd) sd.addEventListener('change', () => { if (sd.value) { WZ.start = sd.value; drawWizard(); } });
+}
+async function wizardClick(b) {
+  if (b.dataset.wzLen) { WZ.len = /^\d+$/.test(b.dataset.wzLen) ? Number(b.dataset.wzLen) : b.dataset.wzLen; WZ.goals = null; return drawWizard(); }
+  if (b.id === 'wzShare') { WZ.shared = !WZ.shared; return drawWizard(); }
+  if (b.dataset.wzPick) { const i = WZ.picked.indexOf(b.dataset.wzPick); if (i >= 0) WZ.picked.splice(i, 1); else WZ.picked.push(b.dataset.wzPick); WZ.goals = null; vibrate(5); return drawWizard(); }
+  if (b.dataset.wzMode) { WZ.mode = b.dataset.wzMode; WZ.goals = null; return drawWizard(); }
+  if (b.dataset.wzDay) { const id = b.dataset.wzDay; WZ.days.set(id, (WZ.days.get(id) || 0) ^ (1 << Number(b.dataset.bit))); WZ.goals = null; vibrate(5); return drawWizard(); }
+  if (b.dataset.wzGoal) { const k = b.dataset.wzGoal; if (WZ.on.has(k)) WZ.on.delete(k); else WZ.on.add(k); return drawWizard(); }
+  if (b.hasAttribute('data-wz-back')) { WZ.step--; return drawWizard(); }
+  if (b.hasAttribute('data-wz-next')) {
+    if (WZ.step === 1 && !(WZ.name || '').trim()) { $('wzErr').textContent = 'Give it a name.'; return; }
+    if (WZ.step === 2 && WZ.mode === 'days' && WZ.picked.some(id => !WZ.days.get(id))) { $('wzErr').textContent = 'Tick at least one day for each workout, or switch to Take turns.'; return; }
+    WZ.step++; return drawWizard();
+  }
+  if (!b.hasAttribute('data-wz-go')) return;
+  b.disabled = true; b.textContent = 'Setting up…';
+  try {
+    const sn = await store.addSeason({ name: WZ.name.trim().slice(0, 60), starts_on: WZ.start, ends_on: wzEnd(), is_shared: WZ.shared });
+    S.seasons.unshift(sn);
+    let pos = 0;
+    for (const id of WZ.picked) S.plan.push(await store.addPlan({ season_id: sn.id, template_id: id, position: ++pos, weekdays: WZ.mode === 'days' ? WZ.days.get(id) || 0 : 0 }));
+    for (const g of WZ.goals.filter(x => WZ.on.has(x.key)))
+      S.goals.push(await store.addGoal({ season_id: sn.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit || null, exercise_id: g.exercise_id || null, template_id: g.template_id || null }));
+    sheet.close();
+    openSeason(sn.id);
+    toast(sn.name + ' is on. Every set you log from ' + fmtDay(sn.starts_on, { month: 'short', day: 'numeric' }) + ' counts.');
+  } catch (x) { $('wzErr').textContent = x.message; b.disabled = false; b.textContent = WZ.from ? 'Start it again' : 'Start season'; }
+}
+
+// ===========================================================================
+// One "+ New": what are you making?
+// ===========================================================================
+function openNewChooser() {
+  LG.mode = 'newpick';
+  const opt = (key, icon, title, sub) => '<li><button data-new-kind="' + key + '" class="new-opt"><span class="new-icon">' + icon + '</span><span><b>' + title + '</b><small>' + sub + '</small></span></button></li>';
+  inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">What are you making?</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><ul class="results new-list">' +
+      opt('workout', '🏋️', 'A workout', 'What you do on a day. Type it, tick exercises, or stack blocks.') +
+      opt('season', '🏆', 'A season', 'A stretch of dates with goals, alone or with the crew.') +
+      opt('program', '📚', 'A program', 'A ready-made plan: workouts plus a season, set up for you.') +
+      opt('block', '🧩', 'A block', 'A small chunk you reuse in workouts, like “Bench & triceps”.') +
+    '</ul></div>';
+  openSheet();
+}
+async function newPickClick(b) {
+  const k = b.dataset.newKind;
+  if (!k) return;
+  if (k === 'season') return openWizard();
+  if (k === 'program') return openStarters();
+  return newRoutine(b, k);
 }
