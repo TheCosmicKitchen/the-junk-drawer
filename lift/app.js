@@ -2841,7 +2841,7 @@ function drawRecords() {
     rows.map(r => { const m = myBestE1(r.exercise_id), me = r.user_id === S.myId;
       return '<tr' + (me ? ' class="me"' : '') + '><td>' + esc(exName(r.exercise_id)) + '</td><td>' + (me ? '😇 You' : '😇 ' + esc(r.display_name)) + '</td>' +
         '<td class="num"><b>' + esc(L.fmtLoad(Number(r.weight))) + '</b> <small>' + r.unit + ' × ' + r.reps + '</small></td>' +
-        '<td class="num">' + (me ? '<span class="muted">holder</span>' : m ? esc(L.fmtLoad(m.w)) + ' <small>× ' + m.reps + ' · ' + Math.round(m.e / Number(r.e1rm_lb) * 100) + '%</small>' : '<span class="muted">–</span>') + '</td></tr>'; }).join('') +
+        '<td class="num">' + (me ? '<span class="muted">✓</span>' : m ? '<span title="Your best: ' + esc(L.fmtLoad(m.w) + ' × ' + m.reps) + '">' + Math.round(m.e / Number(r.e1rm_lb) * 100) + '%</span>' : '<span class="muted">–</span>') + '</td></tr>'; }).join('') +
     '</tbody></table></div>' : '<p class="muted">Records show up once the crew has logged some sets.</p>');
 }
 // After a set: did it take a record from someone else?
