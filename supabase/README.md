@@ -1,14 +1,14 @@
 # Supabase for the junk drawer
 
-A private, text-only database for **a weightlifting tracker** and **the family recipe box**, used by you and one friend (hard limit: 2 accounts), on Supabase's free plan.
+A private, text-only database for **a weightlifting tracker** and **the family recipe box**, used by a small crew (hard limit: 3 accounts), on Supabase's free plan.
 
 ## Status (Nov 2026)
 
 - Project `junk-drawer` (`tjavdrqrhhvzdptlbbfv`, us-east-1) exists in the free **TheCosmicKitchen** organisation.
-- Applied: `01_lockdown`, `02_core` (plus limits for the lift tables and the bulk-import path), `03_lifting` (the Sisyfitness model), `04_recipes`, then `07_two_accounts_and_shared_routines` (a trigger refuses any third account, and routines can be shared) and `08_routine_subscriptions`.
-- The Sisyfitness exercise catalogue (454 names, 159 aliases) was seeded straight into the database. It isn't in this repo, because it comes from a private one.
-- `05_checks.sql` comes back clean. Supabase's security advisor only flags things that are deliberate (private tables with no policies; the three functions members are meant to call).
-- **Still to do (you, in the dashboard):** steps 3 and 4 below (sign-ups off and the rest), then step 6 (invite the two emails, create the accounts, add them to `private.members`), then run `06_policy_tests.sql`.
+- Every file in `sql/` up to `16_three_accounts.sql` is applied (each file's header names the migration it went in as).
+- Accounts: John (admin) and Brandon are in. **Cynthia is next**: the limit is now 3 (`16_three_accounts.sql`); she still needs the invite steps in step 6.
+- The exercise catalogue started from the Sisyfitness list and the spreadsheet import, then was cleaned up to 237 lifts (`14_catalog_cleanup_and_rest.sql`). The seed and merge lists aren't in this repo, because they come from private sources.
+- `06_policy_tests.sql` passes 63/63. Supabase's security advisor only flags things that are deliberate (private tables with no policies; the functions members are meant to call; leaked-password protection, a dashboard switch).
 - The web app is in [`../lift/`](../lift/). Try it without an account at `lift/?demo`.
 
 ## The constraints this is built around
@@ -98,11 +98,13 @@ In **SQL Editor**, open a new query, paste the whole file, and run it:
 
 ### 6. Create the people
 
-First invite each email. **An account can only be created for an invited email**, and at most 2 accounts can exist (`09_invite_list.sql`), so a stranger using the public sign-up endpoint is refused:
+First invite each email. **An account can only be created for an invited email**, and at most 3 accounts can exist (`09_invite_list.sql`, raised in `16_three_accounts.sql`), so a stranger using the public sign-up endpoint is refused:
 
 ```sql
 insert into private.invited_emails (email, note) values ('you@example.com', 'me'), ('them@example.com', 'Brandon');
 ```
+
+Adding someone later (as with Cynthia) is the same three steps for one email: invite it, create the user, add the `private.members` row.
 
 Then **Authentication → Users → Add user → Create new user**, for each person:
 

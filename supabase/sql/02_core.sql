@@ -26,7 +26,7 @@ create table if not exists private.members (
 alter table private.members enable row level security;  -- and no policies: app roles can't touch it at all
 revoke all on private.members from public, anon, authenticated;
 
--- Hard cap on how many people can be active at once: you and one friend (see also 07 and 09).
+-- Hard cap on how many people can be active at once: you and two friends (see also 07, 09 and 16).
 -- Raise the number here if the group grows.
 create or replace function private.members_cap()
 returns trigger
@@ -34,8 +34,8 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if (select count(*) from private.members where active) > 2 then
-    raise exception 'The group is capped at 2 active members.';
+  if (select count(*) from private.members where active) > 3 then
+    raise exception 'The group is capped at 3 active members.';
   end if;
   return null;
 end;

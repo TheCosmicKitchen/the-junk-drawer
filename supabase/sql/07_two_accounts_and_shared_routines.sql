@@ -1,16 +1,16 @@
 -- 07_two_accounts_and_shared_routines.sql
 -- Applied after 01-04 (as migration 05_two_accounts_and_shared_routines).
 --
--- 1. Hard limit of 2 accounts and 2 active members.
+-- 1. Hard limit on accounts and active members (2 at first; raised to 3 in 16_three_accounts.sql).
 -- 2. Routines (lift_templates) can be shared: the other member can see and follow
 --    them, read-only, and copy one to make their own version.
 
 -- ---------------------------------------------------------------------------
--- 1. Two accounts, full stop.
+-- 1. A fixed number of accounts, full stop (now 3).
 -- Refuses to create a third account at all, whoever asks (a sign-up switched back on
 -- by mistake, the dashboard, the admin API). The lock makes two simultaneous
 -- sign-ups wait for each other, so they can't both slip under the limit.
--- To allow more one day: change the 2 here and in private.members_cap().
+-- To allow more one day: change the number here, in 09 and in private.members_cap().
 -- It also checks the invite list (09), so re-running this file keeps that check.
 -- ---------------------------------------------------------------------------
 create table if not exists private.invited_emails (
@@ -32,8 +32,8 @@ begin
   if new.email is null or not exists (select 1 from private.invited_emails i where i.email = lower(btrim(new.email))) then
     raise exception 'This email hasn''t been invited.';
   end if;
-  if (select count(*) from auth.users) >= 2 then
-    raise exception 'This project is limited to 2 accounts.';
+  if (select count(*) from auth.users) >= 3 then
+    raise exception 'This project is limited to 3 accounts.';
   end if;
   return new;
 end;
@@ -51,8 +51,8 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if (select count(*) from private.members where active) > 2 then
-    raise exception 'The group is capped at 2 active members.';
+  if (select count(*) from private.members where active) > 3 then
+    raise exception 'The group is capped at 3 active members.';
   end if;
   return null;
 end;

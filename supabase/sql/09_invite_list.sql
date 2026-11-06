@@ -31,8 +31,8 @@ begin
   if new.email is null or not exists (select 1 from private.invited_emails i where i.email = lower(btrim(new.email))) then
     raise exception 'This email hasn''t been invited.';
   end if;
-  if (select count(*) from auth.users) >= 2 then
-    raise exception 'This project is limited to 2 accounts.';
+  if (select count(*) from auth.users) >= 3 then
+    raise exception 'This project is limited to 3 accounts.';
   end if;
   return new;
 end;
