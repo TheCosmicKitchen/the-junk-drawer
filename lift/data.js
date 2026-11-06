@@ -127,18 +127,25 @@ class SupaStore {
 
   // ----- seasons -----
   async seasons() {
-    const [seasons, goals] = await Promise.all([
-      this.all(() => this.sb.from('lift_seasons').select('id,name,starts_on,ends_on').is('deleted_at', null).order('starts_on', { ascending: false })),
+    const [seasons, goals, subs] = await Promise.all([
+      this.all(() => this.sb.from('lift_seasons').select(SEASON).is('deleted_at', null).order('starts_on', { ascending: false })),
       this.all(() => this.sb.from('lift_season_goals').select('id,season_id,name,metric,target,unit').is('deleted_at', null)),
+      this.all(() => this.sb.from('lift_season_subscriptions').select('id,season_id').is('deleted_at', null)),
     ]);
-    return { seasons, goals };
+    return { seasons, goals, subs };
   }
-  async addSeason(f) { return must(await this.sb.from('lift_seasons').insert(f).select('id,name,starts_on,ends_on').single()); }
-  async updateSeason(id, patch) { return must(await this.sb.from('lift_seasons').update(patch).eq('id', id).select('id,name,starts_on,ends_on').single()); }
+  async addSeason(f) { return must(await this.sb.from('lift_seasons').insert(f).select(SEASON).single()); }
+  async updateSeason(id, patch) { return must(await this.sb.from('lift_seasons').update(patch).eq('id', id).select(SEASON).single()); }
   deleteSeason(id) { return this.updateSeason(id, { deleted_at: new Date().toISOString() }); }
+  async joinSeason(seasonId) { return must(await this.sb.from('lift_season_subscriptions').insert({ season_id: seasonId }).select('id,season_id').single()); }
+  async leaveSeason(subId) { must(await this.sb.from('lift_season_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
+  // Everyone in a shared season, totals only (the database never hands over the other person's sets).
+  async standings(seasonId) { return must(await this.sb.rpc('season_standings', { p_season: seasonId })); }
   async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit').single()); }
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
+
+const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by';
 
 // ---------------------------------------------------------------------------
 // Demo: a few weeks of believable lifting, held in memory.
@@ -282,17 +289,34 @@ class DemoStore {
   async seasons() {
     if (!this.seasonRows) {
       const t = localDate();
-      this.seasonRows = [{ id: 's-fall', name: 'Fall block', starts_on: addDays(t, -40), ends_on: addDays(t, 20) }];
+      this.seasonRows = [
+        { id: 's-fall', name: 'Fall block', starts_on: addDays(t, -40), ends_on: addDays(t, 20), is_shared: false, created_by: 'me' },
+        { id: 's-crew', name: 'Crew winter challenge', starts_on: addDays(t, -30), ends_on: addDays(t, 30), is_shared: true, created_by: 'alex' },
+      ];
       this.goalRows = [
         { id: uid(), season_id: 's-fall', name: 'Show up', metric: 'visits', target: 24, unit: null },
         { id: uid(), season_id: 's-fall', name: 'Move a mountain', metric: 'volume', target: 400000, unit: 'lb' },
+        { id: uid(), season_id: 's-crew', name: 'Show up 30 times', metric: 'visits', target: 30, unit: null },
       ];
+      this.seasonSubs = [];
     }
-    return { seasons: this.seasonRows.filter(s => !s.deleted_at).map(clone), goals: this.goalRows.filter(g => !g.deleted_at).map(clone) };
+    return { seasons: this.seasonRows.filter(s => !s.deleted_at).map(clone), goals: this.goalRows.filter(g => !g.deleted_at).map(clone),
+      subs: this.seasonSubs.filter(s => !s.deleted_at).map(clone) };
   }
-  async addSeason(f) { await this.seasons(); const s = { id: uid(), ...f }; this.seasonRows.push(s); return clone(s); }
+  async addSeason(f) { await this.seasons(); const s = { id: uid(), is_shared: false, created_by: 'me', ...f }; this.seasonRows.push(s); return clone(s); }
   async updateSeason(id, patch) { const s = this.seasonRows.find(x => x.id === id); Object.assign(s, patch); return clone(s); }
   deleteSeason(id) { return this.updateSeason(id, { deleted_at: new Date().toISOString() }); }
+  async joinSeason(seasonId) { const s = { id: uid(), season_id: seasonId }; this.seasonSubs.push(s); return clone(s); }
+  async leaveSeason(subId) { const s = this.seasonSubs.find(x => x.id === subId); if (s) s.deleted_at = new Date().toISOString(); }
+  async standings(seasonId) {
+    const s = this.seasonRows.find(x => x.id === seasonId);
+    const mine = this.sets.filter(x => !x.deleted_at && !x.is_warmup && x.performed_on >= s.starts_on && x.performed_on <= s.ends_on);
+    const vol = u => mine.filter(x => x.unit === u).reduce((a, x) => a + (Number(x.weight) + (x.count_bodyweight ? Number(x.bodyweight) || 0 : 0)) * x.reps, 0);
+    const people = [{ user_id: 'me', display_name: 'Demo lifter', visits: new Set(mine.map(x => x.performed_on)).size, sets: mine.length, volume_lb: vol('lb'), volume_kg: vol('kg') }];
+    if (s.created_by === 'alex' || this.seasonSubs.some(x => !x.deleted_at && x.season_id === seasonId))
+      people.push({ user_id: 'alex', display_name: 'Alex', visits: 17, sets: 240, volume_lb: 286400, volume_kg: 0 });
+    return people;
+  }
   async addGoal(f) { const g = { id: uid(), unit: null, ...f }; this.goalRows.push(g); return clone(g); }
   async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }

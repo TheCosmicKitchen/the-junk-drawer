@@ -176,6 +176,8 @@ async function loadAll() {
   setRoutines(routines);
   S.seasons = seasons.seasons;
   S.goals = seasons.goals;
+  S.seasonSubs = seasons.subs || [];
+  S.standings = {};
   S.names = new Map(names.map(n => [n.user_id, n.display_name]));
   S.myId = myId;
   S.exercises = cat.exercises;
@@ -306,6 +308,8 @@ view.addEventListener('click', async e => {
   else if (b.dataset.season) { S.period = 'season:' + b.dataset.season; renderProgress(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (b.dataset.editSeason) openSeasonSheet(b.dataset.editSeason);
   else if (b.hasAttribute('data-new-season')) openSeasonSheet(null);
+  else if (b.dataset.joinSeason) joinSeason(b.dataset.joinSeason, b);
+  else if (b.dataset.leaveSeason) leaveSeason(b.dataset.leaveSeason, b);
 });
 $('fab').addEventListener('click', () => openLogger());
 const findSet = id => S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id);
@@ -1132,29 +1136,84 @@ function goalLine(g, m) {
   return '<div class="goal"><div class="row"><span>' + (p.done ? '✅ ' : '') + esc(g.name) + '</span><span class="muted num">' + esc(label) + '</span></div>' +
     '<div class="bar"><i style="width:' + (p.ratio * 100).toFixed(1) + '%"></i></div></div>';
 }
+const seasonSub = id => (S.seasonSubs || []).find(x => x.season_id === id);
+const inSeason = s => isMine(s) || !!seasonSub(s.id);
+const seasonDates = s => fmtDay(s.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(s.ends_on, { month: 'short', day: 'numeric', year: 'numeric' });
 function seasonsSection() {
-  const list = S.seasons || [];
+  const all = S.seasons || [];
+  const list = all.filter(inSeason), crew = all.filter(s => !inSeason(s));
   return '<div class="row" style="margin-top:22px"><h3 class="section-title" style="margin:0">Seasons</h3><button class="btn" data-new-season>+ New season</button></div>' +
+    crew.map(s => {
+      const goals = S.goals.filter(g => g.season_id === s.id);
+      return '<section class="card season"><span class="tag new">From ' + esc(ownerName(s)) + '</span><h3 style="margin-top:8px">' + esc(s.name) + '</h3>' +
+        '<span class="muted" style="font-size:14px">' + esc(seasonDates(s)) + ' · ' + esc(seasonStatus(s)) + '</span>' +
+        (goals.length ? '<p class="hint-line">Goals: ' + esc(goals.map(g => g.name).join(', ')) + '</p>' : '') +
+        '<p class="hint-line">Join to compare totals side by side. Only totals are shared, never your sets.</p>' +
+        '<div class="actions"><button class="btn primary" data-join-season="' + esc(s.id) + '">Join season</button></div></section>';
+    }).join('') +
     (list.length ? list.map(s => {
       const m = seasonM(s), goals = S.goals.filter(g => g.season_id === s.id);
-      return '<section class="card season' + (S.period === 'season:' + s.id ? ' on' : '') + '"><div class="row"><div><h3>' + esc(s.name) + '</h3>' +
-        '<span class="muted" style="font-size:14px">' + esc(fmtDay(s.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(s.ends_on, { month: 'short', day: 'numeric', year: 'numeric' })) + ' · ' + esc(seasonStatus(s)) + '</span></div></div>' +
+      const who = isMine(s) ? (s.is_shared ? '<span class="tag">Shared with the crew</span>' : '') : '<span class="tag">' + esc(ownerName(s)) + '’s season</span>';
+      return '<section class="card season' + (S.period === 'season:' + s.id ? ' on' : '') + '">' + who + '<h3' + (who ? ' style="margin-top:8px"' : '') + '>' + esc(s.name) + '</h3>' +
+        '<span class="muted" style="font-size:14px">' + esc(seasonDates(s)) + ' · ' + esc(seasonStatus(s)) + '</span>' +
         '<p class="hint-line">' + m.visits + ' visits · ' + esc(volText(m.volume)) + (m.volume.kg ? '' : ' lb') + ' moved · ' + m.bests + ' bests set</p>' +
         goals.map(g => goalLine(g, m)).join('') +
-        '<div class="actions"><button class="btn primary" data-season="' + esc(s.id) + '">View season</button><button class="btn" data-edit-season="' + esc(s.id) + '">Edit</button></div></section>';
-    }).join('') : '<section class="card"><p class="muted" style="margin:0">A season is any stretch you choose: a training block, a month, a year. Give it goals and watch them fill.</p></section>');
+        '<div class="actions"><button class="btn primary" data-season="' + esc(s.id) + '">View season</button>' +
+        (isMine(s) ? '<button class="btn" data-edit-season="' + esc(s.id) + '">Edit</button>' : '<button class="btn" data-leave-season="' + esc(s.id) + '">Leave</button>') + '</div></section>';
+    }).join('') : crew.length ? '' : '<section class="card"><p class="muted" style="margin:0">A season is any stretch you choose: a training block, a month, a year. Give it goals and watch them fill. Share it and the crew can join in.</p></section>');
+}
+async function joinSeason(id, b) {
+  b.disabled = true;
+  try { S.seasonSubs.push(await store.joinSeason(id)); } catch (x) { b.disabled = false; return fail(x); }
+  delete S.standings[id];
+  S.period = 'season:' + id;
+  render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('You’re in. Game on.');
+}
+async function leaveSeason(id, b) {
+  const s = seasonById(id), sub = seasonSub(id);
+  if (!sub || !confirm('Leave “' + s.name + '”? You can join again any time.')) return;
+  b.disabled = true;
+  try { await store.leaveSeason(sub.id); } catch (x) { b.disabled = false; return fail(x); }
+  S.seasonSubs = S.seasonSubs.filter(x => x.id !== sub.id);
+  delete S.standings[id];
+  if (S.period === 'season:' + id) S.period = 'all';
+  render(); toast('Left the season');
+}
+// The crew scoreboard for a shared season: totals per person, from the database.
+function crewCard(season) {
+  if (!season.is_shared || !inSeason(season)) return '';
+  const rows = S.standings[season.id];
+  if (!rows) {
+    store.standings(season.id).then(r => {
+      S.standings[season.id] = r;
+      const box = $('crewBox'); if (box && S.period === 'season:' + season.id) box.outerHTML = crewCard(season);
+    }).catch(x => { const box = $('crewBox'); if (box) box.innerHTML = '<h3>The crew</h3><p class="warn">Couldn’t load the crew: ' + esc(x.message) + '</p>'; });
+    return '<section class="card" id="crewBox"><h3>The crew</h3><p class="muted" style="margin:0">Loading…</p></section>';
+  }
+  const goals = S.goals.filter(g => g.season_id === season.id);
+  const people = rows.map(r => ({ ...r, m: { visits: Number(r.visits), volume: { lb: Number(r.volume_lb), kg: Number(r.volume_kg) } } }))
+    .sort((a, b) => L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
+  return '<section class="card" id="crewBox"><h3>The crew</h3>' +
+    people.map((p, i) => '<div class="crew-row' + (p.user_id === S.myId ? ' me' : '') + '"><div class="row"><b>' +
+      (i === 0 && people.length > 1 && L.lbEquivalent(p.m.volume) > 0 ? '👑 ' : '') + esc(p.user_id === S.myId ? 'You' : p.display_name) + '</b>' +
+      '<span class="muted num">' + p.m.visits + ' visits · ' + esc(L.fmtNum(Number(p.sets), 0)) + ' sets</span></div>' +
+      '<div class="crew-vol num">' + esc(volText(p.m.volume)) + (p.m.volume.kg ? '' : ' lb') + '</div>' +
+      goals.map(g => goalLine(g, p.m)).join('') + '</div>').join('') +
+    '<p class="hint-line">Totals only. Warm-ups don’t count.</p></section>';
 }
 const SG = { id: null, pending: [] };
 function openSeasonSheet(id) {
   LG.mode = 'season';
   SG.id = id; SG.pending = [];
-  const s = id ? seasonById(id) : { name: '', starts_on: today(), ends_on: L.addDays(today(), 55) };
+  const s = id ? seasonById(id) : { name: '', starts_on: today(), ends_on: L.addDays(today(), 55), is_shared: false };
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + (id ? 'Edit season' : 'New season') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
       '<div class="field-label"><span>Name</span></div><input class="plain-input" id="snName" maxlength="60" value="' + esc(s.name) + '" placeholder="e.g. Winter bulk">' +
       '<div class="grid2"><div><div class="field-label"><span>Starts</span></div><input class="plain-input" id="snStart" type="date" value="' + esc(s.starts_on) + '"></div>' +
         '<div><div class="field-label"><span>Ends</span></div><input class="plain-input" id="snEnd" type="date" value="' + esc(s.ends_on) + '"></div></div>' +
+      '<div class="toggles" style="margin-top:12px"><button type="button" class="toggle" id="snShare" aria-pressed="' + !!s.is_shared + '">' + shareLabel(s.is_shared) + '</button></div>' +
       '<div class="field-label"><span>Goals</span><small>optional</small></div><div id="snGoals"></div>' +
       '<div class="goal-add"><select class="plain-input" id="gMetric" aria-label="Goal type"><option value="visits">Visits</option><option value="volume:lb">Volume (lb)</option><option value="volume:kg">Volume (kg)</option></select>' +
         '<input class="plain-input" id="gTarget" inputmode="numeric" placeholder="Target" aria-label="Target"><button class="btn" id="gAdd" type="button">Add</button></div>' +
@@ -1172,7 +1231,9 @@ function drawGoals() {
       '<button class="iconbtn sm" data-goal-del="' + esc(g.id || 'p' + i) + '" aria-label="Remove goal">✕</button></div>').join('')
     : '<p class="hint-line" style="margin:0 2px 8px">e.g. 24 visits, or 400,000 lb moved.</p>';
 }
+const shareLabel = on => (on ? '✓ Shared with the crew' : 'Share with the crew');
 async function seasonClick(b) {
+  if (b.id === 'snShare') { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = shareLabel(on); return; }
   if (b.id === 'gAdd') {
     const [metric, unit] = $('gMetric').value.split(':');
     const target = L.parseLoad($('gTarget').value);
@@ -1192,15 +1253,15 @@ async function seasonClick(b) {
     return;
   }
   if (b.id === 'snSave') {
-    const name = $('snName').value.trim(), starts_on = $('snStart').value, ends_on = $('snEnd').value;
+    const name = $('snName').value.trim(), starts_on = $('snStart').value, ends_on = $('snEnd').value, is_shared = $('snShare').getAttribute('aria-pressed') === 'true';
     if (!name) { $('snErr').textContent = 'Give your season a name.'; return; }
     if (!starts_on || !ends_on || ends_on < starts_on) { $('snErr').textContent = 'The end date must be on or after the start date.'; return; }
     b.disabled = true;
     try {
       let s;
-      if (SG.id) { s = await store.updateSeason(SG.id, { name, starts_on, ends_on }); S.seasons = S.seasons.map(x => (x.id === s.id ? s : x)); }
+      if (SG.id) { s = await store.updateSeason(SG.id, { name, starts_on, ends_on, is_shared }); delete S.standings[s.id]; S.seasons = S.seasons.map(x => (x.id === s.id ? s : x)); }
       else {
-        s = await store.addSeason({ name, starts_on, ends_on });
+        s = await store.addSeason({ name, starts_on, ends_on, is_shared });
         S.seasons.unshift(s);
         for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
       }
@@ -1294,6 +1355,7 @@ function renderProgress() {
       (t.volume.lb && t.volume.kg ? '<p class="hint-line">' + esc(L.fmtBig(t.volume.lb)) + ' lb + ' + esc(L.fmtBig(t.volume.kg)) + ' kg, kept separate.</p>' : '') +
       (season ? S.goals.filter(g => g.season_id === season.id).map(g => goalLine(g, t)).join('') : '') +
     '</section>' +
+    (season ? crewCard(season) : '') +
     '<h3 class="section-title">Badges</h3><div class="badges">' +
       shown.map(a => '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) +
         (a.earned ? '' : '<br><span class="muted" style="font-weight:500">' + esc(L.fmtNum(Math.min(a.have, a.need), 0)) + ' / ' + esc(L.fmtNum(a.need, 0)) + '</span>') + '</div>').join('') + '</div>' +
