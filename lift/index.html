@@ -129,6 +129,10 @@
   .stepper button { height: 58px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); font-size: 26px; font-weight: 600; }
   .stepper input { height: 58px; width: 100%; text-align: center; border: 2px solid var(--line); border-radius: 16px; background: var(--card); font-family: var(--display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .stepper input:focus { border-color: var(--accent); outline: none; }
+  .nudges { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 8px; }
+  .nudges button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 0; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; user-select: none; touch-action: manipulation; }
+  .nudges button:nth-child(-n+3) { color: var(--muted); }
+  .stepper button { user-select: none; touch-action: manipulation; }
   .field-label { display: flex; justify-content: space-between; align-items: end; margin: 16px 2px 6px; font-weight: 600; }
   .field-label small { color: var(--muted); font-weight: 500; }
   .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }

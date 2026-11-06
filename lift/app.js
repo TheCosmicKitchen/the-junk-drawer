@@ -447,6 +447,7 @@ async function openEntry(exId, editing, item) {
         ['lb', 'kg'].map(u => '<button type="button" data-unit="' + u + '" aria-pressed="' + (u === st.unit) + '">' + u + '</button>').join('') + '</span></div>' +
       '<div class="stepper"><button type="button" data-w="-1" aria-label="Less weight">−</button>' +
         '<input id="wIn" inputmode="decimal" aria-label="Weight" value="' + esc(L.fmtLoad(st.weight)) + '"><button type="button" data-w="1" aria-label="More weight">+</button></div>' +
+      '<div class="nudges" id="nudges" role="group" aria-label="Fine-tune the weight"></div>' +
       '<div class="hint-line" id="plates"></div>' +
       '<div class="field-label"><span>Reps</span></div>' +
       '<div class="stepper"><button type="button" data-r="-1" aria-label="Fewer reps">−</button>' +
@@ -465,6 +466,7 @@ async function openEntry(exId, editing, item) {
     '</div>';
   openSheet();
   wireEntry();
+  drawNudges();
   updateLive();
   refreshLoggerList();
   if (!editing) {
@@ -484,7 +486,14 @@ async function openEntry(exId, editing, item) {
     updateLive();
   }
 }
+// Small jumps for fine-tuning: micro plates in lb, and half that in kg.
+const NUDGES = { lb: [-10, -5, -2.5, 2.5, 5, 10], kg: [-5, -2.5, -1.25, 1.25, 2.5, 5] };
+function drawNudges() {
+  const box = $('nudges');
+  if (box) box.innerHTML = NUDGES[st().unit].map(n => '<button type="button" data-nudge="' + n + '" aria-label="' + (n > 0 ? 'Add ' : 'Take off ') + Math.abs(n) + ' ' + st().unit + '">' + (n > 0 ? '+' : '−') + L.fmtLoad(Math.abs(n)) + '</button>').join('');
+}
 function syncInputs() {
+  drawNudges();
   $('wIn').value = L.fmtLoad(st().weight);
   $('rIn').value = st().reps;
   inner.querySelectorAll('[data-unit]').forEach(b => b.setAttribute('aria-pressed', b.dataset.unit === st().unit));
@@ -560,6 +569,7 @@ inner.addEventListener('click', async e => {
     syncInputs(); updateLive(); return;
   }
   if (b.dataset.w) { s.weight = Math.max(0, Math.round((s.weight + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.nudge) { s.weight = Math.min(2000, Math.max(0, Math.round((s.weight + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.r) { s.reps = Math.max(1, Math.min(1000, s.reps + Number(b.dataset.r))); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.t) {
     const t = b.dataset.t;
@@ -829,6 +839,26 @@ function persistOrder() {
     if (it && it.position !== i + 1) queueItem(it.id, { position: i + 1 });
   });
 }
+// Press and hold a +/− or a nudge to keep going: starts after a short pause, then repeats.
+// The real click that ends a hold is swallowed, so it doesn't add one extra step.
+const HOLD = { timer: null, every: null, held: false };
+inner.addEventListener('pointerdown', e => {
+  const b = e.target.closest('[data-w], [data-r], [data-nudge]');
+  if (!b) return;
+  HOLD.held = false;
+  clearTimeout(HOLD.timer); clearInterval(HOLD.every);
+  HOLD.timer = setTimeout(() => {
+    HOLD.held = true;
+    HOLD.every = setInterval(() => b.dispatchEvent(new MouseEvent('click', { bubbles: true })), 110);
+  }, 420);
+  const stop = () => {
+    clearTimeout(HOLD.timer); clearInterval(HOLD.every);
+    document.removeEventListener('pointerup', stop); document.removeEventListener('pointercancel', stop);
+  };
+  document.addEventListener('pointerup', stop); document.addEventListener('pointercancel', stop);
+});
+inner.addEventListener('click', e => { if (HOLD.held && e.isTrusted) { HOLD.held = false; e.stopImmediatePropagation(); } }, true);
+
 // Drag to reorder: works with mouse and touch (the handle has touch-action: none).
 inner.addEventListener('pointerdown', e => {
   const h = e.target.closest('[data-handle]');

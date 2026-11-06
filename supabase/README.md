@@ -8,7 +8,7 @@ A private, text-only database for **a weightlifting tracker** and **the family r
 - Applied: `01_lockdown`, `02_core` (plus limits for the lift tables and the bulk-import path), `03_lifting` (the Sisyfitness model), `04_recipes`, then `07_two_accounts_and_shared_routines` (a trigger refuses any third account, and routines can be shared) and `08_routine_subscriptions`.
 - The Sisyfitness exercise catalogue (454 names, 159 aliases) was seeded straight into the database. It isn't in this repo, because it comes from a private one.
 - `05_checks.sql` comes back clean. Supabase's security advisor only flags things that are deliberate (private tables with no policies; the three functions members are meant to call).
-- **Still to do (you, in the dashboard):** steps 3 and 4 below (sign-ups off and the rest), then step 6 (create the two accounts and add them to `private.members`), then run `06_policy_tests.sql`.
+- **Still to do (you, in the dashboard):** steps 3 and 4 below (sign-ups off and the rest), then step 6 (invite the two emails, create the accounts, add them to `private.members`), then run `06_policy_tests.sql`.
 - The web app is in [`../lift/`](../lift/). Try it without an account at `lift/?demo`.
 
 ## The constraints this is built around
@@ -98,7 +98,13 @@ In **SQL Editor**, open a new query, paste the whole file, and run it:
 
 ### 6. Create the people
 
-**Authentication → Users → Add user → Create new user**, for each person:
+First invite each email. **An account can only be created for an invited email**, and at most 2 accounts can exist (`09_invite_list.sql`), so a stranger using the public sign-up endpoint is refused:
+
+```sql
+insert into private.invited_emails (email, note) values ('you@example.com', 'me'), ('them@example.com', 'Brandon');
+```
+
+Then **Authentication → Users → Add user → Create new user**, for each person:
 
 - [ ] email + a strong password (from your password manager), with **auto-confirm** ticked.
 
