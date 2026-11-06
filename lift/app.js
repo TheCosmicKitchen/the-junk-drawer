@@ -169,10 +169,14 @@ async function afterSignIn() {
 }
 
 async function loadAll() {
-  const [cat, recent, days, bests, routines, seasons, names, myId] = await Promise.all([
+  const [cat, recent, days, bests, routines, seasons, names, myId, wdays, bw] = await Promise.all([
     store.catalog(), store.setsSince(L.addDays(today(), -RECENT_DAYS)), store.days(), store.bests(),
     store.routines(), store.seasons(), store.memberNames(), store.userId(),
+    store.workoutDays(today()), store.bodyweights(),
   ]);
+  S.wdays = wdays;
+  S.bw = bw;
+  if (bw.length && prefs.bodyweight == null && bw[0].unit === prefs.unit) prefs.bodyweight = Number(bw[0].weight);
   setRoutines(routines);
   S.seasons = seasons.seasons;
   S.goals = seasons.goals;
@@ -246,7 +250,7 @@ function renderLog() {
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
     '</div></section>' +
-    planCard() +
+    (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Save today as a routine</button>' : '');
@@ -303,7 +307,13 @@ view.addEventListener('click', async e => {
   else if (b.dataset.seen) { const t = S.templates.find(x => x.id === b.dataset.seen); if (t) { markSeen(t); render(); } }
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
   else if (b.dataset.design) openDesigner(b.dataset.design);
-  else if (b.hasAttribute('data-new-routine')) newRoutine(b);
+  else if (b.hasAttribute('data-new-routine')) newRoutine(b, 'workout');
+  else if (b.hasAttribute('data-new-block')) newRoutine(b, 'block');
+  else if (b.dataset.fromBlock) workoutFromBlock(b.dataset.fromBlock, b);
+  else if (b.dataset.schedule) openScheduleSheet(b.dataset.schedule);
+  else if (b.dataset.unday) removeDay(b.dataset.unday, b);
+  else if (b.hasAttribute('data-weigh')) weighIn(b);
+  else if (b.dataset.bwDel) removeWeighIn(b.dataset.bwDel);
   else if (b.dataset.sub) subscribeTo(b.dataset.sub, b);
   else if (b.dataset.unsub) unsubscribeFrom(b.dataset.unsub, b);
   else if (b.dataset.copy) copyRoutine(b.dataset.copy, b);
@@ -673,6 +683,7 @@ inner.addEventListener('click', async e => {
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
   if (LG.mode === 'chunk') return chunkClick(b);
+  if (LG.mode === 'sched') return schedClick(b);
   if (LG.mode === 'design') return designerClick(b);
   if (LG.mode === 'season') return seasonClick(b);
   if (LG.mode !== 'entry' && LG.mode !== 'edit') return;
@@ -760,6 +771,7 @@ function setRoutines(r) {
 }
 const routineItems = id => S.items.filter(i => i.template_id === id).sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)));
 const isMine = t => t.created_by === S.myId;
+const isBlock = t => t.kind === 'block';
 const ownerName = t => (isMine(t) ? 'you' : S.names.get(t.created_by) || 'a friend');
 const subFor = id => S.subs.find(s => s.template_id === id);
 
@@ -839,15 +851,17 @@ function followCard() {
 }
 
 function renderRoutines() {
-  const mine = S.templates.filter(isMine);
-  const subscribed = S.templates.filter(t => !isMine(t) && subFor(t.id));
-  const shared = S.templates.filter(t => !isMine(t) && !subFor(t.id));
+  const workouts = S.templates.filter(t => !isBlock(t)), blocks = S.templates.filter(isBlock);
+  const mine = workouts.filter(isMine);
+  const subscribed = workouts.filter(t => !isMine(t) && subFor(t.id));
+  const shared = workouts.filter(t => !isMine(t) && !subFor(t.id));
   const f = following();
   const start = t => routineItems(t.id).length
     ? '<button class="btn primary" data-start="' + esc(t.id) + '">' + (f && f.template.id === t.id ? 'Following ✓' : 'Start') + '</button>' : '';
+  const sched = t => routineItems(t.id).length ? '<button class="btn" data-schedule="' + esc(t.id) + '">📅 Schedule</button>' : '';
   const card = (t, actions) => {
     const changes = routineChanges(t);
-    return '<section class="card routine' + (changes ? ' updated' : '') + '"><div class="row"><h3>' + esc(t.name) + '</h3>' +
+    return '<section class="card routine' + (isBlock(t) ? ' block' : '') + (changes ? ' updated' : '') + '"><div class="row"><h3>' + esc(t.name) + '</h3>' +
       (changes ? '<span class="tag new">Updated</span>' : isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
     (changes ? '<p class="changes"><b>' + esc(ownerName(t)) + ' changed it:</b> ' + esc(changes.slice(0, 4).join(' · ')) + (changes.length > 4 ? ' · and ' + (changes.length - 4) + ' more' : '') + '</p>' : '') +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
@@ -855,21 +869,113 @@ function renderRoutines() {
     '<div class="actions">' + actions + (changes ? '<button class="btn ghost" data-seen="' + esc(t.id) + '">Got it</button>' : '') + '</div></section>';
   };
   view.innerHTML =
-    '<div class="row" style="margin-top:8px"><h2 style="font-size:28px">Routines</h2><button class="btn primary" data-new-routine>+ New routine</button></div>' +
-    (mine.length ? '<h3 class="section-title">Yours</h3>' + mine.map(t => card(t, start(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
-      : '<section class="card empty"><h2>No routines yet.</h2><p class="muted">Make one, or subscribe to one the crew shares.</p></section>') +
-    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + subscribed.map(t => card(t, start(t) +
+    '<div class="row" style="margin-top:8px"><h2 style="font-size:28px">Routines</h2><span class="head-actions"><button class="btn" data-new-block>+ Block</button><button class="btn primary" data-new-routine>+ Workout</button></span></div>' +
+    comingUp() +
+    '<h3 class="section-title">Workouts</h3>' +
+    (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
+      : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
+    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + subscribed.map(t => card(t, start(t) + sched(t) +
       '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')).join('') : '') +
     (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + shared.map(t => card(t,
-      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button><button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')).join('') : '');
+      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')).join('') : '') +
+    '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>' +
+    (blocks.length ? blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)).map(t => card(t,
+      '<button class="btn" data-from-block="' + esc(t.id) + '">New workout from it</button>' +
+      (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>'))).join('')
+      : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
 }
-async function newRoutine(btn) {
+async function newRoutine(btn, kind) {
   if (btn) btn.disabled = true;
   try {
-    const t = await store.addRoutine({ name: 'New routine' });
+    const t = await store.addRoutine({ name: kind === 'block' ? 'New block' : 'New workout', kind: kind || 'workout' });
     S.templates.push(t);
     openDesigner(t.id, true);
   } catch (x) { fail(x); } finally { if (btn) btn.disabled = false; }
+}
+async function copySteps(fromIds, tid) {
+  let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
+  for (const id of fromIds) {
+    const src = S.itemsById.get(id);
+    if (!src) continue;
+    const it = await store.addItem({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
+      load_mode: src.load_mode, load_value: src.load_value, unit: src.unit });
+    S.items.push(it); S.itemsById.set(it.id, it);
+  }
+}
+async function workoutFromBlock(blockId, btn) {
+  const b = S.templates.find(t => t.id === blockId);
+  btn.disabled = true;
+  try {
+    const t = await store.addRoutine({ name: (b.name + ' day').slice(0, 60), kind: 'workout' });
+    S.templates.push(t);
+    await copySteps(routineItems(blockId).map(i => i.id), t.id);
+    toast('Started a workout from “' + b.name + '”. Add more blocks with + Blocks.');
+    openDesigner(t.id, true);
+  } catch (x) { fail(x); btn.disabled = false; }
+}
+
+// ----- workout days: put a workout on a date, and it's waiting on the Log tab that day -----
+const dayLabel = d => (d === today() ? 'Today' : d === L.addDays(today(), 1) ? 'Tomorrow' : fmtDay(d));
+const todaysDays = () => (S.wdays || []).filter(d => d.on_date === today() && tplById(d.template_id));
+function comingUp() {
+  const list = (S.wdays || []).filter(d => d.on_date >= today() && tplById(d.template_id)).slice(0, 10);
+  if (!list.length) return '';
+  return '<h3 class="section-title">Coming up</h3><section class="card coming">' + list.map(d => {
+    const t = tplById(d.template_id);
+    return '<div class="row day-row"><span><b>' + esc(dayLabel(d.on_date)) + '</b> · ' + esc(t.name) + '</span><span>' +
+      (d.on_date === today() ? '<button class="btn primary sm" data-start="' + esc(t.id) + '">Start</button>' : '') +
+      '<button class="iconbtn sm" data-unday="' + esc(d.id) + '" aria-label="Take ' + esc(t.name) + ' off ' + esc(dayLabel(d.on_date)) + '">✕</button></span></div>';
+  }).join('') + '</section>';
+}
+function dayCard() {
+  if (following()) return '';
+  return todaysDays().map(d => {
+    const t = tplById(d.template_id);
+    const done = matchRoutine([{ template_id: t.id }], today()) >= 0;
+    return '<section class="card plan-card"><div class="date">On the schedule</div>' +
+      '<div class="row" style="margin-top:4px"><h2>' + esc(t.name) + (done ? ' ✓' : '') + '</h2><button class="btn primary" data-start="' + esc(t.id) + '">' + (done ? 'Again' : 'Start') + '</button></div>' +
+      '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') + '</div></section>';
+  }).join('');
+}
+async function removeDay(id, btn) {
+  btn.disabled = true;
+  try { await store.removeWorkoutDay(id); S.wdays = S.wdays.filter(d => d.id !== id); render(); toast('Taken off the schedule'); }
+  catch (x) { fail(x); btn.disabled = false; }
+}
+const SD = { id: null };
+function openScheduleSheet(tid) {
+  LG.mode = 'sched'; SD.id = tid;
+  drawSchedule();
+  openSheet();
+}
+function drawSchedule() {
+  const t = tplById(SD.id);
+  const on = d => (S.wdays || []).find(x => x.template_id === SD.id && x.on_date === d);
+  const days = Array.from({ length: 21 }, (_, i) => L.addDays(today(), i));
+  const later = (S.wdays || []).filter(x => x.template_id === SD.id && x.on_date > days[days.length - 1]);
+  inner.innerHTML =
+    '<div class="sheet-head"><div><small class="muted">Schedule</small><h2 id="sheetTitle">' + esc(t.name) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><p class="hint-line" style="margin-top:0">Tap the days you’ll do it. On the day it’s waiting at the top of Log, ready to follow.</p>' +
+      '<div class="cal">' + days.map(d => {
+        const dt = L.parseDate(d);
+        return '<button type="button" data-sched-day="' + d + '" aria-pressed="' + !!on(d) + '"><small>' + (d === today() ? 'Today' : dt.toLocaleDateString('en-US', { weekday: 'short' })) + '</small><b>' + dt.getDate() + '</b></button>';
+      }).join('') + '</div>' +
+      '<div class="goal-add plan-add" style="margin-top:12px"><input class="plain-input" id="schedDate" type="date" min="' + today() + '" max="' + L.addDays(today(), 365) + '" aria-label="Another day"><button class="btn" id="schedAdd" type="button">Add day</button></div>' +
+      (later.length ? '<p class="hint-line">Also on: ' + later.map(x => esc(fmtDay(x.on_date))).join(', ') + '</p>' : '') +
+      '<button class="btn primary block" style="margin-top:16px" data-close>Done</button>' +
+    '</div>';
+}
+async function schedClick(b) {
+  const d = b.dataset.schedDay || (b.id === 'schedAdd' ? $('schedDate').value : null);
+  if (!d) return;
+  const have = (S.wdays || []).find(x => x.template_id === SD.id && x.on_date === d);
+  b.disabled = true;
+  try {
+    if (have && b.dataset.schedDay) { await store.removeWorkoutDay(have.id); S.wdays = S.wdays.filter(x => x !== have); }
+    else if (!have) { S.wdays.push(await store.addWorkoutDay({ template_id: SD.id, on_date: d })); S.wdays.sort((a, c) => a.on_date.localeCompare(c.on_date)); }
+    vibrate(5);
+  } catch (x) { fail(x); }
+  drawSchedule();
 }
 async function subscribeTo(id, btn) {
   btn.disabled = true;
@@ -886,7 +992,7 @@ async function copyRoutine(id, btn) {
   try {
     const src = S.templates.find(t => t.id === id);
     markSeen(src);
-    const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null });
+    const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null, kind: src.kind || 'workout' });
     S.templates.push(t);
     for (const it of routineItems(id)) {
       const n = await store.addItem({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
@@ -934,6 +1040,8 @@ function openDesigner(id, fresh) {
     '<div class="sheet-head"><input class="title-input" id="rtName" maxlength="60" value="' + esc(t.name) + '" aria-label="Routine name" enterkeyhint="done"><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body design-body">' +
       '<div class="design-meta">' +
+        '<span class="seg" role="group" aria-label="This is a">' + [['workout', 'Workout'], ['block', 'Block']].map(([k, l]) =>
+          '<button type="button" data-kind="' + k + '" aria-pressed="' + ((t.kind || 'workout') === k) + '">' + l + '</button>').join('') + '</span>' +
         '<button type="button" class="toggle" id="rtShare" aria-pressed="' + !!t.is_shared + '">' + (t.is_shared ? '✓ Shared with the crew' : 'Share with the crew') + '</button>' +
         (t.notes ? '' : '<button type="button" class="toggle" id="rtNoteBtn">+ Add a note</button>') +
       '</div>' +
@@ -942,7 +1050,7 @@ function openDesigner(id, fresh) {
       '<p class="hint-line" id="rtHint"></p>' +
       '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
     '</div>' +
-    '<div class="design-foot"><button class="btn" id="rtAdd">+ Exercises</button><button class="btn" id="rtFrom">+ From a routine</button><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button></div>';
+    '<div class="design-foot"><button class="btn" id="rtAdd">+ Exercises</button><button class="btn" id="rtFrom">+ Blocks</button><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button></div>';
   openSheet();
   drawItems();
   const name = $('rtName'), notes = $('rtNotes');
@@ -954,7 +1062,7 @@ function openDesigner(id, fresh) {
 function drawItems() {
   const list = routineItems(D.id), t = S.templates.find(x => x.id === D.id);
   $('rtItems').innerHTML = list.length ? list.map(itemRow).join('')
-    : '<li class="empty-steps"><b>No exercises yet.</b><br>Tap <b>+ Exercises</b> below and tick the ones you do, in order, or grab steps you already have with <b>+ From a routine</b>.</li>';
+    : '<li class="empty-steps"><b>No exercises yet.</b><br>Tap <b>+ Exercises</b> below and tick the ones you do, in order, or stack up blocks with <b>+ Blocks</b>.</li>';
   $('rtStart').disabled = !list.length;
   $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
     'Saves as you go.' + (t && t.is_shared ? ' Anyone subscribed sees changes straight away.' : '');
@@ -1097,14 +1205,15 @@ function openChunkPicker() {
   LG.mode = 'chunk'; CH.picked = [];
   const here = S.templates.find(x => x.id === D.id);
   const others = S.templates.filter(t => t.id !== D.id && routineItems(t.id).length)
-    .sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
+    .sort((a, b) => Number(isBlock(b)) - Number(isBlock(a)) || Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
   inner.innerHTML =
     '<div class="sheet-head"><div><button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-chunk-back>← Back to ' + esc(here ? here.name : 'the routine') + '</button>' +
-      '<h2 id="sheetTitle">Add steps from a routine</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+      '<h2 id="sheetTitle">Add blocks</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
-      (others.length ? '<p class="hint-line" style="margin-top:0">Tick the steps you want, in the order you’ll do them. Their sets, reps and load come too.</p>' +
-        others.map(t => '<section class="chunk"><div class="row"><h3>' + esc(t.name) + (isMine(t) ? '' : ' <small class="muted">by ' + esc(ownerName(t)) + '</small>') + '</h3>' +
-          '<button type="button" class="linkbtn" data-chunk-all="' + esc(t.id) + '">Tick all</button></div><ul class="results">' +
+      (others.length ? '<p class="hint-line" style="margin-top:0">Tick whole blocks, or just the steps you want, in the order you’ll do them. Sets, reps and load come too. You can also borrow from other workouts.</p>' +
+        others.map((t, i) => (isBlock(t) !== isBlock(others[i - 1] || {}) || i === 0 ? '<div class="section-title">' + (isBlock(t) ? 'Blocks' : 'Workouts') + '</div>' : '') +
+          '<section class="chunk"><div class="row"><h3>' + esc(t.name) + (isMine(t) ? '' : ' <small class="muted">by ' + esc(ownerName(t)) + '</small>') + '</h3>' +
+          '<button type="button" class="linkbtn" data-chunk-all="' + esc(t.id) + '">' + (isBlock(t) ? 'Whole block' : 'Tick all') + '</button></div><ul class="results">' +
           routineItems(t.id).map(it => '<li><button data-chunk="' + esc(it.id) + '" aria-pressed="false"><span><i class="tickbox" aria-hidden="true"></i>' + esc(exName(it.exercise_id)) + '</span>' +
             '<small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></button></li>').join('') + '</ul></section>').join('')
         : '<p class="muted">No other routines with steps yet. Make one, or subscribe to one the crew shares.</p>') +
@@ -1139,15 +1248,8 @@ async function chunkClick(b) {
     b.disabled = true;
     const tid = D.id, list = routineItems(tid);
     if (list.length + CH.picked.length > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
-    let pos = list.length ? Math.max(...list.map(i => i.position)) : 0;
     try {
-      for (const id of CH.picked) {
-        const src = S.itemsById.get(id);
-        if (!src) continue;
-        const it = await store.addItem({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
-          load_mode: src.load_mode, load_value: src.load_value, unit: src.unit });
-        S.items.push(it); S.itemsById.set(it.id, it);
-      }
+      await copySteps(CH.picked, tid);
       toast('Added ' + CH.picked.length + ' step' + (CH.picked.length === 1 ? '' : 's') + '.');
     } catch (x) { fail(x); }
     openDesigner(tid);
@@ -1156,6 +1258,14 @@ async function chunkClick(b) {
 async function designerClick(b) {
   if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
   if (b.id === 'rtFrom') { flushSaves(); return openChunkPicker(); }
+  if (b.dataset.kind) {
+    const t = S.templates.find(x => x.id === D.id);
+    if ((t.kind || 'workout') === b.dataset.kind) return;
+    try { await saveRoutine({ kind: b.dataset.kind }); } catch (x) { return fail(x); }
+    inner.querySelectorAll('[data-kind]').forEach(x => x.setAttribute('aria-pressed', x.dataset.kind === t.kind));
+    toast(t.kind === 'block' ? 'Now a block: a chunk to build workouts from.' : 'Now a workout.');
+    return;
+  }
   if (b.id === 'rtNoteBtn') { b.remove(); const n = $('rtNotes'); n.hidden = false; n.focus(); return; }
   if (b.id === 'rtShare') {
     const t = S.templates.find(x => x.id === D.id);
@@ -1363,28 +1473,98 @@ async function leaveSeason(id, b) {
   if (S.period === 'season:' + id) S.period = 'all';
   render(); toast('Left the season');
 }
-// The crew scoreboard for a shared season: totals per person, from the database.
+// The crew scoreboard for a shared season: totals per person, how often each did each planned
+// workout, and best lifts. All worked out by the database; it never hands over anyone's sets.
 function crewCard(season) {
   if (!season.is_shared || !inSeason(season)) return '';
-  const rows = S.standings[season.id];
-  if (!rows) {
-    store.standings(season.id).then(r => {
-      S.standings[season.id] = r;
+  const st = S.standings[season.id];
+  if (!st) {
+    Promise.all([store.standings(season.id), store.seasonWorkouts(season.id), store.seasonBests(season.id)]).then(([rows, w, b]) => {
+      S.standings[season.id] = { rows, w, b };
       const box = $('crewBox'); if (box && S.period === 'season:' + season.id) box.outerHTML = crewCard(season);
     }).catch(x => { const box = $('crewBox'); if (box) box.innerHTML = '<h3>The crew</h3><p class="warn">Couldn’t load the crew: ' + esc(x.message) + '</p>'; });
     return '<section class="card" id="crewBox"><h3>The crew</h3><p class="muted" style="margin:0">Loading…</p></section>';
   }
   const goals = S.goals.filter(g => g.season_id === season.id);
-  const people = rows.map(r => ({ ...r, m: { visits: Number(r.visits), volume: { lb: Number(r.volume_lb), kg: Number(r.volume_kg) } } }))
+  const people = st.rows.map(r => ({ ...r, m: { visits: Number(r.visits), volume: { lb: Number(r.volume_lb), kg: Number(r.volume_kg) } } }))
     .sort((a, b) => L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
+  const who = p => (p.user_id === S.myId ? 'You' : p.display_name);
+  // One row per thing compared, one column per person; the leader in each row is highlighted.
+  const table = (title, rows) => rows.length ? '<tr class="grp"><th colspan="' + (people.length + 1) + '">' + title + '</th></tr>' + rows.map(r => {
+    const top = Math.max(...people.map(p => r.score(p)));
+    return '<tr><td>' + esc(r.label) + '</td>' + people.map(p => '<td class="num' + (top > 0 && r.score(p) === top && people.length > 1 ? ' lead' : '') + '">' + r.cell(p) + '</td>').join('') + '</tr>';
+  }).join('') : '';
+  const wt = [...new Set(st.w.map(x => x.template_id))].map(id => {
+    const t = tplById(id), times = p => Number((st.w.find(x => x.template_id === id && x.user_id === p.user_id) || {}).times || 0);
+    return { label: t ? t.name : 'A private workout', score: times, cell: p => String(times(p)) };
+  });
+  const bt = [...new Set(st.b.map(x => x.exercise_id))].map(id => {
+    const of = p => st.b.find(x => x.exercise_id === id && x.user_id === p.user_id);
+    const sc = p => { const r = of(p); return r ? Number(r.best_weight) * (r.unit === 'kg' ? L.LB_PER_KG : 1) : 0; };
+    return { label: exName(id), score: sc, cell: p => { const r = of(p); return r ? '<b>' + esc(L.fmtLoad(Number(r.best_weight))) + '</b> <small>' + esc(r.unit) + ' × ' + r.reps + '</small>' : '<span class="muted">–</span>'; } };
+  }).sort((a, b) => Math.max(...people.map(b.score)) - Math.max(...people.map(a.score)));
   return '<section class="card" id="crewBox"><h3>The crew</h3>' +
     people.map((p, i) => '<div class="crew-row' + (p.user_id === S.myId ? ' me' : '') + '"><div class="row"><b>' +
-      (i === 0 && people.length > 1 && L.lbEquivalent(p.m.volume) > 0 ? '👑 ' : '') + esc(p.user_id === S.myId ? 'You' : p.display_name) + '</b>' +
+      (i === 0 && people.length > 1 && L.lbEquivalent(p.m.volume) > 0 ? '👑 ' : '') + esc(who(p)) + '</b>' +
       '<span class="muted num">' + p.m.visits + ' visits · ' + esc(L.fmtNum(Number(p.sets), 0)) + ' sets</span></div>' +
       '<div class="crew-vol num">' + esc(volText(p.m.volume)) + (p.m.volume.kg ? '' : ' lb') + '</div>' +
       goals.map(g => goalLine(g, p.m)).join('') + '</div>').join('') +
-    '<p class="hint-line">Totals only. Warm-ups don’t count.</p></section>';
+    (wt.length || bt.length ? '<div class="cmp-wrap"><table class="cmp"><thead><tr><th></th>' + people.map(p => '<th>' + esc(who(p)) + '</th>').join('') + '</tr></thead><tbody>' +
+      table('Workouts done', wt) + table('Best lifts', bt) + '</tbody></table></div>' : '') +
+    '<p class="hint-line">Totals, workouts done and best lifts only. Nobody sees anyone’s individual sets. Warm-ups don’t count.</p></section>';
 }
+// ----- bodyweight: private weigh-ins, a trend line, and the latest feeds the logger -----
+function bodyweightCard() {
+  const list = S.bw || [];
+  const last = list[0], unit = last ? last.unit : prefs.unit;
+  const same = list.filter(b => b.unit === unit);
+  let delta = '';
+  if (last) {
+    const old = same.find(b => b.measured_on <= L.addDays(last.measured_on, -28));
+    if (old) { const d = Number(last.weight) - Number(old.weight); delta = (d > 0 ? '+' : d < 0 ? '−' : '±') + L.fmtLoad(Math.abs(Math.round(d * 10) / 10)) + ' ' + unit + ' since ' + fmtDay(old.measured_on, { month: 'short', day: 'numeric' }); }
+  }
+  const pts = same.filter(b => b.measured_on >= L.addDays(today(), -180)).slice().reverse();
+  let chart = '';
+  if (pts.length > 1) {
+    const x0 = L.parseDate(pts[0].measured_on).getTime(), x1 = L.parseDate(pts[pts.length - 1].measured_on).getTime() || x0 + 1;
+    const ws = pts.map(b => Number(b.weight)), lo = Math.min(...ws), hi = Math.max(...ws), span = Math.max(1, hi - lo);
+    const xy = pts.map(b => [8 + (L.parseDate(b.measured_on).getTime() - x0) / Math.max(1, x1 - x0) * 284, 62 - (Number(b.weight) - lo) / span * 52]);
+    chart = '<svg class="bw-chart" viewBox="0 0 300 70" role="img" aria-label="Bodyweight over the last ' + pts.length + ' weigh-ins, from ' + L.fmtLoad(ws[0]) + ' to ' + L.fmtLoad(ws[ws.length - 1]) + ' ' + unit + '">' +
+      '<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="' + xy.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ') + '"/>' +
+      '<circle cx="' + xy[xy.length - 1][0].toFixed(1) + '" cy="' + xy[xy.length - 1][1].toFixed(1) + '" r="4" fill="var(--accent)"/></svg>';
+  }
+  return '<h3 class="section-title">Bodyweight</h3><section class="card bw">' +
+    (last ? '<div class="row"><div><div class="crew-vol num">' + esc(L.fmtLoad(Number(last.weight))) + ' ' + esc(last.unit) + '</div>' +
+      '<small class="muted">' + esc(dayLabel(last.measured_on)) + (delta ? ' · ' + esc(delta) : '') + '</small></div></div>' + chart
+      : '<p class="muted" style="margin:0 0 6px">Weigh in now and then to see the trend. Only you can see this.</p>') +
+    '<div class="goal-add bw-add"><input class="plain-input" id="bwNew" inputmode="decimal" placeholder="' + esc(last ? L.fmtLoad(Number(last.weight)) : 'e.g. 180') + '" aria-label="Today’s bodyweight">' +
+      '<span class="seg" role="group" aria-label="Unit">' + ['lb', 'kg'].map(u => '<button type="button" data-bw-unit="' + u + '" aria-pressed="' + (u === unit) + '">' + u + '</button>').join('') + '</span>' +
+      '<button class="btn primary" data-weigh type="button">Weigh in</button></div>' +
+    (list.length ? '<p class="hint-line">' + list.slice(0, 3).map(b => esc(L.fmtLoad(Number(b.weight)) + ' ' + b.unit + ' ' + fmtDay(b.measured_on, { month: 'short', day: 'numeric' })) +
+      ' <button class="linkbtn" data-bw-del="' + esc(b.id) + '" aria-label="Delete this weigh-in">✕</button>').join(' · ') + '</p>' : '') +
+  '</section>';
+}
+async function weighIn(btn) {
+  const w = L.parseLoad($('bwNew').value);
+  const unitBtn = view.querySelector('[data-bw-unit][aria-pressed="true"]');
+  const unit = unitBtn ? unitBtn.dataset.bwUnit : prefs.unit;
+  if (!(w >= 30 && w <= 1000)) { toast('Enter a bodyweight between 30 and 1000.'); return $('bwNew').focus(); }
+  btn.disabled = true;
+  try {
+    const row = await store.addBodyweight({ measured_on: today(), weight: w, unit });
+    S.bw.unshift(row);
+    prefs.bodyweight = w; prefs.unit = prefs.unit || unit; savePrefs();
+    render(); toast('Weighed in: ' + L.fmtLoad(w) + ' ' + unit);
+  } catch (x) { fail(x); btn.disabled = false; }
+}
+async function removeWeighIn(id) {
+  try { await store.removeBodyweight(id); S.bw = S.bw.filter(b => b.id !== id); render(); toast('Weigh-in deleted'); } catch (x) { fail(x); }
+}
+view.addEventListener('click', e => {
+  const u = e.target.closest('[data-bw-unit]');
+  if (u) view.querySelectorAll('[data-bw-unit]').forEach(b => b.setAttribute('aria-pressed', b === u));
+});
+view.addEventListener('keydown', e => { if (e.target.id === 'bwNew' && e.key === 'Enter') { e.preventDefault(); view.querySelector('[data-weigh]').click(); } });
 const SG = { id: null, pending: [] };
 function openSeasonSheet(id) {
   LG.mode = 'season';
@@ -1403,7 +1583,7 @@ function openSeasonSheet(id) {
       '<div class="field-label"><span>Routines</span><small>optional</small></div><div id="snPlan"></div>' +
       (S.templates.length ? '<div class="goal-add plan-add"><select class="plain-input" id="pRoutine" aria-label="Routine to add">' +
           S.templates.slice().sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name))
-            .map(t => '<option value="' + esc(t.id) + '">' + esc(t.name + (isMine(t) ? '' : ' (by ' + ownerName(t) + ')')) + '</option>').join('') +
+            .map(t => '<option value="' + esc(t.id) + '">' + esc(t.name + (isBlock(t) ? ' (block)' : '') + (isMine(t) ? '' : ' (by ' + ownerName(t) + ')')) + '</option>').join('') +
         '</select><button class="btn" id="pAdd" type="button">Add</button></div>'
         : '<p class="hint-line">Make a routine first, then plan the season around it.</p>') +
       '<p class="warn" id="snErr" role="alert"></p>' +
@@ -1586,6 +1766,7 @@ function renderProgress() {
       (season ? S.goals.filter(g => g.season_id === season.id).map(g => goalLine(g, t)).join('') : '') +
     '</section>' +
     (season ? crewCard(season) : '') +
+    bodyweightCard() +
     '<h3 class="section-title">Badges</h3><div class="badges">' +
       shown.map(a => '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) +
         (a.earned ? '' : '<br><span class="muted" style="font-weight:500">' + esc(L.fmtNum(Math.min(a.have, a.need), 0)) + ' / ' + esc(L.fmtNum(a.need, 0)) + '</span>') + '</div>').join('') + '</div>' +

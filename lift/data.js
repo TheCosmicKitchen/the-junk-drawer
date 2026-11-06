@@ -107,7 +107,7 @@ class SupaStore {
   // their exercises, and which shared ones you've subscribed to.
   async routines() {
     const [templates, subs] = await Promise.all([
-      this.all(() => this.sb.from('lift_templates').select('id,name,notes,is_shared,created_by,updated_at').is('deleted_at', null).order('name')),
+      this.all(() => this.sb.from('lift_templates').select(TPL).is('deleted_at', null).order('name')),
       this.all(() => this.sb.from('lift_routine_subscriptions').select('id,template_id').is('deleted_at', null)),
     ]);
     const ids = templates.map(t => t.id);
@@ -116,8 +116,8 @@ class SupaStore {
       .in('template_id', ids).order('position')) : [];
     return { templates, items, subs };
   }
-  async addRoutine(fields) { return must(await this.sb.from('lift_templates').insert(fields).select('id,name,notes,is_shared,created_by,updated_at').single()); }
-  async updateRoutine(id, patch) { return must(await this.sb.from('lift_templates').update(patch).eq('id', id).select('id,name,notes,is_shared,created_by,updated_at').single()); }
+  async addRoutine(fields) { return must(await this.sb.from('lift_templates').insert(fields).select(TPL).single()); }
+  async updateRoutine(id, patch) { return must(await this.sb.from('lift_templates').update(patch).eq('id', id).select(TPL).single()); }
   deleteRoutine(id) { return this.updateRoutine(id, { deleted_at: new Date().toISOString() }); }
   async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').single()); }
   async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit').single()); }
@@ -145,11 +145,29 @@ class SupaStore {
   async leaveSeason(subId) { must(await this.sb.from('lift_season_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
   // Everyone in a shared season, totals only (the database never hands over the other person's sets).
   async standings(seasonId) { return must(await this.sb.rpc('season_standings', { p_season: seasonId })); }
+  async seasonWorkouts(seasonId) { return must(await this.sb.rpc('season_workouts', { p_season: seasonId })); }
+  async seasonBests(seasonId) { return must(await this.sb.rpc('season_bests', { p_season: seasonId })); }
+
+  // ----- workout days: a workout put on a date -----
+  async workoutDays(fromDate) {
+    return this.all(() => this.sb.from('lift_workout_days').select('id,template_id,on_date').is('deleted_at', null).gte('on_date', fromDate).order('on_date'));
+  }
+  async addWorkoutDay(f) { return must(await this.sb.from('lift_workout_days').insert(f).select('id,template_id,on_date').single()); }
+  async removeWorkoutDay(id) { must(await this.sb.from('lift_workout_days').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
+
+  // ----- bodyweight -----
+  async bodyweights() {
+    return must(await this.sb.from('lift_bodyweight').select('id,measured_on,weight,unit,created_at').is('deleted_at', null)
+      .order('measured_on', { ascending: false }).order('created_at', { ascending: false }).limit(400));
+  }
+  async addBodyweight(f) { return must(await this.sb.from('lift_bodyweight').insert(f).select('id,measured_on,weight,unit,created_at').single()); }
+  async removeBodyweight(id) { must(await this.sb.from('lift_bodyweight').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
   async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit').single()); }
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
 
 const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by';
+const TPL = 'id,name,notes,is_shared,kind,created_by,updated_at';
 const PLAN = 'id,season_id,template_id,position,weekdays';
 
 // ---------------------------------------------------------------------------
@@ -253,9 +271,12 @@ class DemoStore {
     if (this.templates) return;
     const now = new Date().toISOString();
     this.templates = [
-      { id: 't-push', name: 'Push day', notes: 'Heavy bench, then accessories.', is_shared: false, created_by: 'me', updated_at: now },
-      { id: 't-legs', name: 'Alex’s leg day', notes: 'No skipping.', is_shared: true, created_by: 'alex', updated_at: now },
-      { id: 't-pull', name: 'Alex’s pull day', notes: '', is_shared: true, created_by: 'alex', updated_at: now },
+      { id: 't-push', name: 'Push day', notes: 'Heavy bench, then accessories.', is_shared: false, kind: 'workout', created_by: 'me', updated_at: now },
+      { id: 't-legs', name: 'Alex’s leg day', notes: 'No skipping.', is_shared: true, kind: 'workout', created_by: 'alex', updated_at: now },
+      { id: 't-pull', name: 'Alex’s pull day', notes: '', is_shared: true, kind: 'workout', created_by: 'alex', updated_at: now },
+      { id: 'b-bench', name: 'Bench & triceps', notes: '', is_shared: true, kind: 'block', created_by: 'me', updated_at: now },
+      { id: 'b-arms', name: 'Arms finisher', notes: '', is_shared: false, kind: 'block', created_by: 'me', updated_at: now },
+      { id: 'b-calves', name: 'Hips & legs', notes: '', is_shared: true, kind: 'block', created_by: 'alex', updated_at: now },
     ];
     const it = (template_id, exercise_id, position, sets, reps, load_mode, load_value) =>
       ({ id: uid(), template_id, exercise_id, position, sets, reps, load_mode, load_value, unit: 'lb' });
@@ -263,6 +284,9 @@ class DemoStore {
       it('t-push', 'ex0', 1, 3, 5, 'percent_1rm', 80), it('t-push', 'ex4', 2, 3, 8, 'fixed', 95), it('t-push', 'ex6', 3, 3, 10, 'fixed', 0), it('t-push', 'ex11', 4, 3, 12, 'fixed', 50),
       it('t-legs', 'ex1', 1, 4, 5, 'percent_1rm', 75), it('t-legs', 'ex15', 2, 3, 8, 'fixed', 155), it('t-legs', 'ex7', 3, 3, 10, 'fixed', 270),
       it('t-pull', 'ex3', 1, 3, 10, 'fixed', 120), it('t-pull', 'ex10', 2, 3, 10, 'fixed', 110), it('t-pull', 'ex5', 3, 3, 10, 'fixed', 30),
+      it('b-bench', 'ex0', 1, 3, 5, 'fixed', 175), it('b-bench', 'ex11', 2, 3, 10, 'fixed', 60),
+      it('b-arms', 'ex5', 1, 3, 10, 'fixed', 35), it('b-arms', 'ex11', 2, 3, 12, 'fixed', 50),
+      it('b-calves', 'ex9', 1, 3, 10, 'fixed', 235), it('b-calves', 'ex7', 2, 3, 12, 'fixed', 300),
     ];
     this.subs = [{ id: uid(), template_id: 't-legs' }];
   }
@@ -276,7 +300,7 @@ class DemoStore {
       subs: this.subs.filter(s => !s.deleted_at).map(clone),
     };
   }
-  async addRoutine(f) { this.seedRoutines(); const t = { id: uid(), notes: '', is_shared: false, created_by: 'me', updated_at: new Date().toISOString(), ...f }; this.templates.push(t); return clone(t); }
+  async addRoutine(f) { this.seedRoutines(); const t = { id: uid(), notes: '', is_shared: false, kind: 'workout', created_by: 'me', updated_at: new Date().toISOString(), ...f }; this.templates.push(t); return clone(t); }
   async updateRoutine(id, patch) {
     const t = this.templates.find(x => x.id === id);
     if (!t || t.created_by !== 'me') throw new Error('That isn’t allowed for your account.');
@@ -330,6 +354,36 @@ class DemoStore {
       people.push({ user_id: 'alex', display_name: 'Alex', visits: 17, sets: 240, volume_lb: 286400, volume_kg: 0 });
     return people;
   }
+  async seasonWorkouts(seasonId) {
+    const plan = this.planRows.filter(p => !p.deleted_at && p.season_id === seasonId);
+    const people = (await this.standings(seasonId)).map(p => p.user_id);
+    return plan.flatMap((p, i) => people.map(u => ({ user_id: u, display_name: u === 'me' ? 'Demo lifter' : 'Alex', template_id: p.template_id, times: u === 'me' ? 4 - i : 3 + i })));
+  }
+  async seasonBests(seasonId) {
+    const s = this.seasonRows.find(x => x.id === seasonId);
+    const people = await this.standings(seasonId);
+    const best = {};
+    for (const x of this.live()) if (!x.is_warmup && x.weight > 0 && x.performed_on >= s.starts_on && x.performed_on <= s.ends_on)
+      if (!best[x.exercise_id] || Number(x.weight) > best[x.exercise_id].best_weight) best[x.exercise_id] = { best_weight: Number(x.weight), reps: x.reps, unit: x.unit };
+    const ids = Object.keys(best).slice(0, 6);
+    return ids.flatMap((e, i) => people.map(p => ({ user_id: p.user_id, display_name: p.display_name, exercise_id: e, ...best[e],
+      best_weight: p.user_id === 'me' ? best[e].best_weight : best[e].best_weight + (i % 2 ? 10 : -15) })));
+  }
+  async workoutDays(fromDate) {
+    if (!this.dayRows) this.dayRows = [{ id: uid(), template_id: 't-push', on_date: addDays(localDate(), 1) }, { id: uid(), template_id: 't-pull', on_date: addDays(localDate(), 3) }];
+    return this.dayRows.filter(d => !d.deleted_at && d.on_date >= fromDate).sort((a, b) => a.on_date.localeCompare(b.on_date)).map(clone);
+  }
+  async addWorkoutDay(f) { await this.workoutDays(''); const d = { id: uid(), ...f }; this.dayRows.push(d); return clone(d); }
+  async removeWorkoutDay(id) { const d = this.dayRows.find(x => x.id === id); if (d) d.deleted_at = new Date().toISOString(); }
+  async bodyweights() {
+    if (!this.bwRows) {
+      const t = localDate();
+      this.bwRows = Array.from({ length: 14 }, (_, i) => ({ id: uid(), measured_on: addDays(t, -i * 5 - 1), weight: Math.round((181 + i * 0.35 + Math.sin(i) * 0.8) * 10) / 10, unit: 'lb', created_at: new Date().toISOString() }));
+    }
+    return this.bwRows.filter(b => !b.deleted_at).sort((a, b) => b.measured_on.localeCompare(a.measured_on) || b.created_at.localeCompare(a.created_at)).map(clone);
+  }
+  async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
+  async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
   async addGoal(f) { const g = { id: uid(), unit: null, ...f }; this.goalRows.push(g); return clone(g); }
   async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }
