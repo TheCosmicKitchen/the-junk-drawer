@@ -625,6 +625,15 @@ function syncPickFoot() {
   b.textContent = n ? 'Add ' + n + ' exercise' + (n === 1 ? '' : 's') : 'Tick exercises to add';
 }
 
+// "3 × 5 @ 235, 1 × 4 @ 235": runs of identical working sets collapsed.
+function summarizeSets(sets) {
+  const runs = [];
+  for (const x of sets.filter(y => y.is_warmup !== true)) {
+    const last = runs[runs.length - 1], key = x.reps + '|' + Number(x.weight) + '|' + x.unit;
+    if (last && last.key === key) last.n++; else runs.push({ key, n: 1, x });
+  }
+  return runs.map(r => r.n + ' × ' + r.x.reps + (Number(r.x.weight) > 0 ? ' @ ' + L.fmtLoad(Number(r.x.weight)) + ' ' + r.x.unit : '')).join(', ') || sets.map(setText).join(', ');
+}
 async function openEntry(exId, editing, item) {
   LG.mode = editing ? 'edit' : 'entry';
   LG.exId = exId;
@@ -650,39 +659,41 @@ async function openEntry(exId, editing, item) {
     if (!base) { st.unit = target.unit; st.weight = target.weight; }
   }
   const planLine = LG.item
-    ? '<div class="pr-flag" style="background:var(--accent-soft);color:var(--ink);animation:none">📋 Plan: <b>' + esc(stepText(LG.item)) + '</b>' +
+    ? '<div class="plan-chip">📋 Plan <b>' + esc(stepText(LG.item)) + '</b>' +
       '<span class="muted" style="font-weight:500"> · ' + esc(target.weight != null ? loadText(target) + ', ' + target.why : target.why) + '</span></div>' +
       (LG.item.note ? '<p class="tip">📝 ' + esc(LG.item.note) + '</p>' : '')
     : '';
   inner.innerHTML =
-    '<div class="sheet-head"><div>' + (editing ? '' : '<button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-change>← Change exercise</button>') +
-      '<h2 id="sheetTitle">' + esc(exName(exId)) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    // Simple by default: last time, three prefilled boxes, one button. Everything else is under More.
+    '<div class="sheet-head"><div class="lg-title"><h2 id="sheetTitle">' + esc(exName(exId)) + '</h2>' +
+      (editing ? '' : '<button class="linkbtn" data-change>Change</button>') + '</div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
-      planLine + tipLine(exId) +
-      '<div class="hint-line" id="lastLine">' + (editing ? 'Editing a set from ' + esc(fmtDay(editing.performed_on)) : 'Looking up last time…') + '</div>' +
-      '<div class="field-label"><span>Weight' + '</span><span class="seg" role="group" aria-label="Unit">' +
-        ['lb', 'kg'].map(u => '<button type="button" data-unit="' + u + '" aria-pressed="' + (u === st.unit) + '">' + u + '</button>').join('') + '</span></div>' +
-      '<div class="stepper"><button type="button" data-w="-1" aria-label="Less weight">−</button>' +
-        '<input id="wIn" inputmode="decimal" aria-label="Weight" placeholder="Weight" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"><button type="button" data-w="1" aria-label="More weight">+</button></div>' +
-      '<div class="nudges" id="nudges" role="group" aria-label="Fine-tune the weight"></div>' +
-      '<div class="hint-line" id="plates"></div>' +
-      '<div class="pair"><div><div class="field-label"><span>Reps</span></div>' +
-      '<div class="stepper sm"><button type="button" data-r="-1" aria-label="Fewer reps">−</button>' +
-        '<input id="rIn" inputmode="numeric" aria-label="Reps" value="' + esc(st.reps) + '"><button type="button" data-r="1" aria-label="More reps">+</button></div></div>' +
-      (editing ? '' : '<div><div class="field-label"><span>Sets</span></div>' +
-      '<div class="stepper sm"><button type="button" data-n="-1" aria-label="Fewer sets">−</button>' +
-        '<input id="nIn" inputmode="numeric" aria-label="Sets" value="' + esc(st.sets) + '"><button type="button" data-n="1" aria-label="More sets">+</button></div></div>') + '</div>' +
-      '<div class="toggles">' +
-        '<button type="button" class="toggle" data-t="bw" aria-pressed="' + st.bw + '">Count bodyweight</button>' +
-        '<button type="button" class="toggle" data-t="warm" aria-pressed="' + st.warm + '">Warm-up</button>' +
-        '<button type="button" class="toggle" data-t="note" aria-pressed="' + st.showNote + '">Note</button></div>' +
-      '<div id="bwRow"' + (st.bw ? '' : ' hidden') + '><div class="field-label"><span>Bodyweight</span><small>added to the load for volume</small></div>' +
-        '<input class="plain-input" id="bwIn" inputmode="decimal" aria-label="Bodyweight" value="' + esc(st.bodyweight != null ? L.fmtLoad(st.bodyweight) : '') + '" placeholder="e.g. 180"></div>' +
-      '<div id="noteRow"' + (st.showNote ? '' : ' hidden') + '><div class="field-label"><span>Note</span></div><input class="plain-input" id="noteIn" maxlength="300" value="' + esc(st.note) + '" placeholder="How did it feel?"></div>' +
+      planLine +
+      '<p class="last-line" id="lastLine">' + (editing ? 'Editing a set from ' + esc(fmtDay(editing.performed_on)) : 'Looking up last time…') + '</p>' +
+      '<div class="trio' + (editing ? ' two' : '') + '">' +
+        '<label class="box"><span>Weight <i id="wUnit">' + esc(st.unit) + '</i></span><input id="wIn" inputmode="decimal" enterkeyhint="done" placeholder="–" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"></label>' +
+        '<label class="box"><span>Reps</span><input id="rIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.reps) + '"></label>' +
+        (editing ? '' : '<label class="box"><span>Sets</span><input id="nIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.sets) + '"></label>') +
+      '</div>' +
       (editing ? '<div class="field-label"><span>Day</span></div><input class="plain-input" id="dateIn" type="date" value="' + esc(st.date) + '" max="' + today() + '">' : '') +
       '<div id="prFlag"></div><p class="warn" id="formErr" role="alert"></p>' +
       '<button class="btn primary block big" id="saveBtn">' + (editing ? 'Save changes' : 'Log set') + '</button>' +
-      (editing ? '<button class="btn block" style="margin-top:10px;color:var(--accent)" id="delBtn">Delete this set</button>' : '<div id="doneToday"></div>') +
+      '<details class="more" id="moreBox"' + (st.bw || st.warm || st.showNote ? ' open' : '') + '><summary>More: units, warm-up, bodyweight, note</summary>' +
+        '<div class="more-body">' +
+          '<div class="row"><span class="seg" role="group" aria-label="Unit">' + ['lb', 'kg'].map(u => '<button type="button" data-unit="' + u + '" aria-pressed="' + (u === st.unit) + '">' + u + '</button>').join('') + '</span>' +
+            '<span class="muted" style="font-size:13px">Fine-tune</span></div>' +
+          '<div class="nudges" id="nudges" role="group" aria-label="Fine-tune the weight"></div>' +
+          '<div class="hint-line" id="plates"></div>' +
+          '<div class="toggles">' +
+            '<button type="button" class="toggle" data-t="warm" aria-pressed="' + st.warm + '">Warm-up</button>' +
+            '<button type="button" class="toggle" data-t="bw" aria-pressed="' + st.bw + '">Count bodyweight</button>' +
+            '<button type="button" class="toggle" data-t="note" aria-pressed="' + st.showNote + '">Note</button></div>' +
+          '<div id="bwRow"' + (st.bw ? '' : ' hidden') + '><div class="field-label"><span>Bodyweight</span><small>added to the load for volume</small></div>' +
+            '<input class="plain-input" id="bwIn" inputmode="decimal" aria-label="Bodyweight" value="' + esc(st.bodyweight != null ? L.fmtLoad(st.bodyweight) : '') + '" placeholder="e.g. 180"></div>' +
+          '<div id="noteRow"' + (st.showNote ? '' : ' hidden') + '><div class="field-label"><span>Note</span></div><input class="plain-input" id="noteIn" maxlength="300" value="' + esc(st.note) + '" placeholder="How did it feel?"></div>' +
+          '<div id="bestLine"></div>' + tipLine(exId) +
+        '</div></details>' +
+      (editing ? '<button class="btn block ghost" style="margin-top:10px;color:var(--accent)" id="delBtn">Delete this set</button>' : '<div id="doneToday"></div>') +
     '</div>';
   openSheet();
   wireEntry();
@@ -703,8 +714,8 @@ async function openEntry(exId, editing, item) {
       syncInputs();
     }
     $('lastLine').innerHTML = prev.length
-      ? 'Last time, ' + esc(fmtDay(prev[0].performed_on, { month: 'short', day: 'numeric' })) + ': <b>' + esc(prev.map(setText).join(', ')) + '</b>'
-      : 'First time logging this one. Welcome.';
+      ? 'Last time, ' + esc(fmtDay(prev[0].performed_on, { month: 'short', day: 'numeric' })) + ': <b>' + esc(summarizeSets(prev)) + '</b>'
+      : 'First time logging this one. Type a weight to start.';
     updateLive();
   }
 }
@@ -720,6 +731,7 @@ function syncInputs() {
   $('rIn').value = st().reps;
   if ($('nIn')) $('nIn').value = st().sets;
   inner.querySelectorAll('[data-unit]').forEach(b => b.setAttribute('aria-pressed', b.dataset.unit === st().unit));
+  if ($('wUnit')) $('wUnit').textContent = st().unit;
   inner.querySelector('[data-t="bw"]').setAttribute('aria-pressed', st().bw);
   $('bwRow').hidden = !st().bw;
   if (st().bodyweight != null) $('bwIn').value = L.fmtLoad(st().bodyweight);
@@ -749,13 +761,11 @@ function updateLive() {
   const probe = { exercise_id: LG.exId, unit: s.unit, reps: s.reps, weight: s.weight, is_warmup: s.warm };
   const prev = S.bests.get(L.bestKey(probe));
   const flag = $('prFlag');
-  if (LG.mode === 'entry' && !s.warm && prev != null && s.weight > prev) {
-    flag.innerHTML = '<div class="pr-flag">🏆 That’s a PR: your best at ' + s.reps + ' reps was ' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</div>';
-  } else if (prev != null) {
-    const est = L.e1rm(prev, s.reps);
-    flag.innerHTML = '<div class="hint-line">Best at ' + s.reps + ' reps: <b>' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</b>' +
-      (est ? ' · estimated 1-rep max ' + esc(L.fmtLoad(Math.round(est))) + ' ' + s.unit + ' (Epley)' : '') + '</div>';
-  } else flag.innerHTML = '';
+  flag.innerHTML = LG.mode === 'entry' && !s.warm && prev != null && s.weight > prev
+    ? '<div class="pr-flag">🏆 That’s a PR: your best at ' + s.reps + ' reps was ' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</div>' : '';
+  const est = prev != null ? L.e1rm(prev, s.reps) : null;
+  if ($('bestLine')) $('bestLine').innerHTML = prev != null ? '<p class="hint-line">Best at ' + s.reps + ' reps: <b>' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</b>' +
+    (est ? ' · estimated 1-rep max ' + esc(L.fmtLoad(Math.round(est))) + ' ' + s.unit : '') + '</p>' : '';
 }
 function refreshLoggerList() {
   const box = $('doneToday');
