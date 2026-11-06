@@ -212,6 +212,7 @@ function route() {
   render();
 }
 function render() {
+  syncTabDot();
   if (currentTab === 'history') renderHistory();
   else if (currentTab === 'progress') renderProgress();
   else if (currentTab === 'routines') renderRoutines();
@@ -236,7 +237,29 @@ function renderLog() {
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
     '</div></section>' +
     followCard() +
-    (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday()));
+    (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
+    (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Save today as a routine</button>' : '');
+}
+// Turn a day's lifting into a routine: one step per exercise, in the order you did them,
+// with the number of working sets and your heaviest set's reps and weight.
+async function saveDayAsRoutine(day, btn) {
+  const sets = (day === today() ? todaySets() : S.dayCache.get(day) || []).filter(s => s.is_warmup !== true);
+  const groups = groupByExercise(sets);
+  if (!groups.length) return toast('Nothing to save from that day.');
+  btn.disabled = true;
+  try {
+    const t = await store.addRoutine({ name: fmtDay(day, { weekday: 'long', month: 'short', day: 'numeric' }) + ' workout' });
+    S.templates.push(t);
+    let position = 0;
+    for (const g of groups.slice(0, 100)) {
+      const top = g.sets.reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a));
+      const it = await store.addItem({ template_id: t.id, exercise_id: g.exercise_id, position: ++position,
+        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'fixed', load_value: Math.min(2000, Number(top.weight)), unit: top.unit });
+      S.items.push(it); S.itemsById.set(it.id, it);
+    }
+    toast('Saved. Give it a name and tweak away.');
+    openDesigner(t.id, true);
+  } catch (x) { fail(x); btn.disabled = false; }
 }
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
@@ -264,6 +287,8 @@ view.addEventListener('click', async e => {
   // routines
   else if (b.dataset.followItem) { const it = S.itemsById.get(b.dataset.followItem); if (it) openEntry(it.exercise_id, null, it); }
   else if (b.dataset.start) startFollowing(b.dataset.start);
+  else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
+  else if (b.dataset.seen) { const t = S.templates.find(x => x.id === b.dataset.seen); if (t) { markSeen(t); render(); } }
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
   else if (b.dataset.design) openDesigner(b.dataset.design);
   else if (b.hasAttribute('data-new-routine')) newRoutine(b);
@@ -376,13 +401,17 @@ function openLogger(exId) {
   openPicker('What are you lifting?', null);
 }
 // The exercise search sheet. onPick = null logs a set; otherwise it hands the chosen id back.
-function openPicker(title, onPick) {
+// multi: tap to tick several, then one button hands them all back (as an array) in the order ticked.
+function openPicker(title, onPick, multi) {
   LG.mode = 'pick';
   LG.pickFor = onPick;
+  LG.multi = multi ? [] : null;
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
-    '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul></div>';
+    (multi ? '<p class="hint-line">Tap to tick as many as you like, in the order you’ll do them.</p>' : '') +
+    '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul>' +
+    (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
   const input = $('exSearch');
   input.addEventListener('input', () => drawResults(input.value));
@@ -400,7 +429,11 @@ function drawResults(q) {
   const recents = recentExerciseIds();
   const list = L.searchExercises(q, S.exercises, S.aliases, recents);
   $('resTitle').textContent = q.trim() ? (list.length ? 'Matches' : 'No matches') : (list.length ? 'Recent' : 'Start typing to find an exercise');
-  let html = list.map(e => '<li><button data-pick="' + esc(e.id) + '"><span>' + esc(e.name) + '</span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
+  const picked = id => LG.multi && LG.multi.includes(id);
+  // While ticking, keep what's already ticked at the top so it's easy to see and untick.
+  const shown = LG.multi && !q.trim() ? LG.multi.map(id => S.byId.get(id)).filter(Boolean).concat(list.filter(e => !picked(e.id))) : list;
+  let html = shown.map(e => '<li><button data-pick="' + esc(e.id) + '"' + (LG.multi ? ' class="' + (picked(e.id) ? 'sel' : '') + '" aria-pressed="' + picked(e.id) + '"' : '') + '><span>' +
+    (LG.multi ? '<i class="tickbox" aria-hidden="true">' + (picked(e.id) ? LG.multi.indexOf(e.id) + 1 : '') + '</i>' : '') + esc(e.name) + '</span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
   const typed = q.trim();
   const exact = e => [e.name, ...(S.aliases.get(e.id) || [])].some(n => L.norm(n) === L.norm(typed));
   if (typed && me && me.is_admin && !S.exercises.some(e => !e.deleted_at && exact(e))) {
@@ -409,6 +442,14 @@ function drawResults(q) {
       (near ? '<p class="warn" style="margin:-2px 4px 10px">Did you mean <b>' + esc(near) + '</b>? It’s already there.</p>' : '') + '</li>';
   }
   $('exResults').innerHTML = html;
+  syncPickFoot();
+}
+function syncPickFoot() {
+  const b = inner.querySelector('[data-add-selected]');
+  if (!b) return;
+  const n = LG.multi.length;
+  b.disabled = !n;
+  b.textContent = n ? 'Add ' + n + ' exercise' + (n === 1 ? '' : 's') : 'Tick exercises to add';
 }
 
 async function openEntry(exId, editing, item) {
@@ -553,6 +594,13 @@ inner.addEventListener('click', async e => {
   if (!b) return;
   if (b.hasAttribute('data-close')) return closeSheet();
   if (b.hasAttribute('data-change')) return openLogger();
+  if (b.dataset.pick && LG.multi) {
+    const id = b.dataset.pick, i = LG.multi.indexOf(id);
+    if (i >= 0) LG.multi.splice(i, 1); else LG.multi.push(id);
+    vibrate(5);
+    return drawResults($('exSearch').value);
+  }
+  if (b.hasAttribute('data-add-selected')) { b.disabled = true; return LG.pickFor(LG.multi.slice()); }
   if (b.dataset.pick) return LG.pickFor ? LG.pickFor(b.dataset.pick) : openEntry(b.dataset.pick);
   if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
   if (b.dataset.add) return addExercise(b.dataset.add, b);
@@ -627,7 +675,8 @@ async function addExercise(name, btn) {
     const e = await store.addExercise(name.trim().replace(/\s+/g, ' '));
     S.exercises.push(e); S.byId.set(e.id, e);
     toast('Added “' + e.name + '” to the catalogue');
-    if (LG.pickFor) LG.pickFor(e.id); else openEntry(e.id);
+    if (LG.multi) { LG.multi.push(e.id); $('exSearch').value = ''; drawResults(''); }
+    else if (LG.pickFor) LG.pickFor(e.id); else openEntry(e.id);
   } catch (x) { fail(x); btn.disabled = false; }
 }
 
@@ -644,6 +693,40 @@ const isMine = t => t.created_by === S.myId;
 const ownerName = t => (isMine(t) ? 'you' : S.names.get(t.created_by) || 'a friend');
 const subFor = id => S.subs.find(s => s.template_id === id);
 
+// "What's new" on the other person's routines. This browser remembers what each one looked like
+// when you last saw it, and summarises the difference. Nothing about this goes to the server.
+const routineSig = t => JSON.stringify({ n: t.name, i: routineItems(t.id).map(i => [i.exercise_id, i.sets, i.reps, i.load_mode, Number(i.load_value), i.unit]) });
+function seenMap() { try { return JSON.parse(localStorage.getItem('lift.seen') || '{}'); } catch (e) { return {}; } }
+function markSeen(t) {
+  if (!t || isMine(t)) return;
+  const m = seenMap(); m[t.id] = routineSig(t);
+  try { localStorage.setItem('lift.seen', JSON.stringify(m)); } catch (e) {}
+}
+function routineChanges(t) {
+  if (isMine(t)) return null;
+  const prev = seenMap()[t.id];
+  if (!prev) { markSeen(t); return null; }   // first time you see it: nothing to report yet
+  const now = routineSig(t);
+  if (prev === now) return null;
+  const a = JSON.parse(prev), b = JSON.parse(now), out = [];
+  if (a.n !== b.n) out.push('renamed from “' + a.n + '”');
+  const step = i => i[1] + '×' + i[2] + (i[3] === 'percent_1rm' ? ' @ ' + L.fmtLoad(i[4]) + '%' : i[4] ? ' @ ' + L.fmtLoad(i[4]) + ' ' + i[5] : '');
+  const before = new Map(a.i.map(i => [i[0], i])), after = new Map(b.i.map(i => [i[0], i]));
+  for (const [ex, i] of after) {
+    const p = before.get(ex);
+    if (!p) out.push('added ' + exName(ex));
+    else if (step(p) !== step(i)) out.push(exName(ex) + ' ' + step(p) + ' → ' + step(i));
+  }
+  for (const ex of before.keys()) if (!after.has(ex)) out.push('removed ' + exName(ex));
+  if (!out.length) out.push('steps reordered');
+  return out;
+}
+function syncTabDot() {
+  const news = (S.templates || []).some(t => !isMine(t) && seenMap()[t.id] && seenMap()[t.id] !== routineSig(t));
+  const tab = document.querySelector('.tabs a[href="#routines"]');
+  if (tab) tab.classList.toggle('has-news', news);
+}
+
 // Which routine you're following today. Kept in this browser and forgotten tomorrow.
 function following() {
   let f = null;
@@ -656,6 +739,7 @@ const stepDone = item => todaySets().filter(s => s.exercise_id === item.exercise
 function startFollowing(id) {
   const t = S.templates.find(x => x.id === id);
   if (!t) return;
+  markSeen(t);
   try { localStorage.setItem('lift.follow', JSON.stringify({ id, day: today() })); } catch (e) {}
   if (sheet.open) { flushSaves(); sheet.close(); }
   if (location.hash !== '#log') location.hash = '#log'; else render();
@@ -688,11 +772,15 @@ function renderRoutines() {
   const f = following();
   const start = t => routineItems(t.id).length
     ? '<button class="btn primary" data-start="' + esc(t.id) + '">' + (f && f.template.id === t.id ? 'Following ✓' : 'Start') + '</button>' : '';
-  const card = (t, actions) => '<section class="card routine"><div class="row"><h3>' + esc(t.name) + '</h3>' +
-      (isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
+  const card = (t, actions) => {
+    const changes = routineChanges(t);
+    return '<section class="card routine' + (changes ? ' updated' : '') + '"><div class="row"><h3>' + esc(t.name) + '</h3>' +
+      (changes ? '<span class="tag new">Updated</span>' : isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
+    (changes ? '<p class="changes"><b>' + esc(ownerName(t)) + ' changed it:</b> ' + esc(changes.slice(0, 4).join(' · ')) + (changes.length > 4 ? ' · and ' + (changes.length - 4) + ' more' : '') + '</p>' : '') +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
     '<div class="chips">' + (routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(L.targetText(it, S.bestRows, false)) + '</small></span>').join('') || '<span class="muted">No exercises yet</span>') + '</div>' +
-    '<div class="actions">' + actions + '</div></section>';
+    '<div class="actions">' + actions + (changes ? '<button class="btn ghost" data-seen="' + esc(t.id) + '">Got it</button>' : '') + '</div></section>';
+  };
   view.innerHTML =
     '<div class="row" style="margin-top:8px"><h2 style="font-size:28px">Routines</h2><button class="btn primary" data-new-routine>+ New routine</button></div>' +
     (mine.length ? '<h3 class="section-title">Yours</h3>' + mine.map(t => card(t, start(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
@@ -712,7 +800,7 @@ async function newRoutine(btn) {
 }
 async function subscribeTo(id, btn) {
   btn.disabled = true;
-  try { S.subs.push(await store.subscribe(id)); toast('Subscribed. It follows their edits.'); render(); }
+  try { S.subs.push(await store.subscribe(id)); markSeen(S.templates.find(t => t.id === id)); toast('Subscribed. It follows their edits.'); render(); }
   catch (x) { fail(x); btn.disabled = false; }
 }
 async function unsubscribeFrom(subId, btn) {
@@ -724,6 +812,7 @@ async function copyRoutine(id, btn) {
   btn.disabled = true;
   try {
     const src = S.templates.find(t => t.id === id);
+    markSeen(src);
     const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null });
     S.templates.push(t);
     for (const it of routineItems(id)) {
@@ -802,6 +891,7 @@ function itemRow(it) {
         '<button type="button" data-loadmode="' + k + '" aria-pressed="' + (k === 'pct' ? pct : !pct && it.unit === k) + '">' + l + '</button>').join('') + '</span>' +
     '</div>' +
     (pct ? '<p class="hint-line">' + (tgt.weight ? '≈ ' + esc(L.fmtLoad(tgt.weight)) + ' ' + it.unit + ' today, from your best' : 'Works out once you’ve logged this exercise in ' + it.unit) + '</p>' : '') +
+    '<div class="item-actions"><button type="button" data-swap>⇄ Swap exercise</button><button type="button" data-dup>⧉ Duplicate</button></div>' +
   '</li>';
 }
 function miniStep(label, field, value) {
@@ -820,16 +910,20 @@ function redrawItem(id) {
   const li = inner.querySelector('.item[data-item="' + id + '"]');
   if (li) li.outerHTML = itemRow(S.itemsById.get(id));
 }
-async function addItemTo(tid, exId) {
+// Add exercises to the end of a routine, each starting from your last numbers for it.
+async function addItemsTo(tid, exIds) {
   try {
-    const list = routineItems(tid);
-    const recent = S.recent.find(s => s.exercise_id === exId && s.is_warmup !== true);
-    const it = await store.addItem({
-      template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
-      sets: 3, reps: recent ? Math.min(100, recent.reps) : 8, load_mode: 'fixed',
-      load_value: recent ? Number(recent.weight) : 0, unit: recent ? recent.unit : prefs.unit,
-    });
-    S.items.push(it); S.itemsById.set(it.id, it);
+    for (const exId of exIds) {
+      const list = routineItems(tid);
+      const recent = S.recent.find(s => s.exercise_id === exId && s.is_warmup !== true);
+      const it = await store.addItem({
+        template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
+        sets: 3, reps: recent ? Math.min(100, recent.reps) : 8, load_mode: 'fixed',
+        load_value: recent ? Number(recent.weight) : 0, unit: recent ? recent.unit : prefs.unit,
+      });
+      S.items.push(it); S.itemsById.set(it.id, it);
+    }
+    if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises');
   } catch (x) { fail(x); }
   openDesigner(tid);
 }
@@ -893,7 +987,7 @@ inner.addEventListener('input', e => {
   queueItem(id, { [inp.dataset.field]: clampItem(it, inp.dataset.field, v) });
 });
 async function designerClick(b) {
-  if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, exId => addItemTo(D.id, exId)); }
+  if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
   if (b.id === 'rtShare') {
     const t = S.templates.find(x => x.id === D.id);
     try { await saveRoutine({ is_shared: !t.is_shared }); } catch (x) { return fail(x); }
@@ -913,6 +1007,30 @@ async function designerClick(b) {
   const li = b.closest('.item');
   if (!li) return;
   const id = li.dataset.item, it = S.itemsById.get(id);
+  if (b.hasAttribute('data-swap')) {
+    // Swap keeps the step's place, sets, reps and load; only the exercise changes.
+    flushSaves();
+    const tid = D.id;
+    return openPicker('Swap ' + exName(it.exercise_id) + ' for…', async exId => {
+      try { const saved = await store.updateItem(id, { exercise_id: exId }); Object.assign(S.itemsById.get(id), saved); }
+      catch (x) { fail(x); }
+      openDesigner(tid);
+    });
+  }
+  if (b.hasAttribute('data-dup')) {
+    // Copy the step right after itself, shuffling the later steps down one.
+    flushSaves();
+    const list = routineItems(D.id);
+    if (list.length >= 100) return toast('That’s the most steps a routine can have.');
+    try {
+      for (const later of list.filter(x => x.position > it.position).reverse()) await store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s));
+      const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
+        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit });
+      S.items.push(copy); S.itemsById.set(copy.id, copy);
+      drawItems(); vibrate(8);
+    } catch (x) { fail(x); }
+    return;
+  }
   if (b.dataset.removeItem) {
     try { await store.removeItem(id); } catch (x) { return fail(x); }
     S.items = S.items.filter(x => x.id !== id);
@@ -1077,7 +1195,7 @@ function dayBody(day) {
   if (!sets) return '<p class="muted">Loading…</p>';
   return groupByExercise(sets).map(g => '<div class="ex"><b>' + esc(exName(g.exercise_id)) + '</b><div class="chips">' +
     g.sets.map(s => '<button class="chip' + (s.is_warmup ? ' warm' : '') + '" data-edit="' + esc(s.id) + '">' + esc(setText(s)) + (s.notes ? ' <small>✎</small>' : '') + '</button>').join('') +
-    '</div></div>').join('') || '<p class="muted">No sets.</p>';
+    '</div></div>').join('') + (sets.length ? '<button class="btn" style="margin-top:14px" data-save-day="' + esc(day) + '">Save as a routine</button>' : '') || '<p class="muted">No sets.</p>';
 }
 async function toggleDay(day) {
   if (S.open.has(day)) S.open.delete(day); else S.open.add(day);

@@ -178,6 +178,17 @@
   .ms button { border: 0; background: transparent; width: 34px; height: 38px; font-size: 18px; font-weight: 600; }
   .ms input { width: 52px; height: 38px; border: 0; background: transparent; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
   .mini-seg button { padding: 7px 9px; font-size: 13px; }
+  .routine.updated { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .tag.new { background: var(--gold-soft); color: var(--gold); }
+  .changes { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; background: var(--gold-soft); font-size: 14px; }
+  .tabs a { position: relative; }
+  .tabs a.has-news::after { content: ""; position: absolute; top: 5px; right: calc(50% - 18px); width: 9px; height: 9px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px var(--bg); }
+  .item-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .item-actions button { border: 0; background: var(--chip); border-radius: 9px; padding: 6px 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .results li button.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .tickbox { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 10px; border-radius: 7px; border: 2px solid var(--line); font-style: normal; font-size: 13px; font-weight: 800; vertical-align: -6px; }
+  .sel .tickbox { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .pick-foot { position: sticky; bottom: 0; padding: 10px 0 4px; background: linear-gradient(transparent, var(--bg) 30%); }
   /* ---------- seasons ---------- */
   .season.on { border-color: var(--accent); }
   .season h3 { font-size: 19px; }
