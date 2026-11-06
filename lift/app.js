@@ -85,17 +85,22 @@ function toast(msg, action) {
 }
 const fail = e => toast(e && e.message ? e.message : 'Something went wrong.');
 
-const PLATE = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="var(--accent)"/><circle cx="20" cy="20" r="11.5" fill="none" stroke="var(--accent-ink)" stroke-width="2" opacity=".55"/><circle cx="20" cy="20" r="4.5" fill="var(--bg)"/></svg>';
-function hillSVG(ratio, label) {
-  const t = Math.max(0.03, Math.min(0.97, ratio));
-  const x = 20 + 280 * t, y = 112 - 84 * t;
-  return '<svg class="hill" viewBox="0 0 320 130" role="img" aria-label="' + esc(label) + '">' +
-    '<path d="M0 130 L20 112 L300 28 L320 22 L320 130 Z" fill="var(--chip)"/>' +
-    '<path d="M20 112 L300 28" stroke="var(--line)" stroke-width="3" stroke-linecap="round"/>' +
-    '<path d="M20 112 L' + x + ' ' + y + '" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>' +
-    '<g transform="translate(300 28)"><path d="M0 0 V-26" stroke="var(--ink)" stroke-width="2"/><path d="M0 -26 L16 -21 L0 -16 Z" fill="var(--gold)"/></g>' +
-    '<circle cx="' + (x - 4) + '" cy="' + (y - 15) + '" r="14" fill="var(--accent)"/>' +
-    '<circle cx="' + (x - 9) + '" cy="' + (y - 20) + '" r="3" fill="#fff" opacity=".35"/></svg>';
+const LOGO = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg>';
+// A rack of votive candles: one lit for each club you've joined (the latest six), and the next one
+// catching as you get closer to it.
+function candlesSVG(lit, ratio, label) {
+  const shown = Math.min(lit, 6), n = shown + 1, W = 320, H = 130, gap = W / 7, x0 = (W - gap * n) / 2;
+  let s = '<svg class="candles" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' +
+    '<rect x="8" y="112" width="' + (W - 16) + '" height="8" rx="3" fill="var(--chip)"/><rect x="20" y="120" width="6" height="10" fill="var(--chip)"/><rect x="' + (W - 26) + '" y="120" width="6" height="10" fill="var(--chip)"/>';
+  for (let i = 0; i < n; i++) {
+    const cx = x0 + gap * i + gap / 2, next = i === n - 1, glow = next ? Math.max(0, Math.min(1, ratio)) : 1;
+    s += '<rect x="' + (cx - 15) + '" y="70" width="30" height="42" rx="7" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1.5"/>' +
+      '<rect x="' + (cx - 10) + '" y="76" width="20" height="34" rx="4" fill="var(--card)"/>' +
+      '<path d="M' + cx + ' 76 V69" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>';
+    if (glow > 0.02) s += '<g opacity="' + (next ? (0.25 + glow * 0.75).toFixed(2) : 1) + '" transform="translate(' + cx + ' 68) scale(' + (next ? (0.5 + glow * 0.5).toFixed(2) : 1) + ')">' +
+      '<path d="M0 -24 C 8 -14, 9 -6, 0 0 C -9 -6, -8 -14, 0 -24 Z" fill="var(--gold)"/><path d="M0 -13 C 4 -8, 4 -4, 0 -1 C -4 -4, -4 -8, 0 -13 Z" fill="#fff" opacity=".7"/></g>';
+  }
+  return s + '</svg>';
 }
 
 // ===========================================================================
@@ -105,7 +110,7 @@ function gate(html) {
   $('app').hidden = true; $('tabs').hidden = true; $('fab').hidden = true;
   const g = $('gate');
   g.hidden = false;
-  g.innerHTML = '<div class="brand">' + PLATE + 'The Church of Iron</div><p class="muted">Keep the faith. Log the set.</p>' + html;
+  g.innerHTML = '<div class="brand">' + LOGO + 'The Church of Iron</div><p class="muted">Keep the faith. Log the set.</p>' + html;
   return g;
 }
 function gateForm(g, onSubmit) {
@@ -328,8 +333,9 @@ function countsLine() {
 }
 function emptyToday() {
   const recents = recentExerciseIds().slice(0, 6);
-  return '<section class="card empty"><svg viewBox="0 0 320 130" aria-hidden="true">' + hillSVG(0.08, '').replace(/^<svg[^>]*>|<\/svg>$/g, '') + '</svg>' +
-    '<h2>Roll the boulder.</h2><p class="muted">Log a set and today starts counting.</p>' +
+  const ms = L.milestoneProgress(lbEqAll());
+  return '<section class="card empty">' + candlesSVG(ms.count, ms.ratio, '') +
+    '<h2>The bar awaits.</h2><p class="muted">Log a set and today’s service begins.</p>' +
     (recents.length ? '<div class="section-title" style="margin-top:14px">Pick up where you left off</div><div class="chips" style="justify-content:center">' +
       recents.map(id => '<button class="chip" data-more="' + esc(id) + '">' + esc(exName(id)) + '</button>').join('') + '</div>' : '') +
     '</section>';
@@ -371,6 +377,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.rerun) openWizard(seasonById(b.dataset.rerun));
   else if (b.dataset.joinSeason) joinSeason(b.dataset.joinSeason, b);
   else if (b.dataset.link) copyLink(b.dataset.link);
+  else if (b.dataset.trend) { S.trendEx = b.dataset.trend; S.hist = S.hist || new Map(); location.hash = '#progress'; setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200); }
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
   else if (b.dataset.calMove) { const [y, mo] = S.cal.month.split('-').map(Number); const d = new Date(y, mo - 1 + Number(b.dataset.calMove), 1); S.cal.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderHistory(); }
@@ -975,7 +982,7 @@ function followCard() {
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
-    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. The boulder rolls on.</div>'
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. Go in peace.</div>'
       : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>') +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
@@ -2055,7 +2062,7 @@ function renderProgress() {
   const ms = L.milestoneProgress(L.lbEquivalent(totals().volume));
   const ach = L.achievements({ volume: totals().volume, visits: totals().visits, prs: S.bests.size });
   const earned = ach.filter(a => a.earned), nextClub = ach.find(a => a.milestone && !a.earned);
-  const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : '🪨') : a.id === 'first_pr' ? '🏆' : '⭐';
+  const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : '🕯️') : a.id === 'first_pr' ? '🏆' : '⭐';
   view.innerHTML =
     '<div class="seg" role="group" aria-label="Period">' +
       [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
@@ -2071,8 +2078,8 @@ function renderProgress() {
     '<section class="card c-wide" id="trendBox"></section>' +
     '<section class="card c-side"><div class="card-head"><h3 class="card-title">Top lifts</h3><small class="muted">by estimated 1-rep max</small></div>' +
       '<input class="search" id="bestSearch" type="search" placeholder="Find a lift" value="' + esc(S.bestQuery) + '" aria-label="Find a lift"><div id="bestsBox"></div></section>' +
-    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">Clubs</h3><small class="muted">' + ms.count + ' joined</small></div>' +
-      hillSVG(ms.ratio, 'Progress to the ' + (ms.next ? ms.next.title : 'top')) +
+    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">Clubs</h3><small class="muted">a candle for each of the ' + ms.count + ' joined</small></div>' +
+      candlesSVG(ms.count, ms.ratio, ms.count + ' candles lit, one for each club; the next catches as you near the ' + (ms.next ? ms.next.title : 'top')) +
       (ms.next ? '<div class="row" style="font-size:14px;font-weight:700"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
         '<div class="bar" style="margin-top:6px"><i style="width:' + (ms.ratio * 100).toFixed(1) + '%"></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
       '<div class="badges">' + earned.filter(a => !a.milestone).concat(earned.filter(a => a.milestone).slice(-4)).concat(nextClub ? [nextClub] : []).map(a =>
@@ -2093,8 +2100,9 @@ function trendChoices() {
 async function drawTrend() {
   const box = $('trendBox'); if (!box) return;
   const ids = trendChoices();
+  if (S.trendEx && !ids.includes(S.trendEx)) ids.unshift(S.trendEx);   // a lift linked from a season plan stays picked
   if (!ids.length) { box.innerHTML = '<h3 class="card-title">Lift trends</h3><p class="muted">Log a few sessions and your lifts chart here.</p>'; return; }
-  if (!S.trendEx || !ids.includes(S.trendEx)) S.trendEx = ids[0];
+  if (!S.trendEx) S.trendEx = ids[0];
   const head = '<div class="card-head"><h3 class="card-title">Lift trend</h3><select class="plain-input trend-pick" id="trendEx" aria-label="Lift to chart">' +
     ids.map(id => '<option value="' + esc(id) + '"' + (id === S.trendEx ? ' selected' : '') + '>' + esc(exName(id)) + '</option>').join('') + '</select></div>';
   S.hist = S.hist || new Map();
@@ -2486,7 +2494,13 @@ function renderSeasonPage(sn) {
       '<section class="card c-half"><div class="card-head"><h3 class="card-title">Week by week</h3><small class="muted">pounds moved</small></div>' + weeks + '</section>'
       : '<section class="card c-full"><p class="muted" style="margin:0">' + (phaseOf(sn) === 'upcoming' ? 'Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'long', day: 'numeric' })) + '. The charts fill in once it’s running.' : 'The charts fill in after the first couple of days.') + '</p></section>') +
     '<section class="card c-half"><h3 class="card-title">' + (solo ? 'Workouts and best lifts' : 'Head to head') + '</h3>' + h2h + '</section>' +
-    '<section class="card c-full"><h3 class="card-title">The plan</h3>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => { const t = tplById(x.template_id); return '<li><b>' + esc(t ? t.name : 'A private workout') + '</b><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></li>'; }).join('') + '</ol>'
+    '<section class="card c-full"><h3 class="card-title">The plan</h3>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => {
+      const t = tplById(x.template_id);
+      if (!t) return '<li><b>A private workout</b><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></li>';
+      return '<li><div class="plan-head"><a href="#r-' + esc(t.id) + '">' + esc(t.name) + ' ›</a><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></div>' +
+        '<div class="chips">' + routineItems(t.id).map(it => '<button class="chip" data-trend="' + esc(it.exercise_id) + '" title="See your ' + esc(exName(it.exercise_id)) + ' trend">' + esc(exName(it.exercise_id)) + ' <small>' + esc(myStepText(it)) + '</small></button>').join('') + '</div>' +
+        (phaseOf(sn) === 'live' ? '<div class="actions"><button class="btn sm primary" data-start="' + esc(t.id) + '">Start</button></div>' : '') + '</li>';
+    }).join('') + '</ol>'
       : '<p class="muted">No workouts planned.' + (isMine(sn) ? ' Add some in Edit season.' : '') + '</p>') + '</section>';
 }
 
