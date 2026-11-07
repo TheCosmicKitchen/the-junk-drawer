@@ -12,7 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <meta name="description" content="A lifting log for a small crew. Keep the faith, log the set.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Cinzel:wght@600;700&family=Figtree:wght@400;500;600;700;800&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   /* Chalk and iron: cool steel neutrals, competition-plate blue for actions, plate gold for PRs and clubs.
      Barlow Condensed for numbers and headings (gym-board lettering), Figtree for everything you read. */
@@ -24,8 +24,8 @@
     --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #2a78d6; --seq-5: #184f95; --grid: #e7ebf0; --axis: #c7cfd8;
     --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
     --body: Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
-    --liturgy: Cinzel, Georgia, "Times New Roman", serif;
-    --gothic: UnifrakturMaguntia, Cinzel, Georgia, serif;
+    --headfont: Cinzel, Georgia, "Times New Roman", serif;
+    --brandfont: UnifrakturMaguntia, Cinzel, Georgia, serif; --brandweight: 400;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -456,13 +456,12 @@
   .weekly { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
   .weekly .date { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
   .weekly .sb-stats { margin-top: 10px; }
-  /* ---------- the church: lettering, arches, gold ---------- */
-  .brand { font-family: var(--gothic); font-weight: 400; font-size: 27px; letter-spacing: 0; }
-  .card-title, .section-title, .page-title, .sheet-head h2, .hero h1, .sbanner .band h1, .sbanner .band h2 { font-family: var(--liturgy); letter-spacing: .02em; }
+  /* ---------- theme lettering (themes.js sets the fonts, colors and ornaments) ---------- */
+  .brand { font-family: var(--brandfont); font-weight: var(--brandweight); font-size: 27px; letter-spacing: 0; }
+  .brand-logo { display: flex; flex: none; }
+  .card-title, .section-title, .page-title, .sheet-head h2, .hero h1, .sbanner .band h1, .sbanner .band h2 { font-family: var(--headfont); letter-spacing: .02em; }
   .card-title { font-size: 19px; }
   .section-title { font-size: 14px; color: var(--gold); }
-  .hero { border-radius: 160px 160px var(--radius) var(--radius) / 54px 54px var(--radius) var(--radius); padding-top: 26px; border-top: 3px solid var(--gold); }
-  .hero .date::before, .hero .date::after { content: " ✠ "; color: var(--gold); }
   .card-head small.muted { display: block; font-size: 12.5px; }
   .sess-clock { margin: 12px 0 0; font-weight: 700; font-size: 14px; color: var(--accent); font-variant-numeric: tabular-nums; }
   .dry { margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: var(--gold-soft); color: var(--ink); font-size: 14px; }
@@ -472,6 +471,13 @@
   .saints th, .saints td { padding: 7px 4px; }
   .saints td:nth-child(2) { white-space: nowrap; }
   .points-box { margin-top: 12px; }
+  .skins { display: grid; gap: 8px; margin-top: 10px; }
+  .skin { display: flex; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px 12px; }
+  .skin[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .skin b { display: block; font-size: 15px; }
+  .skin small { color: var(--muted); font-size: 13px; }
+  .skin-sw { flex: none; width: 46px; height: 34px; border-radius: 9px; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .skin-sw i { width: 12px; height: 12px; border-radius: 50%; }
   .pt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
   .pt-grid label { display: flex; flex-direction: column; gap: 4px; }
   .pt-grid input { text-align: center; font-weight: 700; }
@@ -480,7 +486,7 @@
   .top .brand { white-space: nowrap; font-size: clamp(20px, 6.2vw, 27px); min-width: 0; }
   .tabs .nav-brand { white-space: nowrap; font-size: 21px; }
   .weekly .card-head { flex-wrap: nowrap; align-items: flex-start; }
-  .gate .motto { font-family: var(--liturgy); color: var(--gold); letter-spacing: .12em; font-size: 13px; text-align: center; margin-top: 4px; }
+  .gate .motto { font-family: var(--headfont); color: var(--gold); letter-spacing: .12em; font-size: 13px; text-align: center; margin-top: 4px; }
 
   /* ---------- page title (desktop) and nav extras ---------- */
   .page-title, .nav-brand, .nav-log { display: none; }
@@ -585,7 +591,7 @@
 
 <div id="app" hidden>
   <header class="top">
-    <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg>The Church of Iron <span class="demo-flag" id="demoFlag" hidden>Demo</span></div>
+    <div class="brand"><span class="brand-logo"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg></span><span class="brand-name">The Church of Iron</span> <span class="demo-flag" id="demoFlag" hidden>Demo</span></div>
     <h1 class="page-title" id="pageTitle">Today</h1>
     <button class="iconbtn" id="menuBtn" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></button>
   </header>
@@ -593,14 +599,14 @@
 </div>
 
 <nav class="tabs" id="tabs" hidden aria-label="Sections">
-  <div class="brand nav-brand"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg>The Church of Iron</div>
+  <div class="brand nav-brand"><span class="brand-logo"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg></span><span class="brand-name">The Church of Iron</span></div>
   <button class="nav-log" id="navLog" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Log a set</button>
   <div>
-  <a href="#log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>Log</a>
-  <a href="#routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Rites</a>
-  <a href="#history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendar</a>
-  <a href="#seasons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Seasons</a>
-  <a href="#progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21h4v-4h4v-4h4v-4h6"/><path d="M18 2v6M15.5 4.5h5"/></svg>Progress</a>
+  <a href="#log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg><span class="tab-label">Log</span></a>
+  <a href="#routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span class="tab-label">Rites</span></a>
+  <a href="#history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><span class="tab-label">Calendar</span></a>
+  <a href="#seasons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg><span class="tab-label">Seasons</span></a>
+  <a href="#progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21h4v-4h4v-4h4v-4h6"/><path d="M18 2v6M15.5 4.5h5"/></svg><span class="tab-label">Progress</span></a>
 </div></nav>
 
 <button class="fab" id="fab" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Log a set</button>

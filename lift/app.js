@@ -3,6 +3,7 @@ import * as L from './logic.js';
 import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as C from './charts.js';
+import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,6 +18,9 @@ const prefs = (() => {
   catch (e) { return { unit: 'lb', bodyweight: null }; }
 })();
 const savePrefs = () => { try { localStorage.setItem('lift.prefs', JSON.stringify(prefs)); } catch (e) {} };
+// The theme: look and words. T is read at render time, so switching re-renders in the new voice.
+let T = applyTheme(prefs.theme);
+const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
 
 let store, me;
 const S = {
@@ -85,20 +89,34 @@ function toast(msg, action) {
 }
 const fail = e => toast(e && e.message ? e.message : 'Something went wrong.');
 
-const LOGO = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg>';
-// A rack of votive candles: one lit for each club you've joined (the latest six), and the next one
-// catching as you get closer to it.
+// A rack of tokens, one lit for each club you've joined (the latest six), and the next one catching as
+// you get closer to it. What a token is depends on the theme: a candle, a signal lamp, a jar, a plate.
+function token(kind, cx, glow, next) {
+  const op = next ? (0.25 + glow * 0.75).toFixed(2) : 1, on = glow > 0.02;
+  if (kind === 'lamp') return '<rect x="' + (cx - 2) + '" y="70" width="4" height="42" fill="var(--muted)"/>' +
+    '<rect x="' + (cx - 14) + '" y="36" width="28" height="36" rx="7" fill="var(--ink)"/>' +
+    '<circle cx="' + cx + '" cy="54" r="9" fill="var(--chip)"/>' +
+    (on ? '<g opacity="' + op + '"><circle cx="' + cx + '" cy="54" r="16" fill="var(--gold)" opacity=".22"/><circle cx="' + cx + '" cy="54" r="9" fill="var(--gold)"/><circle cx="' + (cx - 3) + '" cy="51" r="2.6" fill="#fff" opacity=".7"/></g>' : '');
+  if (kind === 'jar') { const h = Math.round(40 * (next ? glow : 1));
+    return '<rect x="' + (cx - 15) + '" y="64" width="30" height="48" rx="8" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
+      (on ? '<rect x="' + (cx - 11) + '" y="' + (108 - h) + '" width="22" height="' + h + '" rx="5" fill="var(--gold)" opacity="' + (next ? 0.75 : 0.9) + '"/>' : '') +
+      '<rect x="' + (cx - 13) + '" y="56" width="26" height="9" rx="3" fill="var(--accent)"/>'; }
+  if (kind === 'plate') return '<circle cx="' + cx + '" cy="88" r="21" fill="var(--chip)" stroke="var(--line)" stroke-width="1.5"/>' +
+    (on ? '<circle cx="' + cx + '" cy="88" r="21" fill="var(--accent)" opacity="' + (next ? (0.15 + glow * 0.6).toFixed(2) : 1) + '"/>' : '') +
+    '<circle cx="' + cx + '" cy="88" r="5" fill="var(--card)"/>';
+  return '<rect x="' + (cx - 15) + '" y="70" width="30" height="42" rx="7" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1.5"/>' +
+    '<rect x="' + (cx - 10) + '" y="76" width="20" height="34" rx="4" fill="var(--card)"/>' +
+    '<path d="M' + cx + ' 76 V69" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>' +
+    (on ? '<g opacity="' + op + '" transform="translate(' + cx + ' 68) scale(' + (next ? (0.5 + glow * 0.5).toFixed(2) : 1) + ')">' +
+      '<path d="M0 -24 C 8 -14, 9 -6, 0 0 C -9 -6, -8 -14, 0 -24 Z" fill="var(--gold)"/><path d="M0 -13 C 4 -8, 4 -4, 0 -1 C -4 -4, -4 -8, 0 -13 Z" fill="#fff" opacity=".7"/></g>' : '');
+}
 function candlesSVG(lit, ratio, label) {
   const shown = Math.min(lit, 6), n = shown + 1, W = 320, H = 130, gap = W / 7, x0 = (W - gap * n) / 2;
   let s = '<svg class="candles" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' +
     '<rect x="8" y="112" width="' + (W - 16) + '" height="8" rx="3" fill="var(--chip)"/><rect x="20" y="120" width="6" height="10" fill="var(--chip)"/><rect x="' + (W - 26) + '" y="120" width="6" height="10" fill="var(--chip)"/>';
   for (let i = 0; i < n; i++) {
     const cx = x0 + gap * i + gap / 2, next = i === n - 1, glow = next ? Math.max(0, Math.min(1, ratio)) : 1;
-    s += '<rect x="' + (cx - 15) + '" y="70" width="30" height="42" rx="7" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1.5"/>' +
-      '<rect x="' + (cx - 10) + '" y="76" width="20" height="34" rx="4" fill="var(--card)"/>' +
-      '<path d="M' + cx + ' 76 V69" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>';
-    if (glow > 0.02) s += '<g opacity="' + (next ? (0.25 + glow * 0.75).toFixed(2) : 1) + '" transform="translate(' + cx + ' 68) scale(' + (next ? (0.5 + glow * 0.5).toFixed(2) : 1) + ')">' +
-      '<path d="M0 -24 C 8 -14, 9 -6, 0 0 C -9 -6, -8 -14, 0 -24 Z" fill="var(--gold)"/><path d="M0 -13 C 4 -8, 4 -4, 0 -1 C -4 -4, -4 -8, 0 -13 Z" fill="#fff" opacity=".7"/></g>';
+    s += token(T.token, cx, glow, next);
   }
   return s + '</svg>';
 }
@@ -110,7 +128,7 @@ function gate(html) {
   $('app').hidden = true; $('tabs').hidden = true; $('fab').hidden = true;
   const g = $('gate');
   g.hidden = false;
-  g.innerHTML = '<div class="brand">' + LOGO + 'The Church of Iron</div><p class="motto">ORA ET LEVA · PRAY AND LIFT</p><p class="muted">Keep the faith. Log the set.</p>' + html;
+  g.innerHTML = '<div class="brand"><span class="brand-logo">' + T.logo + '</span><span class="brand-name">' + esc(T.brand) + '</span></div><p class="motto">' + esc(T.motto) + '</p><p class="muted">' + esc(T.tagline) + '</p>' + html;
   return g;
 }
 function gateForm(g, onSubmit) {
@@ -238,7 +256,7 @@ function route() {
   if (tab !== currentTab) window.scrollTo(0, 0);
   $('fab').hidden = tab !== 'log';   // only on Log, so it never covers buttons elsewhere
   currentTab = tab;
-  $('pageTitle').textContent = { log: 'Today’s Mass', routines: 'Rites', history: 'The Calendar', seasons: 'Liturgical Seasons', progress: 'Progress' }[tab];
+  $('pageTitle').textContent = T.titles[tab];
   render();
 }
 function render() {
@@ -283,14 +301,14 @@ function renderLog() {
   const vol = L.volumeByUnit(sets);
   const weekVisits = S.days.filter(d => d.performed_on > L.addDays(today(), -7) && d.sets > 0).length;
   const groups = groupByExercise(sets);
-  const hello = sets.length ? (sets.length >= 15 ? 'High Mass.' : 'In session.') : 'Today';
+  const hello = sets.length ? (sets.length >= 15 ? T.helloBig : T.helloSome) : 'Today';
   view.innerHTML =
     '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
     '<h1>' + hello + '</h1><div class="stats">' +
       '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>moved today</small></div>' +
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
-    '</div>' + countsLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>Ite, missa est · Finish ›</button>' : '') + '</section>' +
+    '</div>' + countsLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') + '</section>' +
     weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
@@ -341,7 +359,7 @@ function emptyToday() {
   const recents = recentExerciseIds().slice(0, 6);
   const ms = L.milestoneProgress(lbEqAll());
   return '<section class="card empty">' + candlesSVG(ms.count, ms.ratio, '') +
-    '<h2>The bar awaits.</h2><p class="muted">Log a set and today’s service begins.</p>' +
+    '<h2>' + esc(T.emptyH) + '</h2><p class="muted">' + esc(T.emptyP) + '</p>' +
     (recents.length ? '<div class="section-title" style="margin-top:14px">Pick up where you left off</div><div class="chips" style="justify-content:center">' +
       recents.map(id => '<button class="chip" data-more="' + esc(id) + '">' + esc(exName(id)) + '</button>').join('') + '</div>' : '') +
     '</section>';
@@ -545,8 +563,8 @@ function afterLogToast(saved) {
   const undo = { label: 'Undo', run: () => (n === 1 ? removeSet(first, true) : removeSets(list)) };
   const crossed = list.map(x => x._crossed).filter(Boolean).pop();
   const what = (n > 1 ? n + ' × ' : '') + setText(first);
-  if (crossed) toast('🕯️ A candle is lit: welcome to the ' + crossed.title, undo);
-  else if (list.some(x => x._pr)) toast('🙌 Hallelujah, a PR: ' + what + ' on ' + exName(first.exercise_id), undo);
+  if (crossed) toast(T.clubToast + crossed.title, undo);
+  else if (list.some(x => x._pr)) toast(T.prToast + what + ' on ' + exName(first.exercise_id), undo);
   else toast('Logged ' + what, undo);
 }
 async function removeSets(list) {
@@ -1001,7 +1019,7 @@ function followCard() {
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
-    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">🎉 Routine complete. Go in peace.</div><button class="btn primary block" style="margin-top:10px" data-recap>Ite, missa est · Finish ›</button>'
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div><button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>'
       : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>') +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
@@ -1026,7 +1044,7 @@ function renderRoutines() {
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
   view.innerHTML =
-    '<div class="row page-actions"><h2 style="font-size:28px">Rites</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
+    '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.routines) + '</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
     comingUp() +
     '<h3 class="section-title">Workouts</h3>' +
     (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
@@ -2083,7 +2101,7 @@ function renderProgress() {
   const ms = L.milestoneProgress(L.lbEquivalent(totals().volume));
   const ach = L.achievements({ volume: totals().volume, visits: totals().visits, prs: S.bests.size });
   const earned = ach.filter(a => a.earned), nextClub = ach.find(a => a.milestone && !a.earned);
-  const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : '🕯️') : a.id === 'first_pr' ? '🏆' : '⭐';
+  const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : T.icons.club) : a.id === 'first_pr' ? '🏆' : '⭐';
   view.innerHTML =
     '<div class="seg" role="group" aria-label="Period">' +
       [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
@@ -2100,12 +2118,12 @@ function renderProgress() {
     '<section class="card c-full" id="recordsBox"></section>' +
     '<section class="card c-side"><div class="card-head"><h3 class="card-title">Top lifts</h3><small class="muted">by estimated 1-rep max</small></div>' +
       '<input class="search" id="bestSearch" type="search" placeholder="Find a lift" value="' + esc(S.bestQuery) + '" aria-label="Find a lift"><div id="bestsBox"></div></section>' +
-    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">Votive candles</h3><small class="muted">one lit for each of the ' + ms.count + ' clubs joined</small></div>' +
-      candlesSVG(ms.count, ms.ratio, ms.count + ' candles lit, one for each club; the next catches as you near the ' + (ms.next ? ms.next.title : 'top')) +
+    '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">' + esc(T.clubs) + '</h3><small class="muted">' + esc(T.clubsSub(ms.count)) + '</small></div>' +
+      candlesSVG(ms.count, ms.ratio, T.clubsLabel(ms.count, ms.next ? ms.next.title : 'top')) +
       (ms.next ? '<div class="row" style="font-size:14px;font-weight:700"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
         '<div class="bar" style="margin-top:6px"><i style="width:' + (ms.ratio * 100).toFixed(1) + '%"></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
       '<div class="badges">' + earned.filter(a => !a.milestone).concat(earned.filter(a => a.milestone).slice(-4)).concat(nextClub ? [nextClub] : []).map(a =>
-        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) + '</div>').join('') + '</div></section>' +
+        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(T.ach[a.id] || a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) + '</div>').join('') + '</div></section>' +
     bodyweightCard();
   const input = $('bestSearch');
   input.addEventListener('input', () => { S.bestQuery = input.value; drawBests(); });
@@ -2187,6 +2205,10 @@ function openSettings(note) {
       '<div class="field-label"><span>Default unit</span><span class="seg" role="group" aria-label="Default unit">' +
         ['lb', 'kg'].map(u => '<button type="button" data-pref-unit="' + u + '" aria-pressed="' + (prefs.unit === u) + '">' + u + '</button>').join('') + '</span></div>' +
       '<p class="hint-line">Each set keeps its own unit, and lb and kg totals are never mixed. This is just where new exercises start.</p>' +
+      '<div class="field-label" style="margin-top:22px"><span>Theme</span><small>just for you, on this device</small></div>' +
+      '<div class="skins" role="group" aria-label="Theme">' + ORDER.map(id => { const t = THEMES[id], c = swatch(id);
+        return '<button type="button" class="skin" data-skin="' + id + '" aria-pressed="' + (T.id === id) + '"><span class="skin-sw" style="background:' + c[0] + '"><i style="background:' + c[1] + '"></i><i style="background:' + c[2] + '"></i></span>' +
+          '<span><b>' + esc(t.name) + '</b><small>' + esc(t.blurb) + '</small></span></button>'; }).join('') + '</div>' +
       (store.demo ? '<p class="hint-line"><b>This is the demo.</b> Nothing is saved; reload to start over.</p>'
         : '<div class="field-label" style="margin-top:22px"><span>Change password</span><small>12+ characters</small></div>' +
           '<form id="pwForm"><input class="plain-input" id="newPw" type="password" autocomplete="new-password" minlength="12" required aria-label="New password">' +
@@ -2212,6 +2234,12 @@ inner.addEventListener('click', async e => {
   if (b.dataset.prefUnit) {
     prefs.unit = b.dataset.prefUnit; savePrefs();
     inner.querySelectorAll('[data-pref-unit]').forEach(x => x.setAttribute('aria-pressed', x.dataset.prefUnit === prefs.unit));
+  }
+  if (b.dataset.skin) {
+    prefs.theme = b.dataset.skin; savePrefs(); T = applyTheme(prefs.theme);
+    inner.querySelectorAll('[data-skin]').forEach(x => x.setAttribute('aria-pressed', x.dataset.skin === T.id));
+    if (currentTab) $('pageTitle').textContent = T.titles[currentTab];
+    render();
   }
   if (b.id === 'signOutBtn') { sheet.close(); await store.signOut(); if (!store.demo) { S.recent = []; showSignIn(); } }
 });
@@ -2491,10 +2519,10 @@ function renderSeasonPage(sn) {
   const goalCount = p => goals.filter(x => (!x.created_by || x.created_by === sn.created_by || x.created_by === p.user_id) && goalHave(x, p.m, { season: sn, person: p.user_id, st }) >= Number(x.target)).length;
   const pts = p => seasonPoints(sn, st, p);
   const ranked = people.slice().sort((a, b) => (sn.points ? pts(b) - pts(a) : 0) || L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
-  const standings = '<table class="cmp standings"><thead><tr><th>#</th><th>Lifter</th><th>Days</th><th>Sets</th><th>Pounds</th><th>Vows</th>' + (sn.points ? '<th>Points</th>' : '') + '</tr></thead><tbody>' +
+  const standings = '<table class="cmp standings"><thead><tr><th>#</th><th>Lifter</th><th>Days</th><th>Sets</th><th>Pounds</th><th>' + esc(T.goals) + '</th>' + (sn.points ? '<th>Points</th>' : '') + '</tr></thead><tbody>' +
     ranked.map((p, i) => '<tr' + (p.user_id === S.myId ? ' class="me"' : '') + '><td>' + (i === 0 && !solo ? '👑' : i + 1) + '</td><td><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span></td>' +
       '<td class="num">' + p.m.visits + '</td><td class="num">' + L.fmtNum(Number(p.sets), 0) + '</td><td class="num"><b>' + C.compact(L.lbEquivalent(p.m.volume)) + '</b></td><td class="num">' + goalCount(p) + '</td>' + (sn.points ? '<td class="num"><b>' + pts(p) + '</b></td>' : '') + '</tr>').join('') + '</tbody></table>' +
-    (sn.points ? '<p class="hint-line">Indulgences: ' + esc(pointsRule(sn.points)) + '.</p>' : '');
+    (sn.points ? '<p class="hint-line">' + esc(cap(T.points)) + ': ' + esc(pointsRule(sn.points)) + '.</p>' : '');
   // Head-to-head: planned workouts done, best lifts.
   const wt = [...new Set(st.w.map(x => x.template_id))].map(id => { const t = tplById(id); return { label: t ? t.name : 'A private workout', vals: people.map(p => Number((st.w.find(x => x.template_id === id && x.user_id === p.user_id) || {}).times || 0)) }; });
   const bt = [...new Set(st.b.map(x => x.exercise_id))].map(id => ({ label: exName(id), raw: people.map(p => st.b.find(x => x.exercise_id === id && x.user_id === p.user_id)) }))
@@ -2509,9 +2537,9 @@ function renderSeasonPage(sn) {
       kpi('Your gym days', L.fmtNum(myM.visits, 0), phaseOf(sn) === 'live' ? esc(seasonStatus(sn)) : '', null) +
       kpi('Your pounds', C.compact(L.lbEquivalent(myM.volume)) + ' lb', '', null) +
       kpi('Your sets', L.fmtNum(Number(me.sets) || myM.sets, 0), '', null) +
-      (sn.points ? kpi('Your points', String(seasonPoints(sn, st, me)), 'indulgences earned', null) : kpi('Vows kept', g.done + ' / ' + g.of, myM.bests ? myM.bests + ' bests set' : '', null)) +
+      (sn.points ? kpi('Your points', String(seasonPoints(sn, st, me)), T.pointsEarned, null) : kpi(T.goalsKept, g.done + ' / ' + g.of, myM.bests ? myM.bests + ' bests set' : '', null)) +
     '</div>' +
-    '<section class="card c-full"><div class="card-head"><div><h3 class="card-title">Vows</h3><small class="muted">the season’s goals</small></div>' +
+    '<section class="card c-full"><div class="card-head"><div><h3 class="card-title">' + esc(T.goals) + '</h3><small class="muted">the season’s goals</small></div>' +
       (isMine(sn) ? '<button class="btn sm" data-edit-season="' + esc(sn.id) + '">+ Goal</button>' : '<button class="btn sm" data-my-goals="' + esc(sn.id) + '">+ My goal</button>') + '</div>' +
       (goals.length ? '<div class="goal-grid">' + goals.map(goalTile).join('') + '</div>' : '<p class="muted">No goals yet. Add one: show up N times, move N pounds, lift a weight, or do a workout N times.</p>') + '</section>' +
     (solo ? '' : '<section class="card c-side"><h3 class="card-title">Standings</h3>' + standings + '</section>') +
@@ -2519,7 +2547,7 @@ function renderSeasonPage(sn) {
       '<section class="card c-half"><div class="card-head"><h3 class="card-title">Week by week</h3><small class="muted">pounds moved</small></div>' + weeks + '</section>'
       : '<section class="card c-full"><p class="muted" style="margin:0">' + (phaseOf(sn) === 'upcoming' ? 'Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'long', day: 'numeric' })) + '. The charts fill in once it’s running.' : 'The charts fill in after the first couple of days.') + '</p></section>') +
     '<section class="card c-half"><h3 class="card-title">' + (solo ? 'Workouts and best lifts' : 'Head to head') + '</h3>' + h2h + '</section>' +
-    '<section class="card c-full"><div class="card-head"><h3 class="card-title">The liturgy</h3><small class="muted">the season’s plan</small></div>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => {
+    '<section class="card c-full"><div class="card-head"><h3 class="card-title">' + esc(T.plan) + '</h3><small class="muted">the season’s plan</small></div>' + (plan.length ? '<ol class="plan-list">' + plan.map(x => {
       const t = tplById(x.template_id);
       if (!t) return '<li><b>A private workout</b><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></li>';
       return '<li><div class="plan-head"><a href="#r-' + esc(t.id) + '">' + esc(t.name) + ' ›</a><small>' + esc(x.weekdays ? dayList(x.weekdays) : 'takes turns') + '</small></div>' +
@@ -2720,18 +2748,18 @@ async function loadWins() {
   S.winsLoading = false;
   const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard();
 }
-const WIN_ICON = { pr: '🙌', club: '🕯️', goal: '✅', session: '⛪', record: '😇', quest: '🥾' };
+const WIN_ICON = new Proxy({}, { get: (_, k) => T.icons[k] });
 function winText(w) {
   const m = w.summary || {};
   if (w.kind === 'pr') return w.title.replace(/ PR$/, '') + ' PR: ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps;
-  if (w.kind === 'club') return 'Lit a candle: the ' + w.title;
-  if (w.kind === 'record') return 'Canonized: ' + w.title.replace(/ record$/, '') + ' record, ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps + (m.from ? ' (was ' + m.from + '’s)' : '');
-  if (w.kind === 'quest') return 'Finished a pilgrimage: ' + w.title;
-  if (w.kind === 'goal') return 'Kept a vow: ' + w.title;
-  return 'Went to Mass: ' + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
+  if (w.kind === 'club') return T.win.club + w.title;
+  if (w.kind === 'record') return T.win.record + w.title.replace(/ record$/, '') + ' record, ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps + (m.from ? ' (was ' + m.from + '’s)' : '');
+  if (w.kind === 'quest') return T.win.quest + w.title;
+  if (w.kind === 'goal') return T.win.goal + w.title;
+  return T.win.session + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
 }
 function winsCard() {
-  const head = '<div class="card-head"><div><h3 class="card-title">Miracles</h3><small class="muted">the crew’s wins</small></div><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
+  const head = '<div class="card-head"><div><h3 class="card-title">' + esc(T.feed) + '</h3><small class="muted">the crew’s wins</small></div><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
   if (!S.wins) return '<section class="card wins" id="winsBox">' + head + '<p class="muted" style="margin:0">Loading…</p></section>';
   const people = [S.myId, ...[...S.names.keys()].filter(id => id !== S.myId)];
   const color = id => C.SERIES[Math.max(0, people.indexOf(id)) % 3];
@@ -2742,7 +2770,7 @@ function winsCard() {
       '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body"><b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b> ' + esc(winText(w)) +
         '<small>' + esc(dayLabel(w.performed_on) === 'Today' ? 'Today' : w.performed_on === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</small></span>' +
         (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the stream">✕</button>' : '') + '</li>').join('') + '</ol>'
-      : '<p class="muted" style="margin:0">PRs, candles, kept vows, records and finished sessions from the crew show up here.</p>') + '</section>';
+      : '<p class="muted" style="margin:0">' + esc(T.feedEmpty) + '</p>') + '</section>';
 }
 
 // ===========================================================================
@@ -2775,7 +2803,7 @@ function openRecap() {
       (diff != null ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' than your last session (' + esc(fmtDay(r.prev.performed_on, { month: 'short', day: 'numeric' })) + ').</p>' : '') +
       (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">🏆 ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
       '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
-      '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + (shareOn() ? (posted ? 'Update it in Miracles' : 'Ite, missa est · add to Miracles') : 'Ite, missa est · finish') + '</button>' +
+      '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + esc(shareOn() ? (posted ? T.updateFeed : T.finishFeed) : T.finishPrivate) + '</button>' +
       (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
     '</div>';
   openSheet();
@@ -2787,7 +2815,7 @@ async function recapClick(b) {
   if (r && shareOn()) await postWin('session', r.title, { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length });
   stopRest(); sheet.close(); render();
   try { localStorage.setItem('lift.finished', today()); } catch (e) {}
-  toast(shareOn() ? 'The Mass is ended. Go in peace (it’s in Miracles).' : 'The Mass is ended. Go in peace.');
+  toast(shareOn() ? T.endedFeed : T.ended);
 }
 
 // ===========================================================================
@@ -2803,12 +2831,12 @@ function weeklyCard() {
   const diff = w0.lb ? Math.round((w1.lb - w0.lb) / w0.lb * 100) : null;
   const live = (S.seasons || []).filter(x => inSeason(x) && phaseOf(x) === 'live');
   const sabbath = streakWeeks() >= 6 && w1.visits >= 3;
-  return '<section class="card weekly"><div class="card-head"><div><div class="date">Sunday bulletin · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
+  return '<section class="card weekly"><div class="card-head"><div><div class="date">' + esc(T.weekly) + ' · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
       '<h3 class="card-title">' + (w1.visits ? w1.visits + ' gym day' + (w1.visits === 1 ? '' : 's') + ', ' + C.compact(w1.lb) + ' lb' : 'A rest week') + '</h3></div>' +
       '<button class="iconbtn sm" data-week-seen="' + lastWeek + '" aria-label="Hide last week’s recap">✕</button></div>' +
-    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>PRs</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>weeks of devotion</small></div></div>' +
+    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>PRs</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>' + esc(T.streak) + '</small></div></div>' +
     (diff != null && w1.visits ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' pounds than the week before.</p>' : '') +
-    (sabbath ? '<p class="hint-line">🕊️ ' + streakWeeks() + ' weeks of devotion in a row. Consider a Sabbath week: same lifts at about 60% of the weight, then come back fresh.</p>' : '') +
+    (sabbath ? '<p class="hint-line">' + T.icons.rest + ' ' + esc(T.rest(streakWeeks())) + '</p>' : '') +
     (live.length ? '<p class="hint-line">' + live.map(x => { const g = goalsDone(x); return '<button class="linkbtn" data-season="' + esc(x.id) + '">' + esc(x.name) + '</button>: ' + g.done + ' of ' + g.of + ' goals done, ' + esc(seasonStatus(x)); }).join(' · ') + '</p>' : '') +
   '</section>';
 }
@@ -2831,15 +2859,15 @@ function myBestE1(exId) {
 }
 function drawRecords() {
   const box = $('recordsBox'); if (!box) return;
-  const head = '<div class="card-head"><div><h3 class="card-title">Communion of Saints</h3><small class="muted">crew records, by estimated 1-rep max</small></div></div>';
+  const head = '<div class="card-head"><div><h3 class="card-title">' + esc(T.records) + '</h3><small class="muted">crew records, by estimated 1-rep max</small></div></div>';
   if (!S.records) { box.innerHTML = head + '<p class="muted">Loading…</p>'; loadRecords(); return; }
   const multi = S.records.some(r => Number(r.lifters) >= 2);
   const rows = S.records.filter(r => !multi || Number(r.lifters) >= 2).sort((a, b) => Number(b.e1rm_lb) - Number(a.e1rm_lb)).slice(0, 15);
   const mine = rows.filter(r => r.user_id === S.myId).length;
-  box.innerHTML = head + (rows.length ? '<p class="hint-line" style="margin-top:2px">You hold ' + mine + ' of these ' + rows.length + '. Beat a saint’s best and the record (and the halo) is yours.</p>' +
-    '<div class="cmp-wrap"><table class="cmp saints"><thead><tr><th>Lift</th><th>Saint</th><th>Best</th><th>You</th></tr></thead><tbody>' +
+  box.innerHTML = head + (rows.length ? '<p class="hint-line" style="margin-top:2px">You hold ' + mine + ' of these ' + rows.length + '. ' + esc(T.recordsBlurb) + '</p>' +
+    '<div class="cmp-wrap"><table class="cmp saints"><thead><tr><th>Lift</th><th>' + esc(T.holderCol) + '</th><th>Best</th><th>You</th></tr></thead><tbody>' +
     rows.map(r => { const m = myBestE1(r.exercise_id), me = r.user_id === S.myId;
-      return '<tr' + (me ? ' class="me"' : '') + '><td>' + esc(exName(r.exercise_id)) + '</td><td>' + (me ? '😇 You' : '😇 ' + esc(r.display_name)) + '</td>' +
+      return '<tr' + (me ? ' class="me"' : '') + '><td>' + esc(exName(r.exercise_id)) + '</td><td>' + T.icons.holder + ' ' + (me ? 'You' : esc(r.display_name)) + '</td>' +
         '<td class="num"><b>' + esc(L.fmtLoad(Number(r.weight))) + '</b> <small>' + r.unit + ' × ' + r.reps + '</small></td>' +
         '<td class="num">' + (me ? '<span class="muted">✓</span>' : m ? '<span title="Your best: ' + esc(L.fmtLoad(m.w) + ' × ' + m.reps) + '">' + Math.round(m.e / Number(r.e1rm_lb) * 100) + '%</span>' : '<span class="muted">–</span>') + '</td></tr>'; }).join('') +
     '</tbody></table></div>' : '<p class="muted">Records show up once the crew has logged some sets.</p>');
@@ -2853,7 +2881,7 @@ function checkRecord(x) {
   Object.assign(rec, { user_id: S.myId, display_name: 'You', weight: x.weight, reps: x.reps, unit: x.unit, e1rm_lb: Math.round(e * 10) / 10, performed_on: x.performed_on });
   if (from && Number(rec.lifters) >= 2) {
     postWin('record', exName(x.exercise_id) + ' record', { weight: Number(x.weight), reps: x.reps, unit: x.unit, from });
-    setTimeout(() => toast('😇 Canonized: the crew record on ' + exName(x.exercise_id) + ' is yours (it was ' + from + '’s)'), 1200);
+    setTimeout(() => toast(T.recordToast + exName(x.exercise_id) + ' is yours (it was ' + from + '’s)'), 1200);
   }
 }
 
@@ -2870,7 +2898,7 @@ function stallOf(exId) {
   const last3 = days.slice(-3).map(dd => byDay.get(dd)), before = Math.max(...days.slice(0, -3).map(dd => byDay.get(dd)));
   return Math.max(...last3) <= before ? { sessions: 3 } : null;
 }
-const dryHint = exId => (stallOf(exId) ? '<p class="dry">🏜️ A dry spell: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.</p>' : '');
+const dryHint = exId => (stallOf(exId) ? '<p class="dry">' + T.icons.dry + ' ' + esc(T.dry) + '</p>' : '');
 
 // ===========================================================================
 // In session: a clock from your first set today, until you finish.
@@ -2882,7 +2910,7 @@ function sessionClock() {
   if (!Number.isFinite(first)) return '';
   const finished = done === today(), live = !finished && Date.now() - last < 3 * 3600e3;
   const mins = Math.max(1, Math.round(((live ? Date.now() : last) - first) / 60000));
-  return '<p class="sess-clock" id="sessClock" data-first="' + first + '" data-live="' + live + '">' + (live ? '⏱ In session · ' : finished ? '✓ The Mass is ended · ' : '⏱ ') + mins + ' min</p>';
+  return '<p class="sess-clock" id="sessClock" data-first="' + first + '" data-live="' + live + '">' + (live ? '⏱ In session · ' : finished ? T.endedClock : '⏱ ') + mins + ' min</p>';
 }
 let clockTimer = null;
 function tickClock() {
@@ -2918,8 +2946,8 @@ function weekQuests() {
 }
 function questsCard() {
   const qs = weekQuests(), done = qs.filter(q => q.done).length;
-  return '<section class="card quests"><div class="card-head"><div><h3 class="card-title">Pilgrimages</h3><small class="muted">this week’s quests, the same for the whole crew</small></div><small class="muted">' + done + ' / ' + qs.length + '</small></div>' +
-    qs.map(q => '<div class="goal"><div class="row"><span>' + (q.done ? '✅ ' : '🥾 ') + esc(q.name) + (q.id === 'volume' ? ' (' + C.compact(q.needV) + ' lb)' : '') + '</span><span class="muted num">' +
+  return '<section class="card quests"><div class="card-head"><div><h3 class="card-title">' + esc(T.quests) + '</h3><small class="muted">' + esc(T.questsSub) + '</small></div><small class="muted">' + done + ' / ' + qs.length + '</small></div>' +
+    qs.map(q => '<div class="goal"><div class="row"><span>' + (q.done ? '✅ ' : T.icons.questOpen + ' ') + esc(q.name) + (q.id === 'volume' ? ' (' + C.compact(q.needV) + ' lb)' : '') + '</span><span class="muted num">' +
       esc(q.fmt ? q.fmt(q.haveV) : L.fmtNum(q.haveV, 0) + ' / ' + L.fmtNum(q.needV, 0)) + '</span></div><div class="bar"><i style="width:' + (q.haveV / q.needV * 100).toFixed(1) + '%"></i></div></div>').join('') +
   '</section>';
 }
@@ -2929,7 +2957,7 @@ function checkQuestWins() {
   for (const id of now) if (!S.questsDone.has(id)) {
     const q = QUESTS.find(x => x.id === id);
     postWin('quest', q.name + ' · week of ' + fmtDay(weekOf(today()), { month: 'short', day: 'numeric' }), {});
-    setTimeout(() => toast('🥾 Pilgrimage complete: ' + q.name), 1600);
+    setTimeout(() => toast(T.questDone + q.name), 1600);
   }
   S.questsDone = now;
 }
@@ -2946,7 +2974,7 @@ function seasonPoints(sn, st, p) {
   return days * (Number(pt.day) || 0) + prs * (Number(pt.pr) || 0) + workouts * (Number(pt.workout) || 0);
 }
 function pointsHtml(pt) {
-  return '<div class="points-box" id="ptBox"><button type="button" class="toggle" id="ptToggle" aria-pressed="' + !!pt + '">' + (pt ? '✓ Scored in indulgences (points)' : 'Score it in indulgences (points)') + '</button>' +
+  return '<div class="points-box" id="ptBox"><button type="button" class="toggle" id="ptToggle" aria-pressed="' + !!pt + '">' + (pt ? '✓ Scored in ' : 'Score it in ') + esc(T.points) + (T.points === 'points' ? '' : ' (points)') + '</button>' +
     (pt ? '<div class="pt-grid">' + [['day', 'per gym day'], ['pr', 'per PR'], ['workout', 'per planned workout']].map(([k, l]) =>
       '<label><input class="plain-input" data-pt="' + k + '" inputmode="numeric" value="' + esc(pt[k] ?? 0) + '"><small>' + l + '</small></label>').join('') + '</div>' : '') + '</div>';
 }
