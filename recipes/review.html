@@ -125,7 +125,7 @@
         '<span class="who">' + esc(famName(r.family_id)) + ' · ' + when(r.updated_at) + '</span></div>' +
         (r.review_note && r.status === 'draft' ? '<div class="rc-note"><b>From the review:</b> ' + esc(r.review_note) + '</div>' : '') +
         '<div class="btns"><a class="pill" href="' + editLink(r) + '">Edit</a><a class="pill" href="' + boxLink(r) + '">Open</a></div></li>').join('') + '</ul>'
-        : '<p class="hint">Nothing waiting. <a href="edit.html">Add a recipe</a>.</p>') + '</section>';
+        : '<p class="hint">Nothing waiting. <a href="edit.html">Add a recipe</a>, or <a href="import.html">add many at once</a>.</p>') + '</section>';
 
     if (me.admin) {
       const queue = rows.filter(r => r.status === 'submitted' && !r.deleted_at).sort((a, b) => a.updated_at.localeCompare(b.updated_at));

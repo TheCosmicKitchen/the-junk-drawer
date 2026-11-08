@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bulk Recipe Import</title>
+<meta name="description" content="Paste or drop in a pile of recipes, check them, and add them to the recipe box in one go.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f8f4ec; --card: #fffdf8; --ink: #2a241d; --muted: #776b5c; --line: #e7ddcb;
+    --accent: #9c4a2f; --accent-ink: #ffffff; --chip: #efe6d4; --mark: #f3dfb8; --good: #3f7d4e; --warn: #a8641f; --bad: #b3392b;
+    --field: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1814; --card: #24201b; --ink: #f1e9dc; --muted: #ad9f8b; --line: #3a332a;
+      --accent: #e0896a; --accent-ink: #1b1814; --chip: #322b23; --mark: #4a3b22; --good: #7cc48d; --warn: #e3ad5f; --bad: #ff8a7a;
+      --field: #1f1b17;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1814; --card: #24201b; --ink: #f1e9dc; --muted: #ad9f8b; --line: #3a332a;
+    --accent: #e0896a; --accent-ink: #1b1814; --chip: #322b23; --mark: #4a3b22; --good: #7cc48d; --warn: #e3ad5f; --bad: #ff8a7a;
+    --field: #1f1b17;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 700; margin: 0; line-height: 1.15; }
+  h1 { font-size: clamp(28px, 5vw, 40px); }
+  h2 { font-size: 21px; margin-bottom: 4px; }
+  h3 { font-size: 18px; }
+  a { color: var(--accent); }
+  .back { display: inline-block; margin-bottom: 16px; text-decoration: none; }
+  .lede { color: var(--muted); margin: 6px 0 0; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 18px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  label, .lbl { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  input, textarea, select, button { font: inherit; color: inherit; }
+  input, textarea, select { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--field); }
+  textarea { resize: vertical; line-height: 1.45; }
+  #paste { min-height: 200px; font: 14px/1.5 ui-monospace, Consolas, monospace; }
+  input[type=checkbox] { width: auto; }
+  input:focus, textarea:focus, select:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--card); border-radius: 99px; padding: 6px 14px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .hint { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  [hidden] { display: none !important; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  .drop { margin-top: 10px; border: 2px dashed var(--line); border-radius: 12px; padding: 14px; text-align: center; color: var(--muted); font-size: 14px; }
+  .drop.over { border-color: var(--accent); color: var(--ink); background: var(--chip); }
+  .drop label { display: inline; color: var(--accent); cursor: pointer; text-decoration: underline; font-size: inherit; margin: 0; }
+  .summary { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center; font-size: 14px; margin-bottom: 8px; }
+  ul.items { list-style: none; padding: 0; margin: 0; }
+  .item { border-top: 1px solid var(--line); padding: 14px 0; }
+  .item:first-child { border-top: 0; }
+  .item.off { opacity: .5; }
+  .item-head { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+  .item-head input.title { font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 18px; padding: 4px 10px; }
+  .item .meta { font-size: 13px; color: var(--muted); margin: 6px 0 0 30px; display: flex; gap: 4px 12px; flex-wrap: wrap; }
+  .item .meta input { width: auto; min-width: 16ch; padding: 1px 8px; font-size: 13px; border-radius: 6px; }
+  .warns { margin: 6px 0 0 30px; padding: 0; list-style: none; font-size: 13px; color: var(--warn); }
+  .warns li::before { content: "⚠ "; }
+  .state { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .state.saved { color: var(--good); } .state.error { color: var(--bad); } .state.dup { color: var(--warn); }
+  .detail { margin: 10px 0 0 30px; font-size: 14px; }
+  .detail h4 { margin: 8px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .detail ul, .detail ol { margin: 0; padding-left: 20px; }
+  .detail textarea { min-height: 180px; font: 13px/1.5 ui-monospace, Consolas, monospace; }
+  .x { border: 0; background: transparent; color: var(--muted); padding: 2px 8px; }
+  .progress { height: 8px; background: var(--chip); border-radius: 99px; overflow: hidden; margin-top: 12px; }
+  .progress div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .toast { position: fixed; left: 50%; top: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+  .toast.show { opacity: 1; }
+  footer { margin-top: 32px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  footer a { color: inherit; }
+  code { font-size: 13px; background: var(--chip); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">← Recipe box</a>
+  <h1>Bulk import</h1>
+  <p class="lede">Paste or drop in a pile of recipes, check what was read, and add them all at once.</p>
+
+  <section>
+    <h2>1. Bring in the recipes</h2>
+    <p class="sub">Typed-up or copied text, several recipes at once (a line of <code>---</code> between them helps but isn’t needed), Markdown, a family <code>.json</code> file, or a recipe web page saved as <code>.html</code>.</p>
+    <textarea id="paste" placeholder="Chocolate Chip Cookies&#10;Makes 36 · 45 minutes&#10;&#10;Ingredients&#10;2 1/4 cups flour&#10;…&#10;&#10;Method&#10;1. Heat the oven to 375°F.&#10;…" aria-label="Recipes to import"></textarea>
+    <div class="drop" id="drop">Drop files here, or <label for="files">choose files</label> (.txt, .md, .json, .html)
+      <input id="files" type="file" multiple accept=".txt,.md,.markdown,.json,.html,.htm,text/plain,text/markdown,application/json,text/html" hidden>
+    </div>
+    <div class="btns"><button type="button" class="primary" id="read">Read them</button><span class="hint" id="readMsg" style="margin:0"></span></div>
+  </section>
+
+  <section id="reviewSec" hidden>
+    <h2>2. Check them</h2>
+    <p class="sub">Fix a title or link name here. For anything else, open “Fix the text”, change it, and read it again.</p>
+    <div class="grid">
+      <div><label for="family">Family</label><select id="family"></select></div>
+      <div><label for="defFrom">From (where a recipe doesn’t say)</label><input id="defFrom" placeholder="e.g. Grandma Rosa" autocomplete="off"></div>
+      <div><label for="defTags">Add these tags to every recipe</label><input id="defTags" placeholder="e.g. cookies, christmas" autocomplete="off"></div>
+      <div><label for="dupMode">If a recipe is already in the family</label><select id="dupMode"><option value="skip">Skip it</option><option value="copy">Add it as a copy (link name -2)</option></select></div>
+    </div>
+    <div class="summary" style="margin-top:16px"><b id="count"></b><span id="countWarn"></span>
+      <button type="button" id="allOn">Tick all</button><button type="button" id="okOnly">Only the ones without warnings</button><button type="button" id="clearAll">Clear the list</button></div>
+    <ul class="items" id="items"></ul>
+  </section>
+
+  <section id="saveSec" hidden>
+    <h2>3. Add them to the box</h2>
+    <div id="crew"></div>
+    <div id="cloudSave" hidden>
+      <div class="btns" id="saveBtns"></div>
+      <div class="progress" id="progress" hidden><div></div></div>
+      <p class="hint" id="saveMsg" role="status"></p>
+    </div>
+    <details id="byHand">
+      <summary class="hint" style="cursor:pointer">By hand: download the family file with these added, to commit</summary>
+      <div class="btns"><button type="button" id="dl">Download family file</button></div>
+      <p class="hint">Put it in <code>recipes/data/</code>, replacing the old one, then commit and push.</p>
+    </details>
+  </section>
+
+  <footer><span>The list is kept in this browser until you clear it, so a reload doesn’t lose anything.</span><a href="./">Recipe box</a></footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="core.js"></script>
+<script src="parse.js"></script>
+<script src="cloud.js"></script>
+<script>
+(function () {
+  const Cloud = window.RecipeCloud, Parse = window.RecipeParse, { esc, loadFamilies, flatIngredients } = window.RecipeCore;
+  const $ = id => document.getElementById(id);
+  const KEY = 'recipes.import';
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} },
+  };
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  // items: [{ key, on, recipe, warnings, source, state: ''|'saved'|'error', msg, open, fix }]
+  const saved = store.get() || {};
+  let items = saved.items || [], families = [], busy = false;
+  const D = Object.assign({ family: '', from: '', tags: '', dup: 'skip', paste: '' }, saved.defaults || {});
+  let nextKey = items.reduce((m, it) => Math.max(m, it.key), 0) + 1;
+  const keep = () => store.set({ items, defaults: D });
+
+  // ------------------------------------------------------------ reading
+  function add(results, label) {
+    for (const r of results) items.push(Object.assign({ key: nextKey++, on: true, state: '', msg: '', open: false, fix: false, label }, r));
+    return results.length;
+  }
+  $('read').addEventListener('click', () => {
+    const text = $('paste').value;
+    if (!text.trim()) { $('readMsg').textContent = 'Paste something first, or drop in files.'; return; }
+    const n = add(Parse.parse(text), 'pasted');
+    $('readMsg').textContent = n ? 'Read ' + n + ' recipe' + (n === 1 ? '' : 's') + '.' : 'Couldn’t find a recipe in that.';
+    if (n) { $('paste').value = ''; D.paste = ''; }
+    keep(); draw();
+    if (n) $('reviewSec').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('paste').addEventListener('input', () => { D.paste = $('paste').value; keep(); });
+  async function readFiles(files) {
+    let n = 0, bad = [];
+    for (const f of files) {
+      if (f.size > 2e6) { bad.push(f.name + ' (too big)'); continue; }
+      try {
+        const got = add(Parse.parse(await f.text()), f.name);
+        if (!got) bad.push(f.name + ' (no recipe found)');
+        n += got;
+      } catch (e) { bad.push(f.name); }
+    }
+    $('readMsg').textContent = 'Read ' + n + ' recipe' + (n === 1 ? '' : 's') + ' from ' + files.length + ' file' + (files.length === 1 ? '' : 's') + '.' +
+      (bad.length ? ' Skipped: ' + bad.join(', ') + '.' : '');
+    keep(); draw();
+  }
+  $('files').addEventListener('change', e => { readFiles([...e.target.files]); e.target.value = ''; });
+  const drop = $('drop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) readFiles([...e.dataTransfer.files]); });
+
+  // ------------------------------------------------------------ the batch's settings
+  const fam = () => families.find(f => f.id === D.family);
+  const defTags = () => D.tags.split(',').map(t => t.trim().toLowerCase()).filter(t => t && t.length <= 30);
+  // The recipe as it will be saved: batch defaults filled in, and a free link name.
+  function finalRecipe(it, taken) {
+    const r = JSON.parse(JSON.stringify(it.recipe));
+    if (!r.from && D.from.trim()) r.from = D.from.trim().slice(0, 80);
+    const tags = [...new Set((r.tags || []).concat(defTags()))].slice(0, 12);
+    if (tags.length) r.tags = tags;
+    r.id = r.id || Parse.slug(r.title);
+    if (taken.has(r.id) && D.dup === 'copy') { let n = 2; while (taken.has(r.id.slice(0, 57) + '-' + n)) n++; r.id = r.id.slice(0, 57) + '-' + n; }
+    return r;
+  }
+  // Work out, for every ticked recipe, its final form and whether it clashes.
+  function plan() {
+    const f = fam(), taken = new Set(f ? f.recipes.map(r => r.id) : []), out = [];
+    items.forEach(it => { if (it.state === 'saved') taken.add(it.recipe.id); });
+    for (const it of items) {
+      if (!it.on || it.state === 'saved') continue;
+      const r = finalRecipe(it, taken);
+      const blocked = !r.title ? 'needs a title' : !flatIngredients(r).length ? 'needs ingredients' : !(r.steps || []).length ? 'needs steps' : '';
+      const dup = taken.has(r.id);
+      if (!blocked && !dup) taken.add(r.id);
+      out.push({ it, r, blocked, dup });
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------ drawing the list
+  function draw() {
+    $('reviewSec').hidden = $('saveSec').hidden = !items.length;
+    if (!items.length) return;
+    const p = new Map(plan().map(x => [x.it.key, x]));
+    const f = fam();
+    $('items').innerHTML = items.map(it => {
+      const x = p.get(it.key), r = it.recipe;
+      const n = flatIngredients(r).length, s = (r.steps || []).length;
+      const st = it.state === 'saved' ? '<span class="state saved">✓ Saved</span>'
+        : it.state === 'error' ? '<span class="state error">Not saved</span>'
+        : x && x.blocked ? '<span class="state error">Can’t add: ' + esc(x.blocked) + '</span>'
+        : x && x.dup ? '<span class="state dup">' + (D.dup === 'skip' ? 'Already in ' + esc(f ? f.name : 'the family') + ', will skip' : 'Same link name, will skip') + '</span>' : '';
+      return '<li class="item' + (it.on || it.state === 'saved' ? '' : ' off') + '" data-k="' + it.key + '">' +
+        '<div class="item-head"><input type="checkbox" data-a="on"' + (it.on ? ' checked' : '') + (it.state === 'saved' ? ' disabled' : '') + ' aria-label="Include ' + esc(r.title || 'this recipe') + '">' +
+          '<input class="title" data-a="title" value="' + esc(r.title || '') + '" placeholder="Title" aria-label="Title"' + (it.state === 'saved' ? ' disabled' : '') + '>' +
+          '<button type="button" class="x" data-a="rm" aria-label="Remove from the list">✕</button></div>' +
+        '<div class="meta"><span>' + n + ' ingredient' + (n === 1 ? '' : 's') + ' · ' + s + ' step' + (s === 1 ? '' : 's') +
+          (r.serves ? ' · makes ' + r.serves + (r.unit ? ' ' + esc(r.unit) : '') : '') + (r.time ? ' · ' + esc(r.time) : '') + (r.from ? ' · from ' + esc(r.from) : '') + '</span>' +
+          '<span>link name <input data-a="id" value="' + esc(r.id || '') + '" aria-label="Link name" spellcheck="false"' + (it.state === 'saved' ? ' disabled' : '') + '></span>' +
+          (it.label && it.label !== 'pasted' ? '<span>' + esc(it.label) + '</span>' : '') + st +
+          '<button type="button" data-a="open">' + (it.open ? 'Hide' : 'Show') + '</button><button type="button" data-a="fix">' + (it.fix ? 'Close the text' : 'Fix the text') + '</button></div>' +
+        (it.warnings.length || it.msg ? '<ul class="warns">' + it.warnings.map(w => '<li>' + esc(w) + '</li>').join('') + (it.msg ? '<li>' + esc(it.msg) + '</li>' : '') + '</ul>' : '') +
+        (it.open ? detail(r) : '') +
+        (it.fix ? '<div class="detail"><textarea data-a="src" aria-label="Recipe text">' + esc(it.source || '') + '</textarea>' +
+          '<div class="btns"><button type="button" class="primary" data-a="reread">Read it again</button><span class="hint" style="margin:0">If the text holds more than one recipe, they’ll be split.</span></div></div>' : '') +
+      '</li>';
+    }).join('');
+    const live = items.filter(it => it.state !== 'saved'), plans = [...p.values()];
+    const ready = plans.filter(x => !x.blocked && !x.dup).length;
+    const warned = live.filter(it => it.warnings.length).length;
+    const done = items.length - live.length;
+    $('count').textContent = ready + ' ready to add' + (done ? ' · ' + done + ' saved' : '');
+    $('countWarn').textContent = warned ? warned + ' with warnings to look at' : '';
+    $('countWarn').className = warned ? 'state dup' : '';
+    drawSave(ready);
+  }
+  function detail(r) {
+    const groups = Array.isArray(r.ingredients) ? [['', r.ingredients]] : Object.entries(r.ingredients || {});
+    return '<div class="detail">' + (r.intro ? '<p>' + esc(r.intro) + '</p>' : '') +
+      groups.map(([g, list]) => '<h4>' + esc(g || 'Ingredients') + '</h4><ul>' + list.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>').join('') +
+      '<h4>Method</h4><ol>' + (r.steps || []).map(l => '<li>' + esc(l) + '</li>').join('') + '</ol>' +
+      (r.notes ? '<h4>Notes</h4><p>' + esc(r.notes) + '</p>' : '') + (r.tags ? '<p class="hint">Tags: ' + r.tags.map(esc).join(', ') + '</p>' : '') + '</div>';
+  }
+  const itemOf = el => { const li = el.closest('[data-k]'); return li && items.find(it => it.key === +li.dataset.k); };
+  $('items').addEventListener('click', e => {
+    const b = e.target.closest('button[data-a]'); if (!b || busy) return;
+    const it = itemOf(b); if (!it) return;
+    if (b.dataset.a === 'rm') items = items.filter(x => x !== it);
+    if (b.dataset.a === 'open') it.open = !it.open;
+    if (b.dataset.a === 'fix') it.fix = !it.fix;
+    if (b.dataset.a === 'reread') {
+      const text = b.closest('.detail').querySelector('textarea').value;
+      const got = Parse.parse(text);
+      if (!got.length) { toast('Couldn’t find a recipe in that text'); return; }
+      const at = items.indexOf(it);
+      items.splice(at, 1, ...got.map(r => Object.assign({ key: nextKey++, on: true, state: '', msg: '', open: true, fix: false, label: it.label }, r)));
+      toast(got.length === 1 ? 'Read again' : 'Split into ' + got.length + ' recipes');
+    }
+    keep(); draw();
+  });
+  $('items').addEventListener('change', e => {
+    const t = e.target, it = itemOf(t); if (!it) return;
+    if (t.dataset.a === 'on') it.on = t.checked;
+    keep(); draw();
+  });
+  $('items').addEventListener('input', e => {
+    const t = e.target, it = itemOf(t); if (!it) return;
+    if (t.dataset.a === 'title') { it.recipe.title = t.value.slice(0, 120); it.recipe.id = Parse.slug(t.value); const idIn = t.closest('li').querySelector('[data-a=id]'); if (idIn) idIn.value = it.recipe.id; }
+    if (t.dataset.a === 'id') it.recipe.id = Parse.slug(t.value);
+    if (t.dataset.a === 'src') it.source = t.value;
+    keep();
+  });
+  $('items').addEventListener('focusout', e => { if (['title', 'id'].includes(e.target.dataset.a)) draw(); });
+  $('allOn').addEventListener('click', () => { items.forEach(it => { if (it.state !== 'saved') it.on = true; }); keep(); draw(); });
+  $('okOnly').addEventListener('click', () => { items.forEach(it => { if (it.state !== 'saved') it.on = !it.warnings.length; }); keep(); draw(); });
+  $('clearAll').addEventListener('click', () => {
+    if (items.some(it => it.state !== 'saved') && !confirm('Clear the whole list? Recipes not saved yet will be lost.')) return;
+    items = []; keep(); draw();
+  });
+  for (const [id, k] of [['defFrom', 'from'], ['defTags', 'tags']]) $(id).addEventListener('input', () => { D[k] = $(id).value; keep(); });
+  for (const [id, k] of [['defFrom', 'from'], ['defTags', 'tags']]) $(id).addEventListener('change', draw);
+  $('family').addEventListener('change', () => { D.family = $('family').value; keep(); draw(); });
+  $('dupMode').addEventListener('change', () => { D.dup = $('dupMode').value; keep(); draw(); });
+
+  // ------------------------------------------------------------ saving to the box
+  // The database takes 20 recipe writes a minute and 200 a day per person; stay under that.
+  const PER_MIN = 18, PER_DAY = 190;
+  function drawSave(ready) {
+    const st = Cloud.state, me = Cloud.me;
+    $('cloudSave').hidden = st !== 'in';
+    $('byHand').open = st !== 'in' && st !== 'checking';
+    $('dl').disabled = !ready || !fam();
+    $('dl').textContent = 'Download ' + (fam() ? fam().id : 'family') + '.json';
+    if (st !== 'in' || busy) return;
+    const btns = me.admin ? [['approved', 'Add ' + ready + ' to the box', true], ['draft', 'Save as drafts']] : [['submitted', 'Send ' + ready + ' for review', true], ['draft', 'Save as drafts (only you)']];
+    $('saveBtns').innerHTML = btns.map(([s, l, main]) => '<button type="button" data-save="' + s + '"' + (main ? ' class="primary"' : '') + (ready ? '' : ' disabled') + '>' + l + '</button>').join('');
+    $('saveMsg').textContent = !ready ? 'Nothing ticked is ready to add.'
+      : ready > PER_MIN ? 'That takes about ' + Math.ceil(ready / PER_MIN) + ' minutes (the box takes ' + PER_MIN + ' a minute). Keep this page open.' : '';
+    if (ready > PER_DAY) $('saveMsg').textContent += ' Only ' + PER_DAY + ' can be saved a day; the rest stay here for tomorrow.';
+  }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  $('saveBtns').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-save]'); if (!b || busy) return;
+    const status = b.dataset.save, todo = plan().filter(x => !x.blocked && !x.dup).slice(0, PER_DAY);
+    if (!todo.length) return;
+    busy = true;
+    $('saveBtns').querySelectorAll('button').forEach(x => x.disabled = true);
+    $('progress').hidden = false;
+    const bar = $('progress').firstElementChild, times = [];
+    let ok = 0, bad = 0;
+    window.onbeforeunload = () => 'Still saving';
+    for (let i = 0; i < todo.length; i++) {
+      const { it, r } = todo[i];
+      // pace: no more than PER_MIN writes in any minute
+      while (times.length >= PER_MIN && Date.now() - times[times.length - PER_MIN] < 61000) {
+        const wait = Math.ceil((61000 - (Date.now() - times[times.length - PER_MIN])) / 1000);
+        $('saveMsg').textContent = 'Saved ' + ok + ' of ' + todo.length + '. Pausing for the box’s speed limit: next in ' + wait + 's…';
+        await sleep(1000);
+      }
+      $('saveMsg').textContent = 'Saving ' + (i + 1) + ' of ' + todo.length + ': ' + r.title;
+      let tries = 0;
+      while (true) {
+        try {
+          times.push(Date.now());
+          await Cloud.save({ id: D.family }, r, status, null);
+          it.state = 'saved'; it.msg = ''; it.recipe.id = r.id; ok++;
+          break;
+        } catch (x) {
+          const m = Cloud.friendly(x);
+          if (/minute|too many|rate/i.test(m) && tries++ < 2) { $('saveMsg').textContent = 'The box asked to slow down. Waiting a minute…'; await sleep(61000); continue; }
+          it.state = 'error'; it.msg = m; bad++;
+          if (/daily limit|limit of|nearly full|not allowed|sign in/i.test(m)) i = todo.length;   // no point carrying on
+          break;
+        }
+      }
+      bar.style.width = Math.round((i + 1) / todo.length * 100) + '%';
+      keep();
+    }
+    window.onbeforeunload = null;
+    busy = false;
+    draw();
+    $('saveMsg').textContent = 'Saved ' + ok + ' recipe' + (ok === 1 ? '' : 's') + (bad ? '. ' + bad + ' weren’t saved: see the list above.' : '.') +
+      (ok ? ' They’re in the box' + (status === 'approved' ? '.' : status === 'submitted' ? ', waiting for review.' : ' as drafts.') : '');
+    setTimeout(() => { $('progress').hidden = true; bar.style.width = '0'; }, 1500);
+  });
+
+  // ------------------------------------------------------------ or by hand: the family file
+  $('dl').addEventListener('click', () => {
+    const f = fam(); if (!f) return;
+    const file = Cloud.state === 'in' ? Cloud.familyFile(f).file : JSON.parse(JSON.stringify(f.raw || { name: f.name, recipes: [] }));
+    file.recipes = file.recipes || [];
+    let n = 0;
+    for (const { r, blocked, dup } of plan()) {
+      if (blocked || dup) continue;
+      file.recipes.push(Cloud.tidy(r)); n++;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([Cloud.pretty(file)], { type: 'application/json' }));
+    a.download = f.id + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Downloaded ' + f.id + '.json with ' + n + ' new recipe' + (n === 1 ? '' : 's'));
+  });
+
+  // ------------------------------------------------------------ start
+  Cloud.mountAuth($('crew'), { pitch: 'Sign in to add these straight to the box.', onChange: () => start() });
+  async function start() {
+    families = await loadFamilies();
+    try { await Cloud.overlay(families); } catch (e) { toast('Couldn’t load the crew’s recipes: ' + Cloud.friendly(e)); }
+    families = families.filter(f => !f.broken);
+    if (!families.some(f => f.id === D.family)) D.family = families[0] ? families[0].id : '';
+    $('family').innerHTML = families.map(f => '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>').join('');
+    $('family').value = D.family;
+    draw();
+  }
+  $('paste').value = D.paste || '';
+  $('defFrom').value = D.from; $('defTags').value = D.tags; $('dupMode').value = D.dup;
+  start().catch(e => { console.error(e); toast('Couldn’t load the families: ' + (e.message || e)); });
+})();
+</script>
+</body>
+</html>

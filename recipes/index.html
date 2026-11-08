@@ -382,7 +382,7 @@
     const broken = families.filter(f => f.broken);
     app.innerHTML =
       '<div class="top"><div><h1>Family Recipes</h1><p class="muted">' + all.length + ' recipes from ' + families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + '</p></div>' +
-      '<div class="btns"><a class="pill" href="edit.html">+ Add a recipe</a><button type="button" id="newTimer">⏱ Timer</button><button type="button" id="surprise">Surprise me</button></div></div>' +
+      '<div class="btns"><a class="pill" href="edit.html">+ Add a recipe</a><a class="pill" href="import.html">Add many</a><button type="button" id="newTimer">⏱ Timer</button><button type="button" id="surprise">Surprise me</button></div></div>' +
       (broken.length ? '<p class="muted">Couldn’t read: ' + broken.map(f => esc(f.broken)).join(', ') + '</p>' : '') +
       '<div class="search"><input id="q" type="search" placeholder="Search recipes, ingredients, tags…" aria-label="Search recipes" value="' + esc(ui.q) + '"></div>' +
       '<div class="chips" role="group" aria-label="Filter by family">' +
