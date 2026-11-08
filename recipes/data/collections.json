@@ -1,0 +1,8 @@
+{
+  "collections": [
+    { "id": "thanksgiving", "name": "Thanksgiving", "emoji": "🦃", "tag": "thanksgiving", "hue": 28,
+      "about": "Everything for the big table. Tag a recipe “thanksgiving” to add it here." },
+    { "id": "cookie-day", "name": "Cookie Day", "emoji": "🍪", "tag": "cookie day", "hue": 345,
+      "about": "Every cookie on the list. Tag a recipe “cookie day” to add it here." }
+  ]
+}

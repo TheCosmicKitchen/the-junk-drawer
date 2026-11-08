@@ -110,6 +110,37 @@
   .notes p { margin: 0; }
   .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   .r-tags { margin-top: 24px; }
+  /* ---- collections: a light tint of the collection's hue over the whole page ---- */
+  :root[data-collection] {
+    --bg: hsl(var(--hue) 55% 95%); --card: hsl(var(--hue) 60% 98.5%); --line: hsl(var(--hue) 35% 85%);
+    --accent: hsl(var(--hue) 55% 37%); --chip: hsl(var(--hue) 45% 90%); --mark: hsl(var(--hue) 70% 86%);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-collection]:not([data-theme="light"]) {
+      --bg: hsl(var(--hue) 22% 10%); --card: hsl(var(--hue) 20% 14%); --line: hsl(var(--hue) 18% 25%);
+      --accent: hsl(var(--hue) 70% 70%); --chip: hsl(var(--hue) 22% 20%); --mark: hsl(var(--hue) 35% 26%);
+    }
+  }
+  :root[data-theme="dark"][data-collection] {
+    --bg: hsl(var(--hue) 22% 10%); --card: hsl(var(--hue) 20% 14%); --line: hsl(var(--hue) 18% 25%);
+    --accent: hsl(var(--hue) 70% 70%); --chip: hsl(var(--hue) 22% 20%); --mark: hsl(var(--hue) 35% 26%);
+  }
+  :root[data-collection] body { background: radial-gradient(1100px 420px at 50% -120px, hsl(var(--hue) 75% 80% / .45), transparent 70%) no-repeat, var(--bg); }
+  .coll-head { position: relative; padding: 8px 0 22px; }
+  .coll-head::after { content: attr(data-emoji); position: absolute; right: 0; top: -12px; font-size: clamp(64px, 14vw, 120px); line-height: 1; opacity: .22; pointer-events: none; }
+  .coll-head h1, .coll-head p { position: relative; z-index: 1; max-width: calc(100% - 90px); }
+  .coll-head p { margin: 8px 0 0; }
+  .colls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+  .coll { display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 12px; border-radius: 14px; text-decoration: none; color: var(--ink);
+    background: hsl(var(--hue) 60% 93%); border: 1px solid hsl(var(--hue) 40% 82%); }
+  .coll:hover { border-color: hsl(var(--hue) 55% 45%); }
+  .coll-emoji { font-size: 26px; line-height: 1; }
+  .coll b { display: block; font-family: Fraunces, Georgia, serif; font-size: 17px; }
+  .coll small { color: var(--muted); font-size: 12px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .coll { background: hsl(var(--hue) 22% 16%); border-color: hsl(var(--hue) 20% 28%); }
+  }
+  :root[data-theme="dark"] .coll { background: hsl(var(--hue) 22% 16%); border-color: hsl(var(--hue) 20% 28%); }
   .r-head .meta .rc-badge { align-self: center; }
   .rc-note { max-width: 62ch; }
   .crew { margin-top: 24px; }
@@ -237,7 +268,12 @@
   // Data
   // =====================================================================
   async function load() {
-    families = await window.RecipeCore.loadFamilies();
+    const [fs, cs] = await Promise.all([
+      window.RecipeCore.loadFamilies(),
+      fetch('data/collections.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : { collections: [] }).catch(() => ({ collections: [] })),
+    ]);
+    families = fs;
+    collections = (cs.collections || []).filter(c => c && c.id && c.tag && c.name);
     try { await Cloud.overlay(families); }
     catch (e) { console.error(e); toast('Couldn’t load the crew’s recipes: ' + Cloud.friendly(e)); }
     all = [];
@@ -384,6 +420,12 @@
       '<div class="top"><div><h1>Family Recipes</h1><p class="muted">' + all.length + ' recipes from ' + families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + '</p></div>' +
       '<div class="btns"><a class="pill" href="edit.html">+ Add a recipe</a><a class="pill" href="import.html">Add many</a><button type="button" id="newTimer">⏱ Timer</button><button type="button" id="surprise">Surprise me</button></div></div>' +
       (broken.length ? '<p class="muted">Couldn’t read: ' + broken.map(f => esc(f.broken)).join(', ') + '</p>' : '') +
+      (collections.length ? '<div class="colls">' + collections.map(c => {
+        const n = all.filter(r => inCollection(c, r)).length;
+        return '<a class="coll" href="#/c/' + encodeURIComponent(c.id) + '" style="--hue:' + Number(c.hue) + '">' +
+          (c.emoji ? '<span class="coll-emoji" aria-hidden="true">' + esc(c.emoji) + '</span>' : '') +
+          '<span><b>' + esc(c.name) + '</b><small>' + n + ' recipe' + (n === 1 ? '' : 's') + '</small></span></a>';
+      }).join('') + '</div>' : '') +
       '<div class="search"><input id="q" type="search" placeholder="Search recipes, ingredients, tags…" aria-label="Search recipes" value="' + esc(ui.q) + '"></div>' +
       '<div class="chips" role="group" aria-label="Filter by family">' +
         '<button type="button" data-fam="all" aria-pressed="' + (ui.fam === 'all') + '">All families</button>' +
@@ -416,7 +458,10 @@
   }
   function drawCards() {
     const list = visible();
-    document.getElementById('grid').innerHTML = list.length ? list.map(r => {
+    document.getElementById('grid').innerHTML = list.length ? list.map(cardHTML).join('')
+      : '<p class="muted empty" style="grid-column:1/-1">No recipes match that.</p>';
+  }
+  function cardHTML(r) {
       const on = !!basket[r.key];
       return '<div class="card' + (on ? ' picked' : '') + '">' +
         '<button type="button" class="pick" data-key="' + esc(r.key) + '" aria-pressed="' + on + '" aria-label="' + (on ? 'Remove ' : 'Add ') + esc(r.title) + (on ? ' from' : ' to') + ' grocery list">' + (on ? '✓ List' : '+ List') + '</button>' +
@@ -426,8 +471,41 @@
         (r.time || r.video ? '<p>' + [r.time && esc(r.time), r.video && youtube(r.video) && '▶ video'].filter(Boolean).join(' · ') + '</p>' : '') +
         (r.tags && r.tags.length ? '<div class="tags">' + r.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
       '</div>';
-    }).join('')
-      : '<p class="muted empty" style="grid-column:1/-1">No recipes match that.</p>';
+  }
+
+  // =====================================================================
+  // Collections: every recipe with a tag, on a page with its own light theme
+  // (data/collections.json)
+  // =====================================================================
+  let collections = [];
+  const inCollection = (c, r) => (r.tags || []).some(t => t.toLowerCase() === c.tag.toLowerCase());
+  function setTheme(c) {
+    const root = document.documentElement;
+    if (c) { root.dataset.collection = c.id; root.style.setProperty('--hue', c.hue); }
+    else { delete root.dataset.collection; root.style.removeProperty('--hue'); }
+  }
+  function renderCollection(id) {
+    const c = collections.find(x => x.id === id);
+    if (!c) {
+      baseTitle = 'Not found · Family Recipes';
+      app.innerHTML = '<a class="back" href="#/">← All recipes</a><h1>Collection not found</h1>';
+      return;
+    }
+    setTheme(c);
+    baseTitle = c.name + ' · Family Recipes';
+    const list = all.filter(r => inCollection(c, r));
+    app.innerHTML =
+      '<a class="back" href="#/">← All recipes</a>' +
+      '<div class="coll-head" data-emoji="' + esc(c.emoji || '') + '"><h1>' + esc(c.name) + '</h1>' +
+        '<p class="muted">' + list.length + ' recipe' + (list.length === 1 ? '' : 's') + (c.about ? ' · ' + esc(c.about) : '') + '</p></div>' +
+      '<div class="grid coll-grid">' + (list.length ? list.map(cardHTML).join('')
+        : '<p class="muted empty" style="grid-column:1/-1">Nothing here yet. Tag a recipe “' + esc(c.tag) + '” and it shows up here.</p>') + '</div>' +
+      '<footer><span>Recipes tagged “' + esc(c.tag) + '”</span><a href="../">Junk drawer</a></footer>';
+    app.querySelector('.coll-grid').addEventListener('click', e => {
+      const b = e.target.closest('button.pick'); if (!b) return;
+      toggleBasket(byKey(b.dataset.key));
+      renderCollection(id);
+    });
   }
 
   // =====================================================================
@@ -495,7 +573,11 @@
           (/class="tmr"/.test((r.steps || []).map(stepHTML).join('')) ? '<p class="hint">Tap a ⏱ time to start a timer.</p>' : '') + '</div>' +
       '</div>' +
       (r.notes ? '<div class="notes"><p><strong>Notes.</strong> <span id="notes"></span></p></div>' : '') +
-      (r.tags && r.tags.length ? '<div class="tags r-tags">' + r.tags.map(t => '<a class="tag" href="#/" data-tag="' + esc(t) + '">' + esc(t) + '</a>').join('') + '</div>' : '') +
+      (r.tags && r.tags.length ? '<div class="tags r-tags">' + r.tags.map(t => {
+        const c = collections.find(x => x.tag.toLowerCase() === t.toLowerCase());
+        return c ? '<a class="tag" href="#/c/' + encodeURIComponent(c.id) + '">' + esc((c.emoji ? c.emoji + ' ' : '') + c.name) + '</a>'
+          : '<a class="tag" href="#/" data-tag="' + esc(t) + '">' + esc(t) + '</a>';
+      }).join('') + '</div>' : '') +
       (Cloud.state === 'in' ? '<div class="panel cooked no-print" id="cooked"><h2>Made it</h2><div id="cookList"><p class="hint">Loading…</p></div>' +
         '<form id="cookForm" class="cook-form"><input id="cookNote" maxlength="280" placeholder="How did it go? (optional)" aria-label="Note">' +
         '<input id="cookOn" type="date" aria-label="When"><button type="submit" class="primary">I made this</button></form></div>' : '') +
@@ -757,7 +839,9 @@
   // =====================================================================
   function route() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
-    if (parts[0] === 'list') renderGroceries();
+    setTheme(null);
+    if (parts[0] === 'c' && parts[1]) renderCollection(parts[1]);
+    else if (parts[0] === 'list') renderGroceries();
     else if (parts.length === 2) renderRecipe(parts[0], parts[1]);
     else renderList();
     if (parts.length !== 2 && wake) { wantWake = false; setWake(false); }
