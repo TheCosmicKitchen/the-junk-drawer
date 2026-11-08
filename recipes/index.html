@@ -110,6 +110,20 @@
   .notes p { margin: 0; }
   .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   .r-tags { margin-top: 24px; }
+  .r-head .meta .rc-badge { align-self: center; }
+  .rc-note { max-width: 62ch; }
+  .crew { margin-top: 24px; }
+  .cooked { margin-top: 24px; }
+  ul.cooks { list-style: none; padding: 0; margin: 0; }
+  .cooks li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .cooks li:last-child { border-bottom: 0; }
+  .cook-note { flex-basis: 100%; }
+  .cooks .x { margin-left: auto; border: 0; padding: 0 6px; color: var(--muted); background: transparent; }
+  .cook-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .cook-form input { padding: 7px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); min-width: 0; }
+  .cook-form #cookNote { flex: 1 1 220px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
 
   /* ---- grocery list ---- */
   .picked-list { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 8px; }
@@ -165,8 +179,10 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
+<script src="cloud.js"></script>
 <script>
 (function () {
+  const Cloud = window.RecipeCloud;
   const app = document.getElementById('app');
   const { esc, LEAD, parseNum, niceNum, WORDS, unitInfo, unitText, pluralWord, singularWord, parseIng, countedName, ML, G, METRIC, density, pickUnit, unitNum, measure, isMeasure, sysOf, SHOW, flatIngredients, youtube, convertTextFor } = window.RecipeCore;
   let families = [];   // [{ id, name, about, recipes: [...] }]
@@ -222,6 +238,8 @@
   // =====================================================================
   async function load() {
     families = await window.RecipeCore.loadFamilies();
+    try { await Cloud.overlay(families); }
+    catch (e) { console.error(e); toast('Couldn’t load the crew’s recipes: ' + Cloud.friendly(e)); }
     all = [];
     for (const f of families) for (const r of f.recipes) all.push(Object.assign({}, r, { family: f, key: f.id + '/' + r.id }));
     all.sort((a, b) => a.title.localeCompare(b.title));
@@ -373,7 +391,9 @@
       '</div>' +
       '<div class="grid" id="grid"></div>' +
       '<p class="hint">Tap “+ List” on a few recipes to build one grocery list for all of them.</p>' +
+      '<div class="panel crew" id="crew"></div>' +
       '<footer><span>Want a recipe added? Send it over.</span><a href="../">Junk drawer</a></footer>';
+    mountCrew(document.getElementById('crew'));
     drawCards();
     const q = document.getElementById('q');
     q.addEventListener('input', () => { ui.q = q.value; drawCards(); });
@@ -402,6 +422,7 @@
         '<button type="button" class="pick" data-key="' + esc(r.key) + '" aria-pressed="' + on + '" aria-label="' + (on ? 'Remove ' : 'Add ') + esc(r.title) + (on ? ' from' : ' to') + ' grocery list">' + (on ? '✓ List' : '+ List') + '</button>' +
         '<span class="fam">' + esc(r.family.name) + (r.from ? ' · ' + esc(r.from) : '') + '</span>' +
         '<a class="title" href="' + link(r) + '"><h3>' + esc(r.title) + '</h3></a>' +
+        (Cloud.badge(r) ? '<p>' + Cloud.badge(r) + '</p>' : '') +
         (r.time || r.video ? '<p>' + [r.time && esc(r.time), r.video && youtube(r.video) && '▶ video'].filter(Boolean).join(' · ') + '</p>' : '') +
         (r.tags && r.tags.length ? '<div class="tags">' + r.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
       '</div>';
@@ -451,6 +472,8 @@
           (r.time ? '<span>' + esc(r.time) + '</span>' : '') +
         '</div>' +
         (r.intro ? '<p class="intro">' + esc(r.intro) + '</p>' : '') +
+        (r.cloud && (Cloud.badge(r) || r.cloud.byName) ? '<p class="meta">' + Cloud.badge(r) + '<span>Added by ' + esc(r.cloud.byName) + '</span></p>' : '') +
+        (r.cloud && r.cloud.note && r.cloud.status === 'draft' ? '<div class="rc-note no-print"><b>From the review:</b> ' + esc(r.cloud.note) + '</div>' : '') +
       '</div>' +
       '<div class="tools">' +
         (base
@@ -473,6 +496,9 @@
       '</div>' +
       (r.notes ? '<div class="notes"><p><strong>Notes.</strong> <span id="notes"></span></p></div>' : '') +
       (r.tags && r.tags.length ? '<div class="tags r-tags">' + r.tags.map(t => '<a class="tag" href="#/" data-tag="' + esc(t) + '">' + esc(t) + '</a>').join('') + '</div>' : '') +
+      (Cloud.state === 'in' ? '<div class="panel cooked no-print" id="cooked"><h2>Made it</h2><div id="cookList"><p class="hint">Loading…</p></div>' +
+        '<form id="cookForm" class="cook-form"><input id="cookNote" maxlength="280" placeholder="How did it go? (optional)" aria-label="Note">' +
+        '<input id="cookOn" type="date" aria-label="When"><button type="submit" class="primary">I made this</button></form></div>' : '') +
       '<footer><span>' + esc(r.family.name) + (r.family.about ? ' · ' + esc(r.family.about) : '') + '</span><a href="../">Junk drawer</a></footer>';
 
     const ticked = new Set();
@@ -555,6 +581,51 @@
     });
     app.querySelectorAll('[data-tag]').forEach(a => a.addEventListener('click', () => { ui.q = a.dataset.tag; ui.fam = 'all'; }));
     syncWake();
+    if (document.getElementById('cooked')) drawCooks(r);
+  }
+
+  // =====================================================================
+  // "Made it": the crew's log for a recipe (signed in only)
+  // =====================================================================
+  const isoToday = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const niceDate = iso => new Date(iso + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: iso.slice(0, 4) === isoToday().slice(0, 4) ? undefined : 'numeric' });
+  async function drawCooks(r) {
+    const list = document.getElementById('cookList'), form = document.getElementById('cookForm');
+    const on = document.getElementById('cookOn');
+    on.value = isoToday(); on.max = isoToday();
+    async function refresh() {
+      try {
+        const cs = await Cloud.cooks(r.family.id, r.id);
+        if (!document.body.contains(list)) return;
+        list.innerHTML = cs.length
+          ? '<ul class="cooks">' + cs.map(c => '<li><b>' + esc(c.name) + '</b> <span class="muted">' + esc(niceDate(c.cooked_on)) + '</span>' +
+              (c.note ? '<span class="cook-note">' + esc(c.note) + '</span>' : '') +
+              (c.mine ? '<button type="button" class="x" data-cook="' + esc(c.id) + '" aria-label="Remove">✕</button>' : '') + '</li>').join('') + '</ul>' +
+            '<p class="hint">Made ' + cs.length + ' time' + (cs.length === 1 ? '' : 's') + ' by the crew.</p>'
+          : '<p class="hint">Nobody’s logged this one yet.</p>';
+      } catch (e) { list.innerHTML = '<p class="hint">' + esc(Cloud.friendly(e)) + '</p>'; }
+    }
+    list.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cook]'); if (!b) return;
+      try { await Cloud.removeCook(b.dataset.cook); refresh(); } catch (x) { toast(Cloud.friendly(x)); }
+    });
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = form.querySelector('button'); btn.disabled = true;
+      try {
+        await Cloud.addCook(r.family.id, r.id, document.getElementById('cookNote').value.trim(), on.value || null);
+        document.getElementById('cookNote').value = ''; toast('Logged. Nice!'); refresh();
+      } catch (x) { toast(Cloud.friendly(x)); }
+      btn.disabled = false;
+    });
+    refresh();
+  }
+
+  // The crew sign-in box on the list page. Signing in or out reloads the recipes.
+  let unmountCrew = null;
+  function mountCrew(el) {
+    if (unmountCrew) unmountCrew();
+    unmountCrew = Cloud.mountAuth(el, { onChange: () => load().then(route).catch(e => toast(Cloud.friendly(e))) });
   }
 
   // =====================================================================

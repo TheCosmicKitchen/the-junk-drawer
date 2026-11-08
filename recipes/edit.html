@@ -99,6 +99,10 @@
   .toast.show { opacity: 1; }
   footer { margin-top: 32px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   footer a { color: inherit; }
+  .crew-auth { margin: 14px 0; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; }
+  #cloudSave { margin: 14px 0; }
+  #cloudSave .out-btns { margin-top: 10px; }
+  #byHand { margin-top: 12px; }
   @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -106,7 +110,7 @@
 <main>
   <a class="back" href="./">← Recipe box</a>
   <h1 id="heading">Add a recipe</h1>
-  <p class="lede">Type it in, then download the family's file and commit it to the repo. Your draft is kept in this browser as you go.</p>
+  <p class="lede">Type it in, then save it to the box for the crew (signed in) or download the family's file and commit it to the repo. Your draft is kept in this browser as you go.</p>
   <div class="banner" id="draftBanner" hidden><span id="draftText"></span><button type="button" id="startOver">Start over</button></div>
   <p class="hint badc" id="loadErr" hidden></p>
 
@@ -189,12 +193,22 @@
   <section id="output">
     <h2>Add it to the box</h2>
     <ul class="checks" id="checks"></ul>
-    <div class="out-btns">
-      <button type="button" class="primary" id="dlFamily">Download family file</button>
-      <button type="button" id="dlFamilies" hidden>Download families.json</button>
-      <button type="button" id="copyRecipe">Copy just this recipe</button>
+    <div id="cloudSave" hidden>
+      <p class="hint" id="cloudWho"></p>
+      <div class="rc-note" id="cloudNote" hidden></div>
+      <div class="out-btns" id="cloudBtns"></div>
+      <p class="hint" id="cloudMsg" role="status"></p>
     </div>
-    <ol class="how" id="how"></ol>
+    <div id="crewAuth" class="crew-auth"></div>
+    <details id="byHand" open>
+      <summary class="hint" style="cursor:pointer">By hand: download the family file to commit</summary>
+      <div class="out-btns">
+        <button type="button" class="primary" id="dlFamily">Download family file</button>
+        <button type="button" id="dlFamilies" hidden>Download families.json</button>
+        <button type="button" id="copyRecipe">Copy just this recipe</button>
+      </div>
+      <ol class="how" id="how"></ol>
+    </details>
     <details><summary class="hint" style="cursor:pointer">Show the recipe as it will be saved</summary><pre id="json"></pre></details>
   </section>
 
@@ -204,8 +218,10 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
+<script src="cloud.js"></script>
 <script>
 (function () {
+  const Cloud = window.RecipeCloud;
   const { esc, LEAD, parseNum, niceNum, WORDS, parseIng, flatIngredients, youtube, loadFamilies } = window.RecipeCore;
   const $ = id => document.getElementById(id);
   const DRAFT_KEY = 'recipes.draft';
@@ -228,6 +244,7 @@
     editing: editKey || null, family: '', famName: '', famAbout: '',
     title: '', id: '', idTouched: false, from: '', serves: '', unit: '', time: '', video: '', tags: [], intro: '',
     groups: [{ name: '', items: [''] }], steps: [''], notes: '',
+    cloud: null,   // the database row's details when editing a recipe that's in the box
   });
   let S = blank();
 
@@ -239,6 +256,7 @@
       groups: Array.isArray(r.ingredients) ? [{ name: '', items: r.ingredients.slice() }]
         : Object.entries(r.ingredients || {}).map(([name, items]) => ({ name, items: items.slice() })),
       steps: (r.steps || []).slice(),
+      cloud: r.cloud ? Object.assign({}, r.cloud) : null,
     });
     if (!s.groups.length) s.groups = [{ name: '', items: [''] }];
     s.groups.forEach(g => { if (!g.items.length) g.items.push(''); });
@@ -675,7 +693,62 @@
       : '<li>Download <code>' + esc(fid) + '.json</code>. It already has the family’s other recipes in it' + (editing ? ', with this one updated' : ', plus this one') + '.</li>' +
         '<li>Put it in <code>recipes/data/</code>, replacing the old file.</li>') +
       '<li>Commit and push. Git keeps every earlier version, so nothing is lost.</li>';
+    drawCloud(blocked);
   }
+
+  // ---------------------------------------------------------------- saving to the box (signed in)
+  let lastState = null, saving = false;
+  function cloudProblem() {
+    const me = Cloud.me, c = S.cloud;
+    if (c && !c.mine && !me.admin) return 'Only ' + c.byName + ' or the admin can change this recipe in the box. You can still download the file below and send it over.';
+    if (S.family === '__new' && !me.admin) return 'Only the admin can add a family. Pick one from the list, or ask for a new one.';
+    const [, eid] = (S.editing || '').split('/');
+    if (S.editing && !c && (S.id || slug(S.title)) !== eid) return 'Keep the link name as “' + eid + '” when changing a recipe that’s already on the site.';
+    return '';
+  }
+  function drawCloud(blocked) {
+    const st = Cloud.state;
+    $('cloudSave').hidden = st !== 'in';
+    if (st !== lastState) { $('byHand').open = st !== 'in'; lastState = st; }
+    if (st !== 'in') return;
+    const me = Cloud.me, c = S.cloud, why = cloudProblem();
+    $('cloudWho').textContent = c
+      ? (c.status === 'approved' ? 'In the box' : c.status === 'submitted' ? 'Waiting for review' : 'A draft only ' + (c.mine ? 'you' : c.byName) + ' can see') +
+        (c.mine ? '' : ', added by ' + c.byName) + '.'
+      : (me.admin ? 'Saving puts it straight in the box for the crew.' : 'Send it in and the admin will look it over before it goes on the public page.');
+    $('cloudNote').hidden = !(c && c.note && c.status === 'draft');
+    if (c && c.note) $('cloudNote').innerHTML = '<b>From the review:</b> ' + esc(c.note);
+    const btns = me.admin
+      ? [['approved', 'Save to the box', true], ['draft', 'Save as a draft']]
+      : [['submitted', 'Send for review', true], ['draft', 'Save draft (only you)']];
+    $('cloudBtns').innerHTML = btns.map(([s, label, main]) =>
+      '<button type="button" data-save="' + s + '"' + (main ? ' class="primary"' : '') + (blocked || why || saving ? ' disabled' : '') + '>' + label + '</button>').join('') +
+      (c && (c.mine || me.admin) ? '<button type="button" id="cloudDel"' + (saving ? ' disabled' : '') + '>Remove from the box</button>' : '');
+    if (!saving) $('cloudMsg').textContent = why || (blocked ? 'Fix the things marked above first.' : '');
+  }
+  $('cloudBtns').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    if (b.id === 'cloudDel') {
+      if (!confirm('Take “' + S.title + '” out of the box? The admin can put it back from the change log.')) return;
+    }
+    saving = true; refreshOutput(); $('cloudMsg').textContent = 'Saving…';
+    try {
+      if (b.id === 'cloudDel') {
+        await Cloud.remove(S.cloud);
+        store.del(DRAFT_KEY); saving = false;
+        location.href = './';
+        return;
+      }
+      const recipe = buildRecipe(), fid = famId();
+      const family = S.family === '__new' ? { id: fid, name: S.famName.trim(), about: S.famAbout.trim(), isNew: true } : { id: fid };
+      const saved = await Cloud.save(family, recipe, b.dataset.save, S.cloud);
+      store.del(DRAFT_KEY);
+      location.href = './#/' + encodeURIComponent(fid) + '/' + encodeURIComponent(saved.id);
+    } catch (x) {
+      saving = false; refreshOutput();
+      $('cloudMsg').textContent = 'Not saved: ' + Cloud.friendly(x);
+    }
+  });
   function download(name, text) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
@@ -708,16 +781,20 @@
     s.family = families[0] ? families[0].id : '__new';
     return s;
   }
-  loadFamilies().then(fs => {
+  Cloud.mountAuth($('crewAuth'), { desk: true, pitch: 'On the crew? Sign in to save this straight to the box.', onChange: () => location.reload() });
+  loadFamilies().then(async fs => {
     families = fs;
+    try { await Cloud.overlay(families); }
+    catch (e) { console.error(e); $('loadErr').hidden = false; $('loadErr').textContent = 'Couldn’t load the crew’s recipes: ' + Cloud.friendly(e); }
     $('family').innerHTML = families.filter(f => !f.broken).map(f => '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>').join('') +
       '<option value="__new">+ A new family…</option>';
     buildVocab(); fillDatalists();
     const draft = store.get(DRAFT_KEY);
     S = startState();
-    // pick up an unfinished draft for the same thing (the same recipe being edited, or a new one)
+    // pick up an unfinished draft for the same thing (the same recipe being edited, or a new one);
+    // where the recipe lives in the box comes from what was just loaded, not from the draft
     if (draft && (draft.editing || null) === (S.editing || null) && (draft.title || draft.groups.some(g => g.items.some(x => x.trim())))) {
-      S = Object.assign(blank(), draft);
+      S = Object.assign(blank(), draft, { cloud: S.cloud });
       $('draftBanner').hidden = false;
       $('draftText').textContent = 'Picked up your unfinished draft' + (draft.title ? ' of “' + draft.title + '”' : '') + '.';
     }

@@ -5,7 +5,8 @@ A private, text-only database for **a weightlifting tracker** and **the family r
 ## Status (Nov 2026)
 
 - Project `junk-drawer` (`tjavdrqrhhvzdptlbbfv`, us-east-1) exists in the free **TheCosmicKitchen** organisation.
-- Every file in `sql/` up to `16_three_accounts.sql` is applied (each file's header names the migration it went in as).
+- Every file in `sql/` up to `23_recipe_box.sql` is applied (each file's header names the migration it went in as).
+- The recipe box uses the database (`23_recipe_box.sql`): the crew's recipes, the admin's review queue (`recipes/review.html`) and an "I made this" log. `select * from private.run_recipe_tests();` passes 28/28.
 - Accounts: John (admin) and Brandon are in. **Cynthia is next**: the limit is now 3 (`16_three_accounts.sql`); she still needs the invite steps in step 6.
 - The exercise catalogue started from the Sisyfitness list and the spreadsheet import, then was cleaned up to 237 lifts (`14_catalog_cleanup_and_rest.sql`). The seed and merge lists aren't in this repo, because they come from private sources.
 - `06_policy_tests.sql` passes 63/63. Supabase's security advisor only flags things that are deliberate (private tables with no policies; the functions members are meant to call; leaked-password protection, a dashboard switch).
