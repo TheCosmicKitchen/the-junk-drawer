@@ -57,6 +57,13 @@
   section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 20px; }
   .first { order: -1; border-color: var(--accent); }
   header { order: -2; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -12px 0 18px; font-size: 14px; }
+  .topbar a { color: var(--muted); text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  #acctBtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 8px 16px; border-radius: 99px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #acctBtn.in { background: var(--card); color: var(--ink); border-color: var(--line); font-weight: 500; }
+  #acctBtn.in::before { content: "● "; color: var(--good); }
+  #signBody form { display: grid; gap: 10px; }
   [hidden] { display: none !important; }
 
   .tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px 10px; margin: 4px 0 14px; }
@@ -151,6 +158,7 @@
 <body>
 <main>
   <header>
+    <div class="topbar"><a href="../">Junk drawer</a><button type="button" id="acctBtn" aria-label="Sign in">Sign in</button></div>
     <h1>Words for Piroshki</h1>
     <p class="sub">Every story you're writing this November. Hit all your goals and a tray of piroshki is yours.</p>
     <p class="sub following" id="modeNote" hidden></p>
@@ -174,6 +182,11 @@
     <div class="legend"><span id="pct">0%</span><span>line = where you'd be at an even pace today</span></div>
     <div class="btns" style="margin-top:16px"><button type="button" class="primary" id="shareBtn">Share progress</button></div>
   </section>
+
+  <dialog id="signDlg" aria-labelledby="signH">
+    <div class="dlg-head"><h2 id="signH">Sign in</h2><button type="button" id="signClose" aria-label="Close">✕</button></div>
+    <div id="signBody"></div>
+  </dialog>
 
   <dialog id="shareDlg" aria-labelledby="shareH">
     <div class="dlg-head"><h2 id="shareH">Your progress card</h2><button type="button" id="shareClose" aria-label="Close">✕</button></div>

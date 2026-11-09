@@ -32,8 +32,25 @@ const must = ({ data, error }) => { if (error) throw new Error(friendly(error));
 // ---------------------------------------------------------------------------
 // Signing in (password, then an authenticator code if the account has one)
 // ---------------------------------------------------------------------------
+// The form lives in a pop-up opened from the button at the top right; the section at the bottom of
+// the page holds the shared tracker's status and controls once you're in.
+const dlg = $('signDlg'), dlgBody = $('signBody'), acct = $('acctBtn');
+function openDlg() { if (!dlg.open) { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', ''); } }
+function closeDlg() { if (dlg.open) dlg.close(); }
+$('signClose').onclick = closeDlg;
+dlg.addEventListener('click', e => { if (e.target === dlg) closeDlg(); });
+function setAcct(label) {
+  acct.textContent = label || 'Sign in';
+  acct.classList.toggle('in', !!label);
+  acct.setAttribute('aria-label', label ? 'Signed in as ' + label + ': shared tracker settings' : 'Sign in');
+}
+acct.onclick = () => {
+  if (acct.classList.contains('in')) { $('sharedSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  showSignIn();
+};
 function showSignIn(problem) {
-  body.innerHTML =
+  openDlg();
+  dlgBody.innerHTML =
     '<p class="hint" style="margin:0">For the crew and the one person whose progress is shared. Same account as the lift log; no sign-ups.</p>' +
     '<form id="sharedForm" autocomplete="on"><div><label for="shEmail">Email</label><input id="shEmail" type="email" autocomplete="username" required></div>' +
     '<div><label for="shPw">Password</label><input id="shPw" type="password" autocomplete="current-password" required></div>' +
@@ -47,43 +64,52 @@ function showSignIn(problem) {
     try {
       const c = await client();
       must(await c.auth.signInWithPassword({ email: $('shEmail').value.trim(), password: $('shPw').value }));
-      await afterSignIn();
+      await afterSignIn(true);
     } catch (x) { msg.textContent = friendly(x); btn.disabled = false; }
   });
-  $('signInCancel').onclick = showSignedOut;
+  $('signInCancel').onclick = closeDlg;
   $('shEmail').focus();
 }
 function showCode(factor) {
-  body.innerHTML = '<form id="codeForm"><div><label for="shCode">6-digit code from your authenticator app</label>' +
+  openDlg();
+  dlgBody.innerHTML = '<form id="codeForm"><div><label for="shCode">6-digit code from your authenticator app</label>' +
     '<input id="shCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></div>' +
     '<div class="btns"><button class="primary" type="submit">Continue</button><button type="button" id="codeCancel">Sign out</button></div><p class="warnmsg" role="alert"></p></form>';
   const f = $('codeForm');
   f.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = f.querySelector('.warnmsg');
-    try { must(await sb.auth.mfa.challengeAndVerify({ factorId: factor.id, code: $('shCode').value.trim() })); await afterSignIn(); }
+    try { must(await sb.auth.mfa.challengeAndVerify({ factorId: factor.id, code: $('shCode').value.trim() })); await afterSignIn(true); }
     catch (x) { msg.textContent = friendly(x); }
   });
   $('codeCancel').onclick = signOut;
   $('shCode').focus();
 }
 function showSignedOut() {
+  setAcct('');
   body.innerHTML = '<p class="hint" style="margin:0">Following a friend, or writing for the crew to follow? <button type="button" id="signInOpen">Sign in</button></p>';
   $('signInOpen').onclick = () => showSignIn();
 }
 async function signOut() {
+  closeDlg();
   if (sb) await sb.auth.signOut();
   access = null; P.local(); setFoot(); showSignedOut();
 }
 
-async function afterSignIn() {
+async function afterSignIn(fromForm) {
   body.innerHTML = '<p class="hint" style="margin:0">Checking your account…</p>';
+  setAcct('…');
   const aal = must(await sb.auth.mfa.getAuthenticatorAssuranceLevel());
   if (aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
     const f = (must(await sb.auth.mfa.listFactors()).totp || [])[0];
     if (f) return showCode(f);
   }
   access = (must(await sb.rpc('piroshki_access')) || [])[0] || {};
+  closeDlg();
+  let who = access.can_write ? access.writer_name : '';
+  if (!who) { try { who = ((must(await sb.rpc('me')) || [])[0] || {}).display_name; } catch (e) {} }
+  setAcct(who || 'Signed in');
+  if (fromForm) setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
   if (access.can_write) return startWriting();
   if (access.can_read) return startReading();
   body.innerHTML = '<p style="margin:0">You’re signed in, but this account can’t see the shared tracker. If you’re on the crew and use an authenticator code, open the <a href="../lift/">lift log</a> once to finish signing in.</p>' +
