@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Iron Kaiju mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@600;700&family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* A dream sketch of a fifth costume for the lift log: "The Iron Kaiju". Same tokens as themes.js
+     (bg, card, ink, accent, gold...), so it can be dropped into VARS / THEMES as-is. */
+  :root {
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif; --body: Figtree, system-ui, sans-serif;
+    --brandfont: Bungee, Impact, sans-serif; --headfont: "Chakra Petch", "Arial Narrow", sans-serif;
+    --page: #d9ddd6; --page-ink: #1a1f1b;
+  }
+  .light {
+    --bg: #eceee8; --card: #fbfcf8; --ink: #141a16; --muted: #59655d; --line: #d6dcd3; --chip: #e3e8e0;
+    --accent: #13804a; --accent-ink: #ffffff; --accent-soft: #d8eedf; --good: #1d8754; --gold: #c2410c; --gold-soft: #fde5d4;
+    --beast: rgba(20, 26, 22, .10); --glow: 0 0 0 transparent;
+  }
+  .dark {
+    --bg: #090d0b; --card: #111814; --ink: #e4f1e8; --muted: #8ea395; --line: #1f2c25; --chip: #18221d;
+    --accent: #47e08f; --accent-ink: #03140a; --accent-soft: #10301f; --good: #7be3a6; --gold: #ff8a3d; --gold-soft: #36200f;
+    --beast: rgba(71, 224, 143, .13); --glow: 0 0 18px rgba(71, 224, 143, .35);
+  }
+  @media (prefers-color-scheme: dark) { :root { --page: #050706; --page-ink: #dfe9e2; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--page-ink); font: 15px/1.45 var(--body); }
+  .intro { max-width: 860px; margin: 0 auto; padding: 28px 16px 6px; }
+  .intro h1 { font: 400 clamp(28px, 6vw, 44px)/1 var(--brandfont); margin: 0; letter-spacing: .01em; }
+  .intro p { margin: 8px 0 0; max-width: 62ch; opacity: .8; }
+  .phones { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; padding: 22px 16px; }
+  .phone { width: 380px; max-width: 100%; background: var(--bg); color: var(--ink); border-radius: 30px; padding: 0 14px 0; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.22); position: relative; }
+  .phone-label { text-align: center; font: 700 12px var(--body); letter-spacing: .1em; text-transform: uppercase; opacity: .6; margin-bottom: 8px; }
+
+  /* ---- shell ---- */
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 16px 2px 8px; }
+  .brand { display: flex; align-items: center; gap: 9px; font: 400 23px var(--brandfont); color: var(--ink); white-space: nowrap; }
+  .brand svg { width: 32px; height: 32px; }
+  .iconbtn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
+  .card-title { font: 700 18px var(--headfont); text-transform: uppercase; letter-spacing: .04em; margin: 0; }
+  .sub { color: var(--muted); font-size: 12.5px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---- the costume: hazard tape, a skyline with something rising behind it ---- */
+  .hero { position: relative; overflow: hidden; padding: 24px 16px 84px; border-radius: 14px 14px 14px 14px; }
+  .hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px;
+    background: repeating-linear-gradient(135deg, var(--gold) 0 10px, var(--ink) 10px 20px); }
+  .hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 92px; background: var(--beast);
+    -webkit-mask: var(--skyline) bottom / 100% 100% no-repeat; mask: var(--skyline) bottom / 100% 100% no-repeat; }
+  .hero .eye { position: absolute; z-index: 1; width: 7px; height: 4px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 10px 2px var(--gold); right: 21.5%; bottom: 47px; animation: blink 6s infinite; }
+  @keyframes blink { 0%, 46%, 50%, 100% { transform: scaleY(1); } 48% { transform: scaleY(.1); } }
+  .hero .date { font: 700 12.5px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+  .hero .date::before { content: "⚠ "; }
+  .hero h1 { font: 700 38px/1 var(--headfont); text-transform: uppercase; letter-spacing: .02em; margin: 6px 0 0; text-shadow: var(--glow); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; position: relative; z-index: 1; }
+  .stat b { display: block; font: 700 27px/1.1 var(--display); }
+  .stat small { color: var(--muted); font-size: 12px; font-weight: 600; }
+  .clock { margin-top: 10px; font-weight: 700; font-size: 13.5px; color: var(--accent); position: relative; z-index: 1; }
+
+  .ex { padding: 9px 0; border-top: 1px solid var(--line); }
+  .ex:first-of-type { border-top: 0; }
+  .ex b { font-weight: 700; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .chip { background: var(--chip); border-radius: 8px; padding: 4px 9px; font: 600 14px var(--body); font-variant-numeric: tabular-nums; }
+  .chip.pr { background: var(--gold-soft); color: var(--gold); box-shadow: inset 0 0 0 1.5px var(--gold); }
+  .pr-flag { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--gold-soft); color: var(--gold); font-weight: 700; display: flex; gap: 8px; align-items: center; }
+  .finish { display: block; width: 100%; margin-top: 12px; border: 0; border-radius: 10px; padding: 13px; background: var(--accent); color: var(--accent-ink); font: 700 16px var(--body); box-shadow: var(--glow); }
+
+  .rack { width: 100%; height: auto; display: block; margin: 6px 0 2px; }
+  .quest { margin-top: 10px; }
+  .quest .row { display: flex; justify-content: space-between; font-size: 14px; }
+  .bar { height: 9px; border-radius: 99px; background: var(--chip); overflow: hidden; margin-top: 5px; }
+  .bar i { display: block; height: 100%; background: repeating-linear-gradient(135deg, var(--gold) 0 7px, color-mix(in srgb, var(--gold) 70%, var(--card)) 7px 14px); border-radius: 99px; }
+
+  .wins { border-top: 3px solid var(--accent); }
+  .line { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .line:first-of-type { border-top: 0; }
+  .line .ic { width: 22px; text-align: center; flex: none; }
+  .line .when { color: var(--muted); font-size: 12px; }
+  .ticker { margin: -14px -14px 10px; padding: 5px 14px; background: var(--gold); color: var(--card); font: 700 11.5px var(--headfont); letter-spacing: .14em; text-transform: uppercase; border-radius: 11px 11px 0 0; overflow: hidden; white-space: nowrap; }
+  .ticker span { display: inline-block; padding-left: 100%; animation: tick 16s linear infinite; }
+  @keyframes tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 6px; }
+  th { text-align: left; font: 700 11px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 4px; }
+  td { padding: 7px 4px; border-top: 1px solid var(--line); }
+  td:last-child, th:last-child { text-align: right; }
+
+  .toast { margin: 14px auto 0; width: fit-content; max-width: 100%; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 99px; font-weight: 600; font-size: 13.5px; }
+  .tabs { margin: 14px -14px 0; padding: 8px 8px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); background: color-mix(in srgb, var(--bg) 90%, transparent); }
+  .tabs span { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; color: var(--muted); }
+  .tabs span i { font-style: normal; font-size: 18px; line-height: 26px; }
+  .tabs span.on { color: var(--accent); }
+  .tabs span.on i { background: var(--accent-soft); border-radius: 99px; padding: 0 14px; }
+
+  /* ---- below the phones ---- */
+  .sheet { max-width: 860px; margin: 0 auto; padding: 8px 16px 48px; }
+  .sheet h2 { font: 700 20px var(--headfont); text-transform: uppercase; letter-spacing: .04em; margin: 26px 0 8px; }
+  .picker { display: flex; align-items: center; gap: 12px; max-width: 380px; border-radius: 14px; padding: 10px 12px; background: #fbfcf8; color: #141a16; border: 1px solid #13804a; box-shadow: inset 0 0 0 1px #13804a; }
+  .picker small { color: #59655d; font-size: 13px; }
+  .sw { flex: none; width: 46px; height: 34px; border-radius: 9px; border: 1px solid #d6dcd3; display: flex; align-items: center; justify-content: center; gap: 4px; background: #eceee8; }
+  .sw i { width: 12px; height: 12px; border-radius: 50%; }
+  .phrases { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .phrases td { border-top: 1px solid color-mix(in srgb, var(--page-ink) 15%, transparent); padding: 7px 6px; vertical-align: top; }
+  .phrases td:first-child { opacity: .6; white-space: nowrap; width: 1%; }
+  .phrases td:nth-child(2) { opacity: .6; }
+  .phrases td:last-child { text-align: left; font-weight: 600; }
+  .phrases th { color: inherit; opacity: .6; }
+  .phrases th:last-child { text-align: left; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatches div { width: 120px; border-radius: 10px; overflow: hidden; font-size: 12px; border: 1px solid color-mix(in srgb, var(--page-ink) 15%, transparent); }
+  .swatches b { display: block; height: 38px; }
+  .swatches span { display: block; padding: 5px 8px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>The Iron Kaiju</h1>
+  <p>A fifth costume for the lift log, for Brandon. Monster-movie poster lettering, hazard tape, a skyline with
+    something rising behind it. Radioactive green for actions, hazard orange
+    for feats of monstrous strength (PRs) and buildings destroyed (clubs). Dark mode is the
+    main event; light mode reads like a civil-defense bulletin.</p>
+</div>
+
+<div class="phones">
+  <div><div class="phone-label">Dark</div><div class="phone dark" data-screen></div></div>
+  <div><div class="phone-label">Light</div><div class="phone light" data-screen></div></div>
+</div>
+
+<div class="sheet">
+  <h2>In the theme picker</h2>
+  <div class="picker">
+    <span class="sw"><i style="background:#eceee8;border:1px solid #c9cfc6"></i><i style="background:#13804a"></i><i style="background:#c2410c"></i></span>
+    <span><b>The Iron Kaiju</b><br><small>Hazard tape, skyline, radioactive green and alarm orange</small></span>
+  </div>
+
+  <h2>Palette</h2>
+  <div class="swatches" id="swatches"></div>
+
+  <h2>Phrasebook</h2>
+  <table class="phrases">
+    <thead><tr><th>Key</th><th>Plain</th><th>Kaiju</th></tr></thead>
+    <tbody id="phrases"></tbody>
+  </table>
+</div>
+
+<template id="screen">
+  <div class="top">
+    <div class="brand"><span class="logo"></span>The Iron Kaiju</div>
+    <div class="iconbtn">☰</div>
+  </div>
+
+  <section class="card hero">
+    <div class="date">Monday, November 9</div>
+    <h1>City-level threat.</h1>
+    <div class="stats">
+      <div class="stat"><b class="num">17</b><small>sets</small></div>
+      <div class="stat"><b class="num">14,820</b><small>lb moved</small></div>
+      <div class="stat"><b class="num">3</b><small>lifts</small></div>
+    </div>
+    <div class="clock num">● Rampaging · 52:10</div>
+    <span class="eye"></span>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Today’s Rampage</h2>
+    <div class="sub">Attack pattern: Lower A</div>
+    <div class="ex" style="margin-top:6px"><b>Back squat</b>
+      <div class="chips"><span class="chip">275 × 5</span><span class="chip">295 × 5</span><span class="chip pr">🧬 315 × 5</span></div></div>
+    <div class="ex"><b>Romanian deadlift</b>
+      <div class="chips"><span class="chip">225 × 8</span><span class="chip">225 × 8</span><span class="chip">225 × 7</span></div></div>
+    <div class="pr-flag">🧬 A new evolution! Back squat 315 × 5</div>
+    <button class="finish">Return to the sea · broadcast it</button>
+  </section>
+
+  <div class="toast">🏢 Building destroyed: welcome to the 1,000 lb club</div>
+
+  <section class="card">
+    <h2 class="card-title">Buildings destroyed</h2>
+    <div class="sub">one leveled for each of the 5 clubs joined</div>
+    <svg class="rack" viewBox="0 0 320 130" data-rack></svg>
+  </section>
+
+  <section class="card wins">
+    <div class="ticker"><span>⚠ Emergency broadcast · Stay indoors · Do not approach the squat rack ⚠</span></div>
+    <h2 class="card-title">Emergency broadcast</h2>
+    <div class="sub" style="margin-bottom:4px">Feats of monstrous strength, buildings destroyed and rampages from the crew</div>
+    <div class="line"><span class="ic">🧬</span><span><b>Brandon</b> evolved: Bench 225 × 3<br><span class="when">12 min ago</span></span></div>
+    <div class="line"><span class="ic">👑</span><span><b>Jess</b> became alpha: Deadlift 405<br><span class="when">2 h ago</span></span></div>
+    <div class="line"><span class="ic">🏢</span><span><b>Mo</b> destroyed a building: the 300 club<br><span class="when">yesterday</span></span></div>
+    <div class="line"><span class="ic">🦖</span><span><b>Brandon</b> went on a rampage: Push day<br><span class="when">yesterday</span></span></div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Invasions</h2>
+    <div class="sub">this week’s targets, the same for the whole crew</div>
+    <div class="quest"><div class="row"><span>🗺️ Level 40,000 lb this week</span><span class="num">31k</span></div><div class="bar"><i style="width:78%"></i></div></div>
+    <div class="quest"><div class="row"><span>🗺️ Four rampages before Sunday</span><span class="num">2 / 4</span></div><div class="bar"><i style="width:50%"></i></div></div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">The Alphas</h2>
+    <div class="sub">Beat the alpha’s best and the territory is yours.</div>
+    <table><thead><tr><th>Lift</th><th>Alpha</th><th>Best</th></tr></thead><tbody>
+      <tr><td>Deadlift</td><td>👑 Jess</td><td class="num">405</td></tr>
+      <tr><td>Back squat</td><td>👑 Brandon</td><td class="num">335</td></tr>
+      <tr><td>Bench</td><td>👑 Mo</td><td class="num">245</td></tr>
+    </tbody></table>
+  </section>
+
+  <nav class="tabs">
+    <span class="on"><i>🦶</i>Stomp</span><span><i>☰</i>Attacks</span><span><i>▦</i>Sightings</span><span><i>◷</i>Eras</span><span><i>↗</i>Growth</span>
+  </nav>
+</template>
+
+<script>
+// The logo: three dorsal spines rising over a loaded bar.
+const LOGO = '<svg viewBox="0 0 40 40" aria-hidden="true">' +
+  '<path d="M9 23 L12.5 11 L15 16 L20 3 L25 16 L27.5 11 L31 23 Z" fill="var(--accent)"/>' +
+  '<rect x="2" y="22.6" width="36" height="3" rx="1.5" fill="var(--ink)"/>' +
+  '<rect x="5" y="16" width="4.4" height="16" rx="1.4" fill="var(--ink)"/><rect x="30.6" y="16" width="4.4" height="16" rx="1.4" fill="var(--ink)"/>' +
+  '<rect x="1" y="18.5" width="3" height="11" rx="1" fill="var(--gold)"/><rect x="36" y="18.5" width="3" height="11" rx="1" fill="var(--gold)"/></svg>';
+
+// The skyline for the hero, used as a mask so it takes the theme's color. Something with a back full of
+// spines rises behind the buildings, head turned toward the right edge.
+const SKY = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 92" preserveAspectRatio="none">' +
+  '<path d="M196 92 C196 70 205 52 222 40 L218 30 L230 35 L232 20 L242 30 L248 12 L256 27 L266 18 L268 31 C284 30 296 34 304 42 L322 40 L330 46 L318 52 C322 62 324 76 324 92 Z"/>' +
+  '<path d="M0 92 V62 H18 V48 H34 V70 H44 V36 H58 V30 H66 V58 H80 V66 H96 V44 H112 V72 H122 V52 H140 V60 H150 V40 H158 V28 H164 V40 H172 V66 H190 V56 H210 V74 H226 V62 H246 V70 H262 V50 H278 V64 H296 V58 H314 V72 H326 V46 H340 V36 H352 V60 H366 V54 H382 V68 H400 V92 Z"/></svg>';
+document.documentElement.style.setProperty('--skyline', 'url("data:image/svg+xml,' + encodeURIComponent(SKY) + '")');
+
+// One wrecked building per club joined. The next one still stands, but it cracks and leans further
+// as you near the next club. Shaped to drop into token() in app.js as kind 'building'.
+function building(cx, glow, next) {
+  if (!next) return '<path d="M' + (cx - 14) + ' 112 V86 L' + (cx - 8) + ' 79 L' + (cx - 3) + ' 87 L' + (cx + 3) + ' 74 L' + (cx + 8) + ' 83 L' + (cx + 14) + ' 77 V112 Z" fill="var(--muted)"/>' +
+    '<rect x="' + (cx - 9) + '" y="92" width="5" height="5" fill="var(--card)" opacity=".5"/><rect x="' + (cx + 3) + '" y="100" width="5" height="5" fill="var(--card)" opacity=".5"/>' +
+    '<path d="M' + (cx + 3) + ' 76 C ' + (cx + 9) + ' 66, ' + (cx + 6) + ' 60, ' + (cx + 1) + ' 54 C ' + (cx + 1) + ' 62, ' + (cx - 6) + ' 64, ' + (cx - 5) + ' 72 C ' + (cx - 4) + ' 78, ' + (cx + 1) + ' 79, ' + (cx + 3) + ' 76 Z" fill="var(--gold)"/>' +
+    '<path d="M' + (cx + 1) + ' 75 C ' + (cx + 4) + ' 70, ' + (cx + 3) + ' 67, ' + (cx + 1) + ' 64 C ' + (cx) + ' 68, ' + (cx - 3) + ' 70, ' + (cx - 2) + ' 73 Z" fill="#fff" opacity=".6"/>' +
+    '<rect x="' + (cx - 19) + '" y="108" width="6" height="4" rx="1" fill="var(--muted)"/><rect x="' + (cx + 14) + '" y="107" width="5" height="5" rx="1" fill="var(--muted)"/>';
+  let win = '';
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 3; c++) win += '<rect x="' + (cx - 9 + c * 7) + '" y="' + (50 + r * 10) + '" width="4" height="5" fill="var(--card)"/>';
+  return '<g transform="rotate(' + (glow * 9).toFixed(1) + ' ' + (cx + 13) + ' 112)">' +
+    '<rect x="' + (cx - 13) + '" y="44" width="26" height="68" fill="var(--chip)" stroke="var(--line)" stroke-width="1.5"/>' + win +
+    '<path d="M' + (cx - 13) + ' 70 L' + (cx - 4) + ' 76 L' + (cx - 7) + ' 86 L' + (cx + 3) + ' 92 L' + (cx) + ' 104 M' + (cx - 4) + ' 76 L' + (cx + 6) + ' 72 L' + (cx + 13) + ' 78" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round" opacity="' + glow.toFixed(2) + '"/></g>';
+}
+function rack(lit, ratio, tag) {
+  const n = Math.min(lit, 6) + 1, W = 320, gap = W / 7, x0 = (W - gap * n) / 2;
+  let s = '<rect x="8" y="112" width="304" height="8" rx="3" fill="var(--chip)"/>' +
+    '<path d="M8 120 l10 10 M40 120 l10 10 M150 120 l10 10 M270 120 l10 10" stroke="var(--line)" stroke-width="2"/>';
+  for (let i = 0; i < n; i++) s += building(x0 + gap * i + gap / 2, i === n - 1 ? ratio : 1, i === n - 1);
+  return s;
+}
+
+document.querySelectorAll('[data-screen]').forEach((el, k) => {
+  el.appendChild(document.getElementById('screen').content.cloneNode(true));
+  el.querySelector('.logo').innerHTML = LOGO;
+  el.querySelector('.logo svg').style.cssText = 'width:32px;height:32px;display:block';
+  el.querySelector('[data-rack]').innerHTML = rack(5, 0.6, 'sp' + k + '-');
+});
+
+const PAL = [
+  ['bg', '#090d0b', '#eceee8'], ['card', '#111814', '#fbfcf8'], ['ink', '#e4f1e8', '#141a16'],
+  ['accent · radioactive', '#47e08f', '#13804a'], ['gold · hazard', '#ff8a3d', '#c2410c'], ['muted', '#8ea395', '#59655d'],
+];
+document.getElementById('swatches').innerHTML = PAL.map(([n, d, l]) =>
+  '<div><b style="background:linear-gradient(90deg,' + d + ' 50%,' + l + ' 50%)"></b><span>' + n + '<br><small>' + d + ' / ' + l + '</small></span></div>').join('');
+
+const PH = [
+  ['motto', 'SHOW UP · LIFT · WRITE IT DOWN', 'RISE FROM THE DEEP · LEVEL THE CITY'],
+  ['tagline', 'Log the set.', 'Something stirs. Log the set.'],
+  ['tabs', 'Log · Routines · Calendar · Seasons · Progress', 'Stomp · Attacks · Sightings · Eras · Growth'],
+  ['helloBig / helloSome', 'Big day. / In session.', 'City-level threat. / Surfacing.'],
+  ['emptyH / emptyP', 'The bar awaits. / Log a set…', 'The sea is calm. / Log a set and something stirs.'],
+  ['finish', 'Finish ›', 'Return to the sea · Finish ›'],
+  ['ended', 'Session done. Nice work.', 'Back to the deep. The city is still standing (mostly).'],
+  ['PR / PRs', 'PR / PRs', 'Feat / Feats of monstrous strength'],
+  ['prToast', '🏆 A PR:', '🧬 A new evolution!'],
+  ['win.pr (feed)', 'Set a PR:', 'Evolved:'],
+  ['clubToast', '🎖️ New club: welcome to the', '🏢 Building destroyed: welcome to the'],
+  ['clubs', 'Clubs (plates)', 'Buildings destroyed (one leveled per club)'],
+  ['win.club (feed)', 'Joined the', 'Destroyed a building: the'],
+  ['weekly / streak', 'Last week / week streak', 'Threat report / weeks rampaging'],
+  ['rest', 'Consider a deload week', 'Consider a hibernation week: same lifts at about 60%, then resurface'],
+  ['feed', 'Wins', 'Emergency broadcast'],
+  ['records / holderCol', 'Crew records / Holder', 'The Alphas / Alpha'],
+  ['quests', 'Challenges', 'Invasions'],
+  ['goals / goalsKept', 'Goals / Goals hit', 'Targets / Targets leveled'],
+  ['plan', 'The plan', 'The attack plan'],
+  ['points', 'points', 'megatons'],
+  ['dry', 'A plateau…', 'Frozen in the ice: three sessions without a new best on this lift…'],
+  ['ach', 'first / 5 / 20 visits', 'Something has surfaced. / Sightings confirmed. / Twenty gym days. Category 5.'],
+  ['icons', '🏆 🎖️ ✅ 💪 👑 🎯 🛌 📉', '🧬 🏢 🎯 🦖 👑 🗺️ 🌊 🧊'],
+];
+document.getElementById('phrases').innerHTML = PH.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td></tr>').join('');
+</script>
+</body>
+</html>

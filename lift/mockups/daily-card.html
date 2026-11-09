@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily card mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Cinzel:wght@600;700&family=Figtree:wght@400;500;600;700;800&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f4; --card: #ffffff; --ink: #121820; --muted: #5b6674; --line: #dce2e9; --chip: #e9eef3;
+    --accent: #2a5fd3; --accent-soft: #e1eafb; --gold: #a97a06; --gold-soft: #f7eed2; --good: #1d8754;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #8a63b5;
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif; --body: Figtree, system-ui, sans-serif; --head: Cinzel, Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); }
+  .wrap { max-width: 400px; margin: 0 auto; padding: 18px 14px 40px; }
+  .label { font: 700 12px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 26px 4px 8px; }
+  .label b { color: var(--accent); }
+  .feed { background: var(--card); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 18px; padding: 14px 14px 6px; }
+  .feed h3 { font: 700 19px var(--head); margin: 0; }
+  .feed .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+  .line { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .line .ic { width: 22px; text-align: center; }
+  .line .when { color: var(--muted); font-size: 12px; }
+  .who { font-weight: 700; }
+  .who i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* A: order of service */
+  .a { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 4px 0 10px; background: var(--card); }
+  .a .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .a .title { font: 700 17px var(--head); }
+  .a .date { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .a .stats { display: flex; gap: 6px; margin: 8px 0 6px; flex-wrap: wrap; }
+  .a .stats span { background: var(--chip); border-radius: 9px; padding: 3px 9px; font: 700 15px var(--display); }
+  .a .stats small { font: 500 11.5px var(--body); color: var(--muted); }
+  .a ol { list-style: none; margin: 0; padding: 0; }
+  .a li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+  .a li:first-child { border-top: 0; }
+  .a li b { font-weight: 600; }
+  .a li .r { color: var(--muted); white-space: nowrap; }
+  .a li.pr .r { color: var(--gold); font-weight: 700; }
+  .a .foot { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .a .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .a .badge { display: flex; align-items: center; gap: 6px; background: var(--gold-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent); border-radius: 99px; padding: 3px 10px 3px 4px; font-size: 12.5px; font-weight: 600; }
+  .a .badge .m { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--card); font-size: 13px; }
+  .a .badge small { font-weight: 500; color: var(--muted); }
+  .a .badge.new { box-shadow: 0 0 0 2px var(--gold); }
+
+  /* B: one big number */
+  .b { border: 1px solid var(--line); border-radius: 14px; padding: 14px 12px 12px; margin: 4px 0 10px; background: var(--card); text-align: left; }
+  .b .kick { font: 700 11.5px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+  .b .big { font: 800 44px/1 var(--display); margin-top: 4px; }
+  .b .big small { font: 600 16px var(--body); color: var(--muted); margin-left: 4px; }
+  .b .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .b .bar { display: flex; height: 12px; border-radius: 99px; overflow: hidden; margin: 12px 0 8px; gap: 2px; }
+  .b .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: 12.5px; }
+  .b .legend span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .b .legend i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  .b .legend em { font-style: normal; color: var(--muted); margin-left: auto; }
+  .b .pr { margin-top: 10px; background: var(--gold-soft); color: var(--ink); border-radius: 10px; padding: 7px 10px; font-size: 13px; }
+  .b .pr b { color: var(--gold); }
+
+  /* C: dots per set */
+  .c { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 4px 0 10px; background: var(--card); }
+  .c .top { display: flex; justify-content: space-between; align-items: center; }
+  .c .title { font: 700 17px var(--head); }
+  .c .sum { font: 700 16px var(--display); color: var(--muted); }
+  .c .row { display: grid; grid-template-columns: 1fr auto 62px; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .c .row:first-of-type { border-top: 0; }
+  .c .dots { display: flex; gap: 4px; }
+  .c .dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+  .c .dots i.pr { background: var(--gold); box-shadow: 0 0 0 2px var(--gold-soft); }
+  .c .dots i.miss { background: transparent; border: 2px solid var(--line); }
+  .c .w { text-align: right; font: 700 15px var(--display); }
+  .c .foot { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .c .foot b { color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="label"><b>A</b> · Order of service: every lift, top set each</div>
+<section class="feed">
+  <h3>Miracles</h3><div class="sub">the crew’s wins</div>
+  <div class="line" style="display:block">
+    <div class="who"><i style="background:var(--s2)"></i>Brandon <span class="when">· 54 min ago</span></div>
+    <div class="a">
+      <div class="top"><span class="title">⛪ Push day</span><span class="date">Mon, Nov 9</span></div>
+      <div class="stats"><span class="num">7,455 <small>lb</small></span><span class="num">12 <small>sets</small></span><span class="num">54 <small>min</small></span><span class="num" style="background:var(--gold-soft);color:var(--gold)">1 <small style="color:var(--gold)">PR</small></span></div>
+      <ol>
+        <li class="pr"><b>Bench Press</b><span class="r num">🙌 3 × 5 @ 180</span></li>
+        <li><b>Shoulder Press</b><span class="r num">3 × 8 @ 100</span></li>
+        <li><b>Dips</b><span class="r num">3 × 10 · bodyweight</span></li>
+        <li><b>Tricep Pushdown</b><span class="r num">3 × 12 @ 67.5</span></li>
+      </ol>
+      <div class="badges">
+        <span class="badge new"><span class="m">🕯️</span>500K Club <small>new</small></span>
+        <span class="badge"><span class="m">✅</span>Kept a vow <small>Move a mountain</small></span>
+        <span class="badge"><span class="m">🥾</span>Pilgrimage <small>Set a PR</small></span>
+        <span class="badge"><span class="m">🔥</span>8-week streak</span>
+      </div>
+      <div class="foot">Fall block · week 3 · 3rd gym day this week</div>
+    </div>
+  </div>
+  <div class="line"><span class="ic">🙌</span><span><span class="who"><i style="background:var(--s2)"></i>Brandon</span> Bench Press PR: 180 lb × 5<br><span class="when">54 min ago</span></span></div>
+</section>
+
+<div class="label"><b>B</b> · One big number, where it went</div>
+<section class="feed">
+  <h3>Miracles</h3><div class="sub">the crew’s wins</div>
+  <div class="line" style="display:block">
+    <div class="who"><i style="background:var(--s1)"></i>John <span class="when">· this morning</span></div>
+    <div class="b">
+      <div class="kick">Went to Mass · Leg day</div>
+      <div class="big num">14,820<small>lb</small></div>
+      <div class="meta">16 sets · 4 lifts · 61 min</div>
+      <div class="bar"><i style="flex:6240;background:var(--s1)"></i><i style="flex:4800;background:var(--s2)"></i><i style="flex:2700;background:var(--s3)"></i><i style="flex:1080;background:var(--s4)"></i></div>
+      <div class="legend">
+        <span><i style="background:var(--s1)"></i>Leg Press<em class="num">6.2K</em></span>
+        <span><i style="background:var(--s2)"></i>Barbell Squat<em class="num">4.8K</em></span>
+        <span><i style="background:var(--s3)"></i>RDL<em class="num">2.7K</em></span>
+        <span><i style="background:var(--s4)"></i>Calf Raise<em class="num">1.1K</em></span>
+      </div>
+      <div class="pr">🙌 <b>2 PRs</b>: Barbell Squat 235 × 5, Leg Press 330 × 10</div>
+    </div>
+  </div>
+</section>
+
+<div class="label"><b>C</b> · Dots: one per set, gold for a PR</div>
+<section class="feed">
+  <h3>Miracles</h3><div class="sub">the crew’s wins</div>
+  <div class="line" style="display:block">
+    <div class="who"><i style="background:var(--s3)"></i>Cynthia <span class="when">· 2 h ago</span></div>
+    <div class="c">
+      <div class="top"><span class="title">⛪ Pull day</span><span class="sum num">9,360 lb · 48 min</span></div>
+      <div class="row"><span>Lat Pulldown</span><span class="dots"><i></i><i></i><i class="pr"></i></span><span class="w num">120 × 10</span></div>
+      <div class="row"><span>Seated Cable Row</span><span class="dots"><i></i><i></i><i></i></span><span class="w num">110 × 10</span></div>
+      <div class="row"><span>Face Pull</span><span class="dots"><i></i><i></i><i></i><i></i></span><span class="w num">40 × 15</span></div>
+      <div class="row"><span>Bicep Curl</span><span class="dots"><i></i><i></i><i class="miss"></i></span><span class="w num">25 × 12</span></div>
+      <div class="foot"><span>11 of 12 planned sets</span><span><b>1 PR</b> · Lat Pulldown</span></div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

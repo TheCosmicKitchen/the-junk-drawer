@@ -90,33 +90,14 @@ function toast(msg, action) {
 const fail = e => toast(e && e.message ? e.message : 'Something went wrong.');
 
 // A rack of tokens, one lit for each club you've joined (the latest six), and the next one catching as
-// you get closer to it. What a token is depends on the theme: a candle, a signal lamp, a jar, a plate.
-function token(kind, cx, glow, next) {
-  const op = next ? (0.25 + glow * 0.75).toFixed(2) : 1, on = glow > 0.02;
-  if (kind === 'lamp') return '<rect x="' + (cx - 2) + '" y="70" width="4" height="42" fill="var(--muted)"/>' +
-    '<rect x="' + (cx - 14) + '" y="36" width="28" height="36" rx="7" fill="var(--ink)"/>' +
-    '<circle cx="' + cx + '" cy="54" r="9" fill="var(--chip)"/>' +
-    (on ? '<g opacity="' + op + '"><circle cx="' + cx + '" cy="54" r="16" fill="var(--gold)" opacity=".22"/><circle cx="' + cx + '" cy="54" r="9" fill="var(--gold)"/><circle cx="' + (cx - 3) + '" cy="51" r="2.6" fill="#fff" opacity=".7"/></g>' : '');
-  if (kind === 'jar') { const h = Math.round(40 * (next ? glow : 1));
-    return '<rect x="' + (cx - 15) + '" y="64" width="30" height="48" rx="8" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
-      (on ? '<rect x="' + (cx - 11) + '" y="' + (108 - h) + '" width="22" height="' + h + '" rx="5" fill="var(--gold)" opacity="' + (next ? 0.75 : 0.9) + '"/>' : '') +
-      '<rect x="' + (cx - 13) + '" y="56" width="26" height="9" rx="3" fill="var(--accent)"/>'; }
-  if (kind === 'plate') return '<circle cx="' + cx + '" cy="88" r="21" fill="var(--chip)" stroke="var(--line)" stroke-width="1.5"/>' +
-    (on ? '<circle cx="' + cx + '" cy="88" r="21" fill="var(--accent)" opacity="' + (next ? (0.15 + glow * 0.6).toFixed(2) : 1) + '"/>' : '') +
-    '<circle cx="' + cx + '" cy="88" r="5" fill="var(--card)"/>';
-  return '<rect x="' + (cx - 15) + '" y="70" width="30" height="42" rx="7" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1.5"/>' +
-    '<rect x="' + (cx - 10) + '" y="76" width="20" height="34" rx="4" fill="var(--card)"/>' +
-    '<path d="M' + cx + ' 76 V69" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>' +
-    (on ? '<g opacity="' + op + '" transform="translate(' + cx + ' 68) scale(' + (next ? (0.5 + glow * 0.5).toFixed(2) : 1) + ')">' +
-      '<path d="M0 -24 C 8 -14, 9 -6, 0 0 C -9 -6, -8 -14, 0 -24 Z" fill="var(--gold)"/><path d="M0 -13 C 4 -8, 4 -4, 0 -1 C -4 -4, -4 -8, 0 -13 Z" fill="#fff" opacity=".7"/></g>' : '');
-}
+// you get closer to it. Each theme draws its own token (themes.js): a candle, a signal lamp, a jar, a building.
 function candlesSVG(lit, ratio, label) {
   const shown = Math.min(lit, 6), n = shown + 1, W = 320, H = 130, gap = W / 7, x0 = (W - gap * n) / 2;
   let s = '<svg class="candles" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' +
     '<rect x="8" y="112" width="' + (W - 16) + '" height="8" rx="3" fill="var(--chip)"/><rect x="20" y="120" width="6" height="10" fill="var(--chip)"/><rect x="' + (W - 26) + '" y="120" width="6" height="10" fill="var(--chip)"/>';
   for (let i = 0; i < n; i++) {
     const cx = x0 + gap * i + gap / 2, next = i === n - 1, glow = next ? Math.max(0, Math.min(1, ratio)) : 1;
-    s += token(T.token, cx, glow, next);
+    s += T.token(cx, glow, next);
   }
   return s + '</svg>';
 }
@@ -190,6 +171,7 @@ async function afterSignIn() {
   if (!me) return showNotMember();
   if (me.mfa_required && !me.mfa_ok) return showEnroll();
   await loadAll();
+  restoreOutbox();
   showApp();
 }
 
@@ -301,14 +283,14 @@ function renderLog() {
   const vol = L.volumeByUnit(sets);
   const weekVisits = S.days.filter(d => d.performed_on > L.addDays(today(), -7) && d.sets > 0).length;
   const groups = groupByExercise(sets);
-  const hello = sets.length ? (sets.length >= 15 ? T.helloBig : T.helloSome) : 'Today';
+  const hello = sets.length ? (sets.length >= 15 ? T.helloBig : T.helloSome) : T.helloNone;
   view.innerHTML =
     '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
     '<h1>' + hello + '</h1><div class="stats">' +
       '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>moved today</small></div>' +
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
-    '</div>' + countsLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') + '</section>' +
+    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') + '</section>' +
     weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
@@ -344,7 +326,7 @@ async function saveDayAsRoutine(day, btn) {
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
   return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + '</h3><span class="muted num">' + esc(volText(v)) + '</span></div>' +
-    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? '🏆 ' : '') + esc(setText(s)) + '</button>').join('') + '</div>' +
+    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (s._pending ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') + '</div>' +
     '<div class="actions"><button class="btn primary" data-again="' + esc(g.exercise_id) + '">+ Same again</button><button class="btn" data-more="' + esc(g.exercise_id) + '">Change it up</button></div></section>';
 }
 // Sets aren't logged "to" a season: a season is a date range, so today's sets count toward every
@@ -528,58 +510,148 @@ function syncCaches(saved, gone) {
   }
 }
 // ---------------------------------------------------------------------------
-// Logging feels instant: a set shows up the moment you tap, and is saved in the background, in
-// order. The sets from one tap go in one request. Until a set is saved it has a temporary id;
-// editing, deleting or undoing it waits for the save and then uses the real one. If a save fails,
-// the sets come back off the screen and a toast offers to try again.
+// Logging feels instant and survives a bad signal. A set shows up the moment you tap, with its final
+// id already chosen, and goes into an outbox kept on the phone until the database has it. The outbox
+// sends in order, one request per tap. No signal: the sets stay on screen marked as waiting, and the
+// outbox keeps trying (on reconnect, on coming back to the app, every 15 s), even after the app is
+// closed and opened again. A resend can't double up: the database refuses the same id twice, and
+// that counts as saved. Anything else it refuses takes the sets back off the screen with a message.
+// Edits and deletes wait for the save they depend on; undoing a set that hasn't gone yet just takes
+// it out of the outbox.
 // ---------------------------------------------------------------------------
-const Q = { chain: Promise.resolve(), pending: 0, real: new Map(), alias: new Map() };
+const Q = { chain: Promise.resolve(), pending: 0, saving: new Map(), res: new Map(), alias: new Map(), box: [], busy: false, timer: null, offline: false, inflight: null };
 function enqueue(job) {
   Q.pending++;
   const p = Q.chain.then(job);
   Q.chain = p.catch(() => {});
   return p.finally(() => { Q.pending--; });
 }
-const resolveId = async id => Q.alias.get(id) || (Q.real.has(id) ? Q.real.get(id) : id);
+const newId = () => (crypto.randomUUID ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
+const msgOf = x => String((x && (x.message || x.code)) || x || '');
+const retryable = x => /reach the server|Failed to fetch|NetworkError|Load failed|network|expired|Too many changes|timeout/i.test(msgOf(x));
+const isDuplicate = x => /duplicate key|23505|already exists/i.test(msgOf(x));
+const outboxKey = () => 'lift.outbox' + (store && store.demo ? '.demo' : '');
+function saveBox() { try { localStorage.setItem(outboxKey(), JSON.stringify({ user: S.myId, box: Q.box.map(e => ({ rows: e.rows })) })); } catch (e) {} }
+function loadBox() { try { const o = JSON.parse(localStorage.getItem(outboxKey()) || 'null'); return o && o.user === S.myId && Array.isArray(o.box) ? o.box : []; } catch (e) { return []; } }
+const waiting = () => Q.box.reduce((a, e) => a + e.rows.length, 0);
+const syncText = n => '☁️ ' + n + ' set' + (n === 1 ? '' : 's') + ' waiting to save' + (Q.offline ? '. No signal; they’ll go as soon as you’re back.' : '…');
+const syncLine = () => { const n = waiting(); return '<p class="sync-line"' + (n ? '' : ' hidden') + '>' + esc(syncText(n)) + '</p>'; };
+function syncWaiting() {
+  const n = waiting();
+  document.querySelectorAll('.sync-line').forEach(el => { el.hidden = !n; el.textContent = syncText(n); });
+}
 function queueStore(st) {
   const update = st.updateSet.bind(st);
-  st.updateSet = async (id, patch) => update(await resolveId(id), patch);   // deleteSet and restoreSet go through this too
+  st.updateSet = async (id, patch) => { if (Q.saving.has(id)) await Q.saving.get(id); return update(id, patch); };   // deleteSet and restoreSet go through this too
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
 window.addEventListener('beforeunload', e => { if (Q.pending) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('online', () => flush());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Q.box.length) flush(); });
 
 function logSets(fields, count) {
-  const rows = [], temps = [];
-  for (let i = 0; i < count; i++) {
-    const row = { performed_on: today(), logged_at: new Date(Date.now() + i).toISOString(), notes: null, is_warmup: false, ...fields };
-    rows.push(row);
-    temps.push(applyNewSet({ id: 'tmp-' + Math.random().toString(36).slice(2) + Date.now().toString(36), date_only: false, import_batch_id: null, deleted_at: null,
-      count_bodyweight: false, bodyweight: null, ...row, _pending: true }));
-  }
-  const job = enqueue(() => store.addSets(rows));
-  temps.forEach((t, i) => Q.real.set(t.id, job.then(saved => saved[i].id)));
-  job.then(saved => {
-    saved.forEach((real, i) => {
-      const t = temps[i];
-      real._pr = t._pr; real._crossed = t._crossed;
-      Q.alias.set(t.id, real.id);
-      if (!t._gone) { syncCaches(t, true); syncCaches(real, false); }   // swap the stand-in for the saved row (unless it was already undone)
-    });
-    temps.forEach(t => Q.real.delete(t.id));
-    for (const t of temps.filter(x => !x._gone)) {   // the feed only hears about sets that really saved and stayed
-      if (t._pr) postWin('pr', exName(t.exercise_id) + ' PR', { weight: Number(t.weight), reps: t.reps, unit: t.unit });
-      if (t._crossed) postWin('club', t._crossed.title, {});
-      checkRecord(t);
-    }
-  }, err => {
-    temps.forEach(t => { Q.real.delete(t.id); syncCaches(t, true); bumpDay(t, -1); });
-    refreshBests(); render(); refreshLoggerList();
-    toast('Couldn’t save ' + (count > 1 ? count + ' sets' : 'that set') + ': ' + (err && err.message ? err.message : 'no connection'), { label: 'Try again', run: () => { logSets(fields, count); render(); refreshLoggerList(); } });
-  });
-  return temps;
+  const rows = [];
+  for (let i = 0; i < count; i++) rows.push({ id: newId(), performed_on: today(), logged_at: new Date(Date.now() + i).toISOString(), notes: null, is_warmup: false, ...fields });
+  return logRows(rows, true);
 }
 function logSet(fields) { return { saved: logSets(fields, 1)[0] }; }
+// Put rows on screen and in the outbox. fresh = just tapped (counts PRs, clubs, quests); otherwise
+// they're coming back from an outbox the last visit didn't finish sending.
+function logRows(rows, fresh) {
+  const temps = rows.map(r => {
+    const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _pending: true };
+    if (fresh) return applyNewSet(t);
+    syncCaches(t, false); bumpDay(t, +1); return t;
+  });
+  for (const r of rows) {
+    const p = new Promise((resolve, reject) => Q.res.set(r.id, { resolve, reject }));
+    p.catch(() => {});
+    Q.saving.set(r.id, p);
+  }
+  Q.box.push({ rows });
+  saveBox(); syncWaiting(); flush();
+  return temps;
+}
+function settle(id, ok, err) {
+  const r = Q.res.get(id);
+  Q.res.delete(id); Q.saving.delete(id);
+  if (r) (ok ? r.resolve(id) : r.reject(err));
+}
+async function flush() {
+  if (Q.busy || !store) return;
+  Q.busy = true; clearTimeout(Q.timer);
+  while (Q.box.length) {
+    const e = Q.box[0];
+    Q.inflight = e;
+    let saved = null, err = null;
+    try { saved = await store.addSets(e.rows); }
+    catch (x) {
+      err = x;
+      if (isDuplicate(x)) { try { saved = await store.setsByIds(e.rows.map(r => r.id)); err = null; } catch (y) { err = y; } }
+    }
+    Q.inflight = null;
+    if (err && retryable(err)) {
+      if (!Q.offline) { Q.offline = true; toast('No signal. Your sets are kept on this phone and will save when you’re back.'); }
+      syncWaiting();
+      Q.timer = setTimeout(flush, 15000);
+      Q.busy = false;
+      return;
+    }
+    Q.box.shift(); saveBox();
+    if (err) refused(e, err); else landed(e, saved || []);
+  }
+  if (Q.offline) { Q.offline = false; toast('Back online. Everything’s saved.'); }
+  Q.busy = false;
+  syncWaiting();
+}
+function landed(e, saved) {
+  for (const real of saved) {
+    const cur = findSet(real.id);
+    settle(real.id, true);
+    if (!cur || cur._gone) continue;   // undone while it was on its way
+    real._pr = cur._pr; real._crossed = cur._crossed;
+    syncCaches(real, false);   // the saved row replaces the waiting one
+    if (real._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, unit: real.unit });
+    if (real._crossed) postWin('club', real._crossed.title, {});
+    checkRecord(real);
+  }
+  e.rows.forEach(r => { if (Q.saving.has(r.id)) settle(r.id, true); });
+  refreshLoggerList();
+  if (!sheet.open) render();   // the sheet re-renders the page when it closes
+}
+function refused(e, err) {
+  e.rows.forEach(r => { const cur = findSet(r.id); if (cur) { syncCaches(cur, true); bumpDay(cur, -1); } settle(r.id, false, err); });
+  refreshBests(); render(); refreshLoggerList();
+  const n = e.rows.length;
+  toast('Couldn’t save ' + (n > 1 ? n + ' sets' : 'that set') + ': ' + msgOf(err), { label: 'Try again', run: () => { logRows(e.rows.map(r => ({ ...r, id: newId() })), true); render(); refreshLoggerList(); } });
+}
+// Take a set that hasn't been sent yet out of the outbox. False if it's already gone or on its way.
+function takeFromBox(id) {
+  for (const e of Q.box) {
+    if (e === Q.inflight) continue;
+    const i = e.rows.findIndex(r => r.id === id);
+    if (i < 0) continue;
+    e.rows.splice(i, 1);
+    if (!e.rows.length) Q.box.splice(Q.box.indexOf(e), 1);
+    settle(id, true); saveBox(); syncWaiting();
+    return true;
+  }
+  return false;
+}
+// After signing in: anything the last visit didn't get to send goes back on screen and out again.
+function restoreOutbox() {
+  const left = loadBox();
+  Q.box = [];
+  const known = new Set(S.recent.map(x => x.id));
+  for (const e of left) {
+    const rows = (e.rows || []).filter(r => r && r.id && !known.has(r.id));
+    if (rows.length) logRows(rows, false);
+  }
+  saveBox();
+  if (Q.box.length) refreshBests();
+}
 // Everything a new set changes on screen, done straight away with the stand-in row.
 function applyNewSet(t) {
   t._pr = L.isPr(t, S.bests);
@@ -616,7 +688,8 @@ function dropSets(list, quiet) {
   for (const s of cur) if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);   // undoing a PR takes its line back
   cur.forEach(s => { syncCaches(s, true); bumpDay(s, -1); });
   refreshBests(); render(); refreshLoggerList();
-  enqueue(async () => { for (const s of list) await store.deleteSet(s.id); }).catch(x => {
+  const sent = list.filter(s => !takeFromBox(s.id));   // not sent yet: just drop it from the outbox
+  if (sent.length) enqueue(async () => { for (const s of sent) await store.deleteSet(s.id); }).catch(x => {
     cur.forEach(s => { s._gone = false; syncCaches(s, false); bumpDay(s, +1); });
     refreshBests(); render(); refreshLoggerList();
     toast('Couldn’t delete: ' + (x && x.message ? x.message : 'no connection'));
@@ -719,12 +792,36 @@ function summarizeSets(sets) {
   }
   return runs.map(r => r.n + ' × ' + r.x.reps + (Number(r.x.weight) > 0 ? ' @ ' + L.fmtLoad(Number(r.x.weight)) + ' ' + r.x.unit : '')).join(', ') || sets.map(setText).join(', ');
 }
+// Do you log a whole exercise at the end, or each set as you go? Judged from your own history: on past
+// days, were an exercise's sets logged within a few seconds of each other (one tap) or spread out?
+// Both work either way; this only decides whether an exercise opens set to the full count or to 1.
+function logsAtEnd() {
+  const t = today(), at = new Map();
+  for (const x of S.recent) {
+    if (x.performed_on >= t || x.is_warmup === true) continue;
+    const k = x.performed_on + '|' + x.exercise_id;
+    if (!at.has(k)) at.set(k, []);
+    at.get(k).push(Date.parse(x.logged_at));
+  }
+  let whole = 0, each = 0;
+  for (const ts of at.values()) if (ts.length > 1) { if (Math.max(...ts) - Math.min(...ts) < 5000) whole++; else each++; }
+  return whole + each < 3 || whole >= each;   // too little to go on: the full count
+}
+// Your most recent day of this lift before today, from what's already loaded. Null if it isn't there.
+function localLast(exId) {
+  const t = today();
+  let day = null;
+  for (const x of S.recent) if (x.exercise_id === exId && x.performed_on < t && (!day || x.performed_on > day)) day = x.performed_on;
+  return day ? S.recent.filter(x => x.exercise_id === exId && x.performed_on === day).sort((a, b) => a.logged_at.localeCompare(b.logged_at)) : null;
+}
 async function openEntry(exId, editing, item) {
+  LG.next = null;
   LG.mode = editing ? 'edit' : 'entry';
   LG.exId = exId;
   LG.editing = editing || null;
   LG.item = editing ? null : item || null;
   const base = editing || todaySets().filter(s => s.exercise_id === exId).pop();
+  const atEnd = logsAtEnd();
   const unit = base ? base.unit : prefs.unit;
   const st = LG.st = {
     weight: base ? Number(base.weight) : null,   // filled from your last time below; a lift you've never done starts empty
@@ -734,8 +831,9 @@ async function openEntry(exId, editing, item) {
     warm: base ? base.is_warmup === true : false,
     note: editing ? editing.notes || '' : '', date: editing ? editing.performed_on : today(),
     showNote: !!(editing && editing.notes),
-    // How many sets one tap logs: what's left of the routine step, 1 if you're already going today, else 3 until last time is known.
-    sets: item ? Math.max(1, item.sets - stepDone(item)) : base ? 1 : 3,
+    // How many sets one tap logs. Set by set: always 1. At the end: what's left of the routine step, or
+    // 1 if you're already going on this lift today, else 3 until last time is known.
+    sets: !atEnd ? 1 : item ? Math.max(1, item.sets - stepDone(item)) : base ? 1 : 3,
   };
   // Following a routine: the step's sets and reps, with your own weight for it (unless you're mid-way today).
   const target = LG.item ? suggestFor(LG.item) : null;
@@ -755,11 +853,12 @@ async function openEntry(exId, editing, item) {
     '<div class="sheet-body">' +
       planLine +
       (editing ? '' : dryHint(exId)) +
+      (editing ? '' : syncLine()) +
       '<p class="last-line" id="lastLine">' + (editing ? 'Editing a set from ' + esc(fmtDay(editing.performed_on)) : 'Looking up last time…') + '</p>' +
       '<div class="trio' + (editing ? ' two' : '') + '">' +
-        '<label class="box"><span>Weight <i id="wUnit">' + esc(st.unit) + '</i></span><input id="wIn" inputmode="decimal" enterkeyhint="done" placeholder="–" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"></label>' +
-        '<label class="box"><span>Reps</span><input id="rIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.reps) + '"></label>' +
-        (editing ? '' : '<label class="box"><span>Sets</span><input id="nIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.sets) + '"></label>') +
+        '<div class="boxwrap"><label class="box"><span>Weight <i id="wUnit">' + esc(st.unit) + '</i></span><input id="wIn" inputmode="decimal" enterkeyhint="done" placeholder="–" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"></label>' + steppers('w', 'weight') + '</div>' +
+        '<div class="boxwrap"><label class="box"><span>Reps</span><input id="rIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.reps) + '"></label>' + steppers('r', 'reps') + '</div>' +
+        (editing ? '' : '<div class="boxwrap"><label class="box"><span>Sets</span><input id="nIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.sets) + '"></label>' + steppers('n', 'sets') + '</div>') +
       '</div>' +
       (editing ? '<div class="field-label"><span>Day</span></div><input class="plain-input" id="dateIn" type="date" value="' + esc(st.date) + '" max="' + today() + '">' : '') +
       '<div id="prFlag"></div><p class="warn" id="formErr" role="alert"></p>' +
@@ -787,8 +886,9 @@ async function openEntry(exId, editing, item) {
   updateLive();
   refreshLoggerList();
   if (!editing) {
-    // Prefill from last time, unless already lifting this today.
-    const prev = await store.lastFor(exId, today()).catch(() => []);
+    // Prefill from last time, unless already lifting this today. The phone already has the last
+    // 120 days, so this is instant; only an older lift asks the server.
+    const prev = localLast(exId) || await store.lastFor(exId, today()).catch(() => []);
     if (LG.exId !== exId || LG.mode !== 'entry') return;
     LG.last = prev;
     const working = prev.find(s => s.is_warmup !== true) || prev[0];
@@ -796,7 +896,7 @@ async function openEntry(exId, editing, item) {
       const top = prev.filter(s => s.is_warmup !== true).reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a), working);
       const same = prev.filter(s => s.is_warmup !== true && Number(s.weight) === Number(top.weight) && s.unit === top.unit).length;
       Object.assign(st, { weight: Number(top.weight), reps: top.reps, unit: top.unit, bw: !!top.count_bodyweight,
-        bodyweight: top.bodyweight != null ? Number(top.bodyweight) : st.bodyweight, sets: Math.min(10, Math.max(1, same)) });
+        bodyweight: top.bodyweight != null ? Number(top.bodyweight) : st.bodyweight, sets: atEnd ? Math.min(10, Math.max(1, same)) : 1 });
       syncInputs();
     }
     $('lastLine').innerHTML = prev.length
@@ -805,6 +905,8 @@ async function openEntry(exId, editing, item) {
     updateLive();
   }
 }
+// − and + under each box: the weight moves by your usual jump (5 lb or 2.5 kg), reps and sets by one.
+const steppers = (k, what) => '<div class="steps"><button type="button" data-' + k + '="-1" aria-label="Less ' + what + '">−</button><button type="button" data-' + k + '="1" aria-label="More ' + what + '">+</button></div>';
 // Small jumps for fine-tuning: micro plates in lb, and half that in kg.
 const NUDGES = { lb: [-10, -5, -2.5, 2.5, 5, 10], kg: [-5, -2.5, -1.25, 1.25, 2.5, 5] };
 function drawNudges() {
@@ -824,6 +926,7 @@ function syncInputs() {
 }
 const st = () => LG.st;
 function wireEntry() {
+  inner.querySelectorAll('.trio input').forEach(i => i.addEventListener('input', () => { LG.next = null; }, true));
   $('wIn').addEventListener('input', () => { const v = L.parseLoad($('wIn').value); if (v != null) st().weight = v; updateLive(); });
   $('rIn').addEventListener('input', () => { const v = parseInt($('rIn').value, 10); if (v > 0) st().reps = v; updateLive(); });
   if ($('nIn')) { $('nIn').addEventListener('input', () => { const v = parseInt($('nIn').value, 10); if (v > 0) st().sets = Math.min(20, v); updateLive(); }); $('nIn').addEventListener('focus', () => $('nIn').select()); }
@@ -834,7 +937,8 @@ function wireEntry() {
 function updateLive() {
   const s = st();
   const btn = $('saveBtn');
-  if (btn && LG.mode === 'entry' && !btn.disabled) {
+  if (btn && LG.mode === 'entry' && !btn.disabled && LG.next) btn.textContent = LG.next.label;
+  else if (btn && LG.mode === 'entry' && !btn.disabled) {
     const load = s.weight > 0 ? ' @ ' + L.fmtLoad(s.weight) + ' ' + s.unit : s.weight == null ? ' (enter a weight)' : '';
     btn.textContent = s.sets > 1 ? 'Log ' + s.sets + ' × ' + s.reps + load : 'Log ' + s.reps + ' rep' + (s.reps === 1 ? '' : 's') + load;
   }
@@ -848,7 +952,7 @@ function updateLive() {
   const prev = S.bests.get(L.bestKey(probe));
   const flag = $('prFlag');
   flag.innerHTML = LG.mode === 'entry' && !s.warm && prev != null && s.weight > prev
-    ? '<div class="pr-flag">🏆 That’s a PR: your best at ' + s.reps + ' reps was ' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</div>' : '';
+    ? '<div class="pr-flag">' + T.icons.pr + ' ' + esc(T.prFlag(s.reps, L.fmtLoad(prev) + ' ' + s.unit)) + '</div>' : '';
   const est = prev != null ? L.e1rm(prev, s.reps) : null;
   if ($('bestLine')) $('bestLine').innerHTML = prev != null ? '<p class="hint-line">Best at ' + s.reps + ' reps: <b>' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</b>' +
     (est ? ' · estimated 1-rep max ' + esc(L.fmtLoad(Math.round(est))) + ' ' + s.unit : '') + '</p>' : '';
@@ -860,18 +964,21 @@ function refreshLoggerList() {
   // Following a routine: once this step's sets are in, offer the next step.
   let next = '';
   const f = following();
+  LG.next = null;
   if (f && LG.item) {
     const working = sets.filter(s => s.is_warmup !== true).length;
     const nextItem = f.items.find(it => it.id !== LG.item.id && stepDone(it) < it.sets);
-    if (working >= LG.item.sets) next = nextItem
-      ? '<button class="btn primary block" style="margin-top:14px" data-next-item="' + esc(nextItem.id) + '">Next up: ' + esc(exName(nextItem.exercise_id)) + ' →</button>'
-      : '<button class="btn primary block" style="margin-top:14px" data-close>Routine done 🎉</button>';
-    else next = '<p class="hint-line">' + working + ' of ' + LG.item.sets + ' sets done for this step.</p>';
+    // Step done: the big button moves on (to the next step, or to finishing), and one more set is a small link.
+    if (working >= LG.item.sets) {
+      LG.next = nextItem ? { id: nextItem.id, label: 'Next: ' + exName(nextItem.exercise_id) + ' →' } : { finish: true, label: T.finish };
+      next = '<p class="hint-line">' + (nextItem ? 'Step done. ' : esc(T.routineDone) + ' ') + '<button class="linkbtn" data-again>Log another set of ' + esc(exName(LG.exId)) + '</button></p>';
+    } else next = '<p class="hint-line">' + working + ' of ' + LG.item.sets + ' sets done for this step.</p>';
   }
   box.innerHTML = (sets.length
-    ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + '">' + (s._pr ? '🏆 ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
+    ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (s._pending ? ' pending' : '') + '" data-edit="' + esc(s.id) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
       (next ? '' : '<button class="btn block" style="margin-top:14px" data-close>Done with ' + esc(exName(LG.exId)) + '</button>')
     : '') + next;
+  updateLive();
 }
 inner.addEventListener('click', async e => {
   const b = e.target.closest('button');
@@ -908,10 +1015,10 @@ inner.addEventListener('click', async e => {
     s.unit = b.dataset.unit;
     syncInputs(); updateLive(); return;
   }
-  if (b.dataset.w) { s.weight = Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
-  if (b.dataset.nudge) { s.weight = Math.min(2000, Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
-  if (b.dataset.r) { s.reps = Math.max(1, Math.min(1000, s.reps + Number(b.dataset.r))); syncInputs(); updateLive(); vibrate(5); return; }
-  if (b.dataset.n) { s.sets = Math.max(1, Math.min(20, s.sets + Number(b.dataset.n))); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.w) { LG.next = null; s.weight = Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.nudge) { LG.next = null; s.weight = Math.min(2000, Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.r) { LG.next = null; s.reps = Math.max(1, Math.min(1000, s.reps + Number(b.dataset.r))); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.n) { LG.next = null; s.sets = Math.max(1, Math.min(20, s.sets + Number(b.dataset.n))); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.t) {
     const t = b.dataset.t;
     if (t === 'bw') { s.bw = !s.bw; $('bwRow').hidden = !s.bw; if (s.bw && $('bwIn').value === '') $('bwIn').focus(); }
@@ -920,6 +1027,14 @@ inner.addEventListener('click', async e => {
     b.setAttribute('aria-pressed', t === 'bw' ? s.bw : t === 'warm' ? s.warm : s.showNote);
     return;
   }
+  if (b.id === 'saveBtn' && LG.next) {
+    const n = LG.next;
+    LG.next = null;
+    if (n.finish) return openRecap();
+    const it = S.itemsById.get(n.id);
+    return it && openEntry(it.exercise_id, null, it);
+  }
+  if (b.hasAttribute('data-again')) { LG.next = null; s.sets = 1; syncInputs(); updateLive(); return saveEntry($('saveBtn')); }
   if (b.id === 'saveBtn') return saveEntry(b);
   if (b.id === 'delBtn') { const s0 = LG.editing; sheet.close(); return removeSet(s0, false); }
 });
@@ -1050,7 +1165,7 @@ function followCard() {
   const done = f.items.filter(it => stepDone(it) >= it.sets).length;
   return '<section class="card follow"><div class="row"><div><div class="date">Following</div><h2>' + esc(f.template.name) + '</h2></div>' +
       '<span class="muted num">' + done + ' / ' + f.items.length + '</span></div>' +
-    '<div class="bar" style="margin-top:10px"><i style="width:' + (f.items.length ? (done / f.items.length) * 100 : 0) + '%"></i></div>' +
+    '<div class="bar" style="margin-top:10px;--p:' + (f.items.length ? (done / f.items.length) * 100 : 0) + '%"><i></i></div>' +
     '<ol class="steps">' + f.items.map((it, i) => {
       const d = stepDone(it), full = d >= it.sets;
       const tg = full ? null : suggestFor(it);
@@ -1680,8 +1795,8 @@ function goalLine(g, m, ctx) {
     : g.metric === 'lift' ? (have ? L.fmtLoad(have) : '–') + ' / ' + L.fmtLoad(need) + ' ' + g.unit
     : L.fmtBig(have) + ' / ' + L.fmtBig(need) + ' ' + g.unit;
   const sn = ctx && ctx.season, own = sn && g.created_by && g.created_by !== sn.created_by;
-  return '<div class="goal"><div class="row"><span>' + (done ? '✅ ' : '') + esc(g.name) + (own ? ' <small class="muted">· own goal</small>' : '') + '</span><span class="muted num">' + esc(label) + '</span></div>' +
-    '<div class="bar"><i style="width:' + (ratio * 100).toFixed(1) + '%"></i></div></div>';
+  return '<div class="goal"><div class="row"><span>' + (done ? T.icons.goal + ' ' : '') + esc(g.name) + (own ? ' <small class="muted">· own goal</small>' : '') + '</span><span class="muted num">' + esc(label) + '</span></div>' +
+    '<div class="bar" style="--p:' + (ratio * 100).toFixed(1) + '%"><i></i></div></div>';
 }
 const myGoalsHtml = (sn, m) => goalsFor(sn, S.myId).map(g => goalLine(g, m, { season: sn })).join('');
 const seasonSub = id => (S.seasonSubs || []).find(x => x.season_id === id);
@@ -2142,13 +2257,13 @@ function renderProgress() {
   const ms = L.milestoneProgress(L.lbEquivalent(totals().volume));
   const ach = L.achievements({ volume: totals().volume, visits: totals().visits, prs: S.bests.size });
   const earned = ach.filter(a => a.earned), nextClub = ach.find(a => a.milestone && !a.earned);
-  const medal = a => a.milestone ? (a.need === 10000 ? '🐘' : T.icons.club) : a.id === 'first_pr' ? '🏆' : '⭐';
+  const medal = a => a.milestone ? (a.need === 10000 ? T.icons.elephant : T.icons.club) : a.id === 'first_pr' ? T.icons.pr : '⭐';
   view.innerHTML =
     '<div class="seg" role="group" aria-label="Period">' +
       [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
     '<div class="kpis">' +
       kpi('Pounds moved', C.compact(lbEq) + ' lb', lbEq > 0 ? 'about ' + esc(L.fmtNum(cmp.times, cmp.times < 10 ? 1 : 0)) + ' × a ' + esc(cmp.thing) : 'nothing yet', w12.map(w => w.lb)) +
-      kpi('Gym days', L.fmtNum(t.visits, 0), streakWeeks() ? '🔥 ' + streakWeeks() + '-week streak' : 'no streak going', w12.map(w => w.visits)) +
+      kpi('Gym days', L.fmtNum(t.visits, 0), streakWeeks() ? T.icons.streak + ' ' + streakWeeks() + ' ' + T.streak : 'no streak going', w12.map(w => w.visits)) +
       kpi('Sets', L.fmtNum(t.sets, 0), t.visits ? Math.round(t.sets / t.visits) + ' a session' : '', w12.map(w => w.sets)) +
       kpi('Personal bests', L.fmtNum(prs, 0), 'set ' + (from ? 'in this period' : 'all time'), null) +
     '</div>' +
@@ -2162,9 +2277,9 @@ function renderProgress() {
     '<section class="card c-half clubs"><div class="card-head"><h3 class="card-title">' + esc(T.clubs) + '</h3><small class="muted">' + esc(T.clubsSub(ms.count)) + '</small></div>' +
       candlesSVG(ms.count, ms.ratio, T.clubsLabel(ms.count, ms.next ? ms.next.title : 'top')) +
       (ms.next ? '<div class="row" style="font-size:14px;font-weight:700"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
-        '<div class="bar" style="margin-top:6px"><i style="width:' + (ms.ratio * 100).toFixed(1) + '%"></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
+        '<div class="bar" style="margin-top:6px;--p:' + (ms.ratio * 100).toFixed(1) + '%"><i></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
       '<div class="badges">' + earned.filter(a => !a.milestone).concat(earned.filter(a => a.milestone).slice(-4)).concat(nextClub ? [nextClub] : []).map(a =>
-        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(T.ach[a.id] || a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(a.title) + '</div>').join('') + '</div></section>' +
+        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(T.ach[a.id] || a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(T.achTitle[a.id] || a.title) + '</div>').join('') + '</div></section>' +
     bodyweightCard();
   const input = $('bestSearch');
   input.addEventListener('input', () => { S.bestQuery = input.value; drawBests(); });
@@ -2470,7 +2585,7 @@ function bannerHtml(sn, big) {
     '<div class="band-top"><span class="pill ' + ph + '">' + (ph === 'live' ? '● Live' : ph === 'upcoming' ? 'Coming up' : 'Finished') + ' · ' + esc(seasonStatus(sn)) + '</span><span class="band-who">' + esc(who) + '</span></div>' +
     (big ? '<h1>' : '<h2>') + esc(sn.name) + (big ? '</h1>' : '</h2>') +
     '<p>' + esc(fmtDay(sn.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(sn.ends_on, { month: 'short', day: 'numeric', year: 'numeric' })) + '</p>' +
-    '<div class="elapsed" role="img" aria-label="' + pct + '% of the season gone"><i style="width:' + pct + '%"></i></div></div>';
+    '<div class="elapsed" style="--p:' + pct + '%" role="img" aria-label="' + pct + '% of the season gone"><i></i></div></div>';
 }
 function renderSeasons() {
   const sn = S.seasonOpen && seasonById(S.seasonOpen);
@@ -2542,15 +2657,15 @@ function renderSeasonPage(sn) {
   }
   // Achievements: every goal, everyone's progress on it.
   const goals = S.goals.filter(x => x.season_id === sn.id && (!x.created_by || x.created_by === sn.created_by || people.some(p => p.user_id === x.created_by)));
-  const icon = { visits: '📅', volume: '🏋️', lift: '🏆', workout: '🔁' };
+  const icon = { visits: '📅', volume: '🏋️', lift: T.icons.pr, workout: '🔁' };
   const goalTile = x => {
     const own = x.created_by && x.created_by !== sn.created_by;
     const who = own ? people.filter(p => p.user_id === x.created_by) : people;
     const rows = who.map(p => {
       const have = goalHave(x, p.m, { season: sn, person: p.user_id, st }), need = Number(x.target), ratio = Math.min(1, need ? have / need : 0);
       const txt = x.metric === 'lift' ? (have ? L.fmtLoad(have) : '–') + ' / ' + L.fmtLoad(need) + ' ' + x.unit : x.metric === 'volume' ? C.compact(have) + ' / ' + C.compact(need) + ' ' + x.unit : L.fmtNum(have, 0) + ' / ' + L.fmtNum(need, 0);
-      return '<div class="gt-row"><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span><span class="num">' + (have >= need ? '✅ ' : '') + esc(txt) + '</span>' +
-        '<div class="gt-bar"><i style="width:' + (ratio * 100).toFixed(1) + '%;background:' + p.color + '"></i></div></div>';
+      return '<div class="gt-row"><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span><span class="num">' + (have >= need ? T.icons.goal + ' ' : '') + esc(txt) + '</span>' +
+        '<div class="gt-bar" style="--p:' + (ratio * 100).toFixed(1) + '%;--who:' + p.color + '"><i></i></div></div>';
     }).join('');
     const doneAll = who.length && who.every(p => goalHave(x, p.m, { season: sn, person: p.user_id, st }) >= Number(x.target));
     return '<div class="goal-tile' + (doneAll ? ' done' : '') + '"><div class="gt-head"><span class="gt-icon">' + (icon[x.metric] || '🎯') + '</span><b>' + esc(x.name) + '</b>' +
@@ -2561,7 +2676,7 @@ function renderSeasonPage(sn) {
   const pts = p => seasonPoints(sn, st, p);
   const ranked = people.slice().sort((a, b) => (sn.points ? pts(b) - pts(a) : 0) || L.lbEquivalent(b.m.volume) - L.lbEquivalent(a.m.volume));
   const standings = '<table class="cmp standings"><thead><tr><th>#</th><th>Lifter</th><th>Days</th><th>Sets</th><th>Pounds</th><th>' + esc(T.goals) + '</th>' + (sn.points ? '<th>Points</th>' : '') + '</tr></thead><tbody>' +
-    ranked.map((p, i) => '<tr' + (p.user_id === S.myId ? ' class="me"' : '') + '><td>' + (i === 0 && !solo ? '👑' : i + 1) + '</td><td><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span></td>' +
+    ranked.map((p, i) => '<tr' + (p.user_id === S.myId ? ' class="me"' : '') + '><td>' + (i === 0 && !solo ? T.icons.holder : i + 1) + '</td><td><span class="who"><i style="background:' + p.color + '"></i>' + esc(p.name) + '</span></td>' +
       '<td class="num">' + p.m.visits + '</td><td class="num">' + L.fmtNum(Number(p.sets), 0) + '</td><td class="num"><b>' + C.compact(L.lbEquivalent(p.m.volume)) + '</b></td><td class="num">' + goalCount(p) + '</td>' + (sn.points ? '<td class="num"><b>' + pts(p) + '</b></td>' : '') + '</tr>').join('') + '</tbody></table>' +
     (sn.points ? '<p class="hint-line">' + esc(cap(T.points)) + ': ' + esc(pointsRule(sn.points)) + '.</p>' : '');
   // Head-to-head: planned workouts done, best lifts.
@@ -2777,7 +2892,7 @@ function checkGoalWins() {
   const now = goalKeyDone();
   for (const k of now) if (!S.goalsDone.has(k)) {
     const [sid, gid] = k.split('|'), g = S.goals.find(x => x.id === gid), sn = seasonById(sid);
-    if (g && sn) { postWin('goal', g.name + ' · ' + sn.name, {}); toast('✅ Goal done: ' + g.name); }
+    if (g && sn) { postWin('goal', g.name + ' · ' + sn.name, {}); toast(T.icons.goal + ' ' + T.goalToast + g.name); }
   }
   S.goalsDone = now;
 }
@@ -2792,7 +2907,7 @@ async function loadWins() {
 const WIN_ICON = new Proxy({}, { get: (_, k) => T.icons[k] });
 function winText(w) {
   const m = w.summary || {};
-  if (w.kind === 'pr') return w.title.replace(/ PR$/, '') + ' PR: ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps;
+  if (w.kind === 'pr') return T.winPr(w.title.replace(/ PR$/, '')) + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps;
   if (w.kind === 'club') return T.win.club + w.title;
   if (w.kind === 'record') return T.win.record + w.title.replace(/ record$/, '') + ' record, ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps + (m.from ? ' (was ' + m.from + '’s)' : '');
   if (w.kind === 'quest') return T.win.quest + w.title;
@@ -2808,7 +2923,7 @@ function sessionCardHtml(w, extra) {
   const n = x => Number(x).toLocaleString('en-US');
   const stat = (v, u, cls) => '<span class="ws-stat' + (cls ? ' ' + cls : '') + '">' + v + ' <small>' + u + '</small></span>';
   const stats = (m.lb ? stat(n(m.lb), 'lb') : '') + (m.sets ? stat(n(m.sets), m.sets === 1 ? 'set' : 'sets') : '') +
-    (m.minutes ? stat(n(m.minutes), 'min') : '') + (m.prs ? stat(n(m.prs), m.prs === 1 ? 'PR' : 'PRs', 'gold') : '');
+    (m.minutes ? stat(n(m.minutes), 'min') : '') + (m.prs ? stat(n(m.prs), m.prs === 1 ? T.pr : T.prs, 'gold') : '');
   const bw = it => it[5] || !(Number(it[3]) > 0);
   const load = it => (bw(it) ? 'bodyweight' : esc(L.fmtLoad(Number(it[3]))) + (it[4] && it[4] !== 'lb' ? ' ' + esc(it[4]) : ''));
   const rows = items.map(it => '<li' + (it[6] ? ' class="pr"' : '') + '><b>' + esc(it[0]) + '</b><span>' + (it[6] ? T.icons.pr + ' ' : '') +
@@ -2819,8 +2934,8 @@ function sessionCardHtml(w, extra) {
     : x.kind === 'goal' ? badge(T.icons.goal, verb(T.win.goal), x.title.split(' · ')[0])
     : x.kind === 'quest' ? badge(T.icons.quest, verb(T.win.quest), x.title)
     : x.kind === 'record' ? badge(T.icons.record, verb(T.win.record), x.title.replace(/ record$/, ''), true)
-    : x.kind === 'pr' && !names.has(x.title.replace(/ PR$/, '')) ? badge(T.icons.pr, x.title, '')
-    : '').join('') + (m.streak >= 2 ? badge('🔥', m.streak + ' ' + T.streak, '') : '');
+    : x.kind === 'pr' && !names.has(x.title.replace(/ PR$/, '')) ? badge(T.icons.pr, x.title.replace(/ PR$/, ''), T.pr)
+    : '').join('') + (m.streak >= 2 ? badge(T.icons.streak, m.streak + ' ' + T.streak, '') : '');
   const foot = [m.where, m.nth ? ordinal(m.nth) + ' gym day this week' : ''].filter(Boolean).join(' · ');
   return '<div class="ws-card"><div class="ws-top"><span class="ws-title">' + T.icons.session + ' ' + esc(w.title) + '</span><span class="ws-date">' +
       esc(fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</span></div>' +
@@ -2830,7 +2945,7 @@ function sessionCardHtml(w, extra) {
     (foot ? '<div class="ws-foot">' + esc(foot) + '</div>' : '') + '</div>';
 }
 function winsCard() {
-  const head = '<div class="card-head"><div><h3 class="card-title">' + esc(T.feed) + '</h3><small class="muted">the crew’s wins</small></div><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
+  const head = '<div class="card-head"><div><h3 class="card-title">' + esc(T.feed) + '</h3><small class="muted">' + esc(T.feedSub) + '</small></div><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
   if (!S.wins) return '<section class="card wins" id="winsBox">' + head + '<p class="muted" style="margin:0">Loading…</p></section>';
   const people = [S.myId, ...[...S.names.keys()].filter(id => id !== S.myId)];
   const color = id => C.SERIES[Math.max(0, people.indexOf(id)) % 3];
@@ -2901,7 +3016,7 @@ function openRecap() {
       '<div class="recap-grid"><div><b>' + C.compact(r.lb) + '</b><small>lb moved</small></div><div><b>' + r.sets + '</b><small>set' + (r.sets === 1 ? '' : 's') + '</small></div>' +
         '<div><b>' + r.exIds.length + '</b><small>lift' + (r.exIds.length === 1 ? '' : 's') + '</small></div><div><b>' + (r.minutes || '–') + '</b><small>minutes</small></div></div>' +
       (diff != null ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' than your last session (' + esc(fmtDay(r.prev.performed_on, { month: 'short', day: 'numeric' })) + ').</p>' : '') +
-      (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">🏆 ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
+      (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">' + T.icons.pr + ' ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
       '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
       '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + esc(shareOn() ? (posted ? T.updateFeed : T.finishFeed) : T.finishPrivate) + '</button>' +
       (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
@@ -2932,9 +3047,9 @@ function weeklyCard() {
   const live = (S.seasons || []).filter(x => inSeason(x) && phaseOf(x) === 'live');
   const sabbath = streakWeeks() >= 6 && w1.visits >= 3;
   return '<section class="card weekly"><div class="card-head"><div><div class="date">' + esc(T.weekly) + ' · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
-      '<h3 class="card-title">' + (w1.visits ? w1.visits + ' gym day' + (w1.visits === 1 ? '' : 's') + ', ' + C.compact(w1.lb) + ' lb' : 'A rest week') + '</h3></div>' +
+      '<h3 class="card-title">' + (w1.visits ? w1.visits + ' gym day' + (w1.visits === 1 ? '' : 's') + ', ' + C.compact(w1.lb) + ' lb' : esc(T.restWeek)) + '</h3></div>' +
       '<button class="iconbtn sm" data-week-seen="' + lastWeek + '" aria-label="Hide last week’s recap">✕</button></div>' +
-    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>PRs</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>' + esc(T.streak) + '</small></div></div>' +
+    '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>' + esc(T.prs) + '</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>' + esc(T.streak) + '</small></div></div>' +
     (diff != null && w1.visits ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' pounds than the week before.</p>' : '') +
     (sabbath ? '<p class="hint-line">' + T.icons.rest + ' ' + esc(T.rest(streakWeeks())) + '</p>' : '') +
     (live.length ? '<p class="hint-line">' + live.map(x => { const g = goalsDone(x); return '<button class="linkbtn" data-season="' + esc(x.id) + '">' + esc(x.name) + '</button>: ' + g.done + ' of ' + g.of + ' goals done, ' + esc(seasonStatus(x)); }).join(' · ') + '</p>' : '') +
@@ -3047,8 +3162,8 @@ function weekQuests() {
 function questsCard() {
   const qs = weekQuests(), done = qs.filter(q => q.done).length;
   return '<section class="card quests"><div class="card-head"><div><h3 class="card-title">' + esc(T.quests) + '</h3><small class="muted">' + esc(T.questsSub) + '</small></div><small class="muted">' + done + ' / ' + qs.length + '</small></div>' +
-    qs.map(q => '<div class="goal"><div class="row"><span>' + (q.done ? '✅ ' : T.icons.questOpen + ' ') + esc(q.name) + (q.id === 'volume' ? ' (' + C.compact(q.needV) + ' lb)' : '') + '</span><span class="muted num">' +
-      esc(q.fmt ? q.fmt(q.haveV) : L.fmtNum(q.haveV, 0) + ' / ' + L.fmtNum(q.needV, 0)) + '</span></div><div class="bar"><i style="width:' + (q.haveV / q.needV * 100).toFixed(1) + '%"></i></div></div>').join('') +
+    qs.map(q => '<div class="goal"><div class="row"><span>' + (q.done ? T.icons.goal + ' ' : T.icons.questOpen + ' ') + esc(q.name) + (q.id === 'volume' ? ' (' + C.compact(q.needV) + ' lb)' : '') + '</span><span class="muted num">' +
+      esc(q.fmt ? q.fmt(q.haveV) : L.fmtNum(q.haveV, 0) + ' / ' + L.fmtNum(q.needV, 0)) + '</span></div><div class="bar" style="--p:' + (q.haveV / q.needV * 100).toFixed(1) + '%"><i></i></div></div>').join('') +
   '</section>';
 }
 function checkQuestWins() {
