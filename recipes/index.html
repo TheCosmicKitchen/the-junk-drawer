@@ -275,7 +275,7 @@
     families = fs;
     collections = (cs.collections || []).filter(c => c && c.id && c.tag && c.name);
     try { await Cloud.overlay(families); }
-    catch (e) { console.error(e); toast('Couldn’t load the crew’s recipes: ' + Cloud.friendly(e)); }
+    catch (e) { console.error(e); toast('Couldn’t load the newest recipes: ' + Cloud.friendly(e)); }
     all = [];
     for (const f of families) for (const r of f.recipes) all.push(Object.assign({}, r, { family: f, key: f.id + '/' + r.id }));
     all.sort((a, b) => a.title.localeCompare(b.title));
@@ -529,7 +529,8 @@
     const r = all.find(x => x.family.id === famId && x.id === recId);
     if (!r) {
       baseTitle = 'Recipe not found · Family Recipes';
-      app.innerHTML = '<a class="back" href="#/">← All recipes</a><h1>Recipe not found</h1><p class="muted">It may have been renamed or moved.</p>';
+      app.innerHTML = '<a class="back" href="#/">← All recipes</a><h1>Recipe not found</h1><p class="muted">It may have been renamed or moved' +
+        (Cloud.state === 'in' ? '.' : ', or it may still be waiting for review. Recipes show up for everyone once they’re approved.') + '</p>';
       return;
     }
     baseTitle = r.title + ' · Family Recipes';
@@ -550,7 +551,7 @@
           (r.time ? '<span>' + esc(r.time) + '</span>' : '') +
         '</div>' +
         (r.intro ? '<p class="intro">' + esc(r.intro) + '</p>' : '') +
-        (r.cloud && (Cloud.badge(r) || r.cloud.byName) ? '<p class="meta">' + Cloud.badge(r) + '<span>Added by ' + esc(r.cloud.byName) + '</span></p>' : '') +
+        (r.cloud && (Cloud.badge(r) || r.cloud.byName) ? '<p class="meta">' + Cloud.badge(r) + (r.cloud.byName ? '<span>Added by ' + esc(r.cloud.byName) + '</span>' : '') + '</p>' : '') +
         (r.cloud && r.cloud.note && r.cloud.status === 'draft' ? '<div class="rc-note no-print"><b>From the review:</b> ' + esc(r.cloud.note) + '</div>' : '') +
       '</div>' +
       '<div class="tools">' +

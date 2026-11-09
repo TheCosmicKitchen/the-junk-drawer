@@ -41,7 +41,7 @@ begin
     for t in
       select * from (values
         -- who,        aal,   expected,  test,                                         sql
-        ('anon',      '',     'error',   'logged-out: read recipes',                   'select count(*) from public.recipes'),
+        ('anon',      '',     'error',   'logged-out: see who wrote a recipe',         'select count(created_by) from public.recipes'),
         ('anon',      '',     'error',   'logged-out: read sets',                      'select count(*) from public.lift_sets'),
         ('anon',      '',     'error',   'logged-out: call me()',                      'select count(*) from public.me()'),
         ('anon',      '',     'error',   'logged-out: add a family',                   'insert into public.recipe_families (id, name) values (''x'', ''X'')'),

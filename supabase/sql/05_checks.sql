@@ -14,10 +14,19 @@ select problem, detail from (
   where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relrowsecurity
 
   union all
-  -- Logged-out visitors must have no rights on anything.
+  -- Logged-out visitors must have no rights on anything...
   select 'logged-out visitors can ' || privilege_type, table_name::text
   from information_schema.role_table_grants
   where grantee = 'anon' and table_schema = 'public'
+
+  union all
+  -- ...except reading approved recipes and the families (24_public_recipes.sql), and only these columns.
+  select 'logged-out visitors can ' || privilege_type || ' a column', table_name || '.' || column_name
+  from information_schema.column_privileges
+  where grantee = 'anon' and table_schema = 'public'
+    and not (privilege_type = 'SELECT' and (table_name, column_name) in (
+      ('recipes', 'id'), ('recipes', 'family_id'), ('recipes', 'slug'), ('recipes', 'title'), ('recipes', 'body'), ('recipes', 'status'),
+      ('recipe_families', 'id'), ('recipe_families', 'name'), ('recipe_families', 'about')))
 
   union all
   select 'logged-out visitors can run function', routine_schema || '.' || routine_name

@@ -1,13 +1,13 @@
 // The crew's side of the recipe box: signing in, and the recipes, reviews and "I made this"
-// notes kept in Supabase (supabase/sql/04_recipes.sql and 23_recipe_box.sql).
+// notes kept in Supabase (supabase/sql/04_recipes.sql, 23_recipe_box.sql, 24_public_recipes.sql).
 //
-// The family files in data/ stay the public recipe box. Signed in, a member also sees what
-// the crew has added or changed in the database (submitted and approved recipes, plus their
-// own drafts), laid over the files. The admin approves recipes and downloads updated family
-// files to commit. Who may do what is decided by the database, not by this file.
+// The family files in data/ are the base (and a backup in git). The database is laid over
+// them: signed out, anyone sees the approved recipes; signed in, a member also sees recipes
+// waiting for review and their own drafts. The admin approves recipes, and can download
+// family files to commit as a backup. Who may do what is decided by the database.
 //
 // supabase-js is only loaded once someone is signed in (here or in the lift log: same site,
-// same sign-in) or asks to sign in, so the public page stays light.
+// same sign-in) or asks to sign in; visitors get approved recipes with one plain request.
 window.RecipeCloud = (function () {
   'use strict';
   const BASE = document.currentScript ? document.currentScript.src : location.href;
@@ -126,7 +126,7 @@ window.RecipeCloud = (function () {
     const b = row.body || {};
     const r = tidy(Object.assign({}, b, { id: row.slug, title: row.title, ingredients: ingredientsOf(b.ingredients) }));
     Object.defineProperty(r, 'cloud', { enumerable: false, value: {
-      row: row.id, status: row.status, updatedAt: row.updated_at, by: row.created_by, byName: names.get(row.created_by) || 'someone',
+      row: row.id, status: row.status, updatedAt: row.updated_at, by: row.created_by, byName: row.created_by ? names.get(row.created_by) || 'someone' : '',
       note: row.review_note || '', deleted: !!row.deleted_at, mine: !!me && row.created_by === me.id, family: row.family_id,
     } });
     return r;
@@ -137,12 +137,24 @@ window.RecipeCloud = (function () {
   // Loading: lay the database over the family files (as loaded by RecipeCore.loadFamilies)
   // ---------------------------------------------------------------------------
   let rows = [];
-  async function overlay(families) {
-    if ((await ready) !== 'in') return families;
+  // Signed out, anyone can read approved recipes and the families (24_public_recipes.sql).
+  // A plain request with the publishable key, so visitors don't load supabase-js at all.
+  async function publicRows() {
+    const cfg = await import(new URL('../lift/config.js', BASE).href);
+    const get = path => fetch(cfg.SUPABASE_URL + '/rest/v1/' + path, { headers: { apikey: cfg.SUPABASE_KEY } })
+      .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.message || r.status); }));
     const [fams, recs] = await Promise.all([
+      get('recipe_families?select=id,name,about&order=name'),
+      get('recipes?select=id,family_id,slug,title,body,status&order=title'),
+    ]);
+    return [fams.map(f => Object.assign(f, { deleted_at: null })), recs.map(r => Object.assign(r, { deleted_at: null }))];
+  }
+  async function overlay(families) {
+    const signedIn = (await ready) === 'in';
+    const [fams, recs] = signedIn ? await Promise.all([
       sb.from('recipe_families').select('id,name,about,deleted_at').order('name').then(must),
       sb.from('recipes').select('*').order('title').then(must),
-    ]);
+    ]) : await publicRows();
     rows = recs;
     for (const f of fams) {
       if (f.deleted_at) continue;

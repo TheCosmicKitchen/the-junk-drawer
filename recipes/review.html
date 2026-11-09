@@ -70,10 +70,10 @@
 <main>
   <a class="back" href="./">← Recipe box</a>
   <h1>Recipe desk</h1>
-  <p class="lede">Your recipes in the box, and for the admin: the review queue and the files for the public page.</p>
+  <p class="lede">Your recipes in the box, and for the admin: the review queue and the backup files.</p>
   <section><div id="auth"></div></section>
   <div id="desk"></div>
-  <footer><span>Everything here is for the crew only. The public page changes only when the admin commits a family file.</span><a href="./">Recipe box</a></footer>
+  <footer><span>This page is for the crew. Approved recipes are public: anyone with the link can read them. Drafts, recipes waiting for review and “I made this” notes stay with the crew.</span><a href="./">Recipe box</a></footer>
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -129,7 +129,7 @@
 
     if (me.admin) {
       const queue = rows.filter(r => r.status === 'submitted' && !r.deleted_at).sort((a, b) => a.updated_at.localeCompare(b.updated_at));
-      html += '<section><h2>Waiting for review</h2><p class="sub">Approve to put it in the box, or send it back with a note. Approved recipes reach the public page when you commit the family file below.</p>' +
+      html += '<section><h2>Waiting for review</h2><p class="sub">Approve to put it in the box, where anyone with the link can read it, or send it back with a note.</p>' +
         (queue.length ? '<ul class="rows">' + queue.map(r =>
           '<li data-row="' + esc(r.id) + '"><div class="line"><h3>' + esc(r.title) + '</h3><span class="who">' + esc(famName(r.family_id)) + ' · by ' + esc(Cloud.nameOf(r.created_by)) + ' · ' + when(r.updated_at) + '</span></div>' +
           '<p class="peek">' + peek(r) + '</p>' +
@@ -146,7 +146,7 @@
       // The public page: what each family file would gain, and the download
       const missing = families.reduce((n, f) => n + (f.fileRecipes || []).filter(r => !rows.some(x => x.family_id === f.id && x.slug === r.id)).length, 0);
       const listed = families.filter(f => !f.cloudOnly).map(f => f.id), extra = families.filter(f => f.cloudOnly);
-      html += '<section><h2>The public page</h2><p class="sub">The family files in <code>recipes/data/</code> are what visitors see. Download a file, put it in that folder, then commit and push.</p><ul class="rows">' +
+      html += '<section><h2>Backup files</h2><p class="sub">Approved recipes go public as soon as they’re approved. The family files in <code>recipes/data/</code> are a copy in git, and what the page falls back on if the database can’t be reached. Download a file, put it in that folder, then commit and push, whenever you like.</p><ul class="rows">' +
         families.map(f => {
           const { changes: c } = Cloud.familyFile(f);
           const n = c.added.length + c.changed.length + c.removed.length;
@@ -155,12 +155,12 @@
             (n ? '<ul class="changes">' +
               c.added.map(t => '<li>New: ' + esc(t) + '</li>').join('') + c.changed.map(t => '<li>Changed: ' + esc(t) + '</li>').join('') +
               c.removed.map(t => '<li>Removed: ' + esc(t) + '</li>').join('') + '</ul>'
-              : '<p class="hint">' + (f.cloudOnly ? 'Not on the public page yet.' : 'The file already matches the box.') + '</p>') +
+              : '<p class="hint">' + (f.cloudOnly ? 'No backup file yet.' : 'The file already matches the box.') + '</p>') +
             (c.waiting ? '<p class="hint">' + c.waiting + ' more not approved yet (left out).</p>' : '') + '</li>';
         }).join('') + '</ul>' +
         (extra.length ? '<div class="btns"><button type="button" data-dl="__families">Download families.json</button></div><p class="hint">Needed for the new famil' + (extra.length === 1 ? 'y' : 'ies') + ': ' + extra.map(f => esc(f.name)).join(', ') + '.</p>' : '') +
         (missing ? '<div class="btns"><button type="button" id="import">Copy ' + missing + ' recipe' + (missing === 1 ? '' : 's') + ' from the files into the box</button></div>' +
-          '<p class="hint">These are on the public page but not in the database yet. Copying them in lets the crew edit them and log cooking them.</p>' : '') +
+          '<p class="hint">These are in the files but not in the database yet. Copying them in lets the crew edit them and log cooking them.</p>' : '') +
         '</section>';
 
       const gone = rows.filter(r => r.deleted_at).sort((a, b) => b.deleted_at.localeCompare(a.deleted_at)).slice(0, 10);

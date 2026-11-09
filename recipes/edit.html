@@ -103,6 +103,15 @@
   #cloudSave { margin: 14px 0; }
   #cloudSave .out-btns { margin-top: 10px; }
   #byHand { margin-top: 12px; }
+  .quick { background: var(--card); border: 1px solid var(--accent); border-radius: 16px; padding: 16px 20px; margin-top: 18px; }
+  .quick summary { cursor: pointer; list-style: none; }
+  .quick summary::-webkit-details-marker { display: none; }
+  .quick summary h2 { display: inline; }
+  .quick summary::after { content: " ▾"; color: var(--muted); }
+  .quick:not([open]) summary::after { content: " ▸"; }
+  .quick .sub { margin: 6px 0 10px; }
+  .quick textarea { min-height: 96px; }
+  .quick .addrow { align-items: center; margin-top: 10px; }
   @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -113,6 +122,13 @@
   <p class="lede">Type it in, then save it to the box for the crew (signed in) or download the family's file and commit it to the repo. Your draft is kept in this browser as you go. Got a pile of them? <a href="import.html">Add many at once</a>.</p>
   <div class="banner" id="draftBanner" hidden><span id="draftText"></span><button type="button" id="startOver">Start over</button></div>
   <p class="hint badc" id="loadErr" hidden></p>
+
+  <details class="quick" id="quick" open>
+    <summary><h2>Paste a whole recipe</h2></summary>
+    <p class="sub">From a website, an email or your notes. It fills in everything below, ready to check.</p>
+    <textarea id="quickText" rows="4" placeholder="Paste the recipe here: title, ingredients, method, all of it." aria-label="Paste a whole recipe"></textarea>
+    <div class="addrow"><button type="button" class="primary" id="quickGo">Fill in the form</button><span class="hint" id="quickMsg" style="margin:0"></span></div>
+  </details>
 
   <section>
     <h2>Whose recipe</h2>
@@ -218,6 +234,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
+<script src="parse.js"></script>
 <script src="cloud.js"></script>
 <script>
 (function () {
@@ -369,20 +386,126 @@
       '<li class="foot" aria-hidden="true"><kbd>Tab</kbd> to complete · <kbd>↓</kbd> to choose</li>';
     if (ac.input) ac.input.setAttribute('aria-activedescendant', ac.active >= 0 ? 'ac' + ac.active : '');
   }
-  function closeAc() { ac.el.hidden = true; ac.input = null; ac.items = []; ac.active = -1; }
+  let autoSpace = null;
+  function closeAc() { ac.el.hidden = true; ac.input = null; ac.items = []; ac.active = -1; ac.to = null; }
+  // Replaces what's being typed (from ac.from up to the caret) with the suggestion. In a step,
+  // the text after the caret is kept and a space added when the next thing is a word.
   function acceptAc(i) {
     const input = ac.input, it = ac.items[i < 0 ? 0 : i];
     if (!input || !it) return;
-    input.value = input.value.slice(0, ac.from) + it.text + (it.note === 'unit' ? ' ' : '');
+    const v = input.value, to = ac.to == null ? v.length : ac.to, rest = v.slice(to);
+    const step = input.classList.contains('st');
+    const add = it.text + (it.note === 'unit' || (step && !/^\s/.test(rest)) ? ' ' : '');
+    input.value = v.slice(0, ac.from) + add + rest;
+    const caret = ac.from + add.length;
+    // a space put in for you, taken back if the next thing typed is punctuation
+    autoSpace = step && add.endsWith(' ') ? { input, at: caret } : null;
+    input.setSelectionRange(caret, caret);
+    closeAc();
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.setSelectionRange(input.value.length, input.value.length);
-    if (it.note !== 'unit') closeAc(); else openAc(input);
+    input.setSelectionRange(caret, caret);
+    if (it.note === 'unit') openAc(input); else closeAc();
   }
   ac.el.addEventListener('mousedown', e => {
     const li = e.target.closest('li[data-i]'); if (!li) return;
     e.preventDefault(); acceptAc(Number(li.dataset.i));
   });
   window.addEventListener('resize', closeAc);
+
+  // ---------------------------------------------------------------- autocomplete inside steps
+  // Offers, for what's just before the caret:
+  //   an oven temperature   "350"    -> 350°F (175°C)
+  //   a pan size            "9x13"   -> 9×13-inch pan
+  //   a time                "bake 10" -> 10 minutes, 10 to 12 minutes
+  //   a common phrase       "pre"    -> Preheat the oven to   (built in, plus how the box's recipes start their steps)
+  //   this recipe's ingredients  "bu" -> butter
+  const PHRASES = ['Heat the oven to', 'Preheat the oven to', 'Line a baking sheet with parchment paper.', 'Line two baking sheets with parchment paper.',
+    'Grease a', 'In a large bowl, whisk together', 'In a medium bowl, whisk together', 'In a separate bowl,', 'Sift together',
+    'Cream the butter and sugar until light and fluffy, about 3 minutes.', 'Beat in the eggs one at a time, then the vanilla.',
+    'Add the dry ingredients and mix until just combined.', 'Fold in the', 'Stir in the', 'Scoop the dough into', 'Roll the dough into balls',
+    'Chill the dough for at least', 'Cover and refrigerate for at least', 'Bake until golden brown at the edges,', 'Bake for',
+    'Let cool on the baking sheet for 5 minutes, then move to a wire rack to cool completely.', 'Store in an airtight container for up to',
+    'Bring to a boil, then reduce the heat and simmer for', 'Melt the butter in a', 'Heat the oil in a large pan over medium heat.',
+    'Add the onion and cook until soft,', 'Season with salt and pepper.', 'Season to taste.', 'Serve warm.', 'Serve right away.',
+    'Whisk together', 'Combine', 'Toss the', 'Knead the dough until smooth and elastic,', 'Cover and let rise in a warm place until doubled,',
+    'Punch down the dough', 'Brush with', 'Sprinkle with', 'Transfer to a', 'Pour the batter into the prepared pan.', 'Remove from the heat'];
+  let phrases = PHRASES;
+  function buildPhrases() {
+    // how the box's own recipes tend to start a step, most common first
+    const count = new Map();
+    for (const f of families) for (const r of f.recipes) for (const st of (r.steps || [])) {
+      const m = /^([^.,;]{6,60}[.,]?)/.exec(st.trim());
+      if (m) count.set(m[1], (count.get(m[1]) || 0) + 1);
+    }
+    const mine = [...count].filter(([p, n]) => n > 1 || p.split(' ').length >= 3).sort((a, b) => b[1] - a[1]).map(([p]) => p);
+    phrases = [...new Set(mine.concat(PHRASES))];
+  }
+  const fToC = f => Math.round((f - 32) * 5 / 9 / 5) * 5, cToF = c => Math.round((c * 9 / 5 + 32) / 5) * 5;
+  function ingredientNames() {
+    const names = new Set();
+    for (const g of S.groups) for (const line of g.items) {
+      if (!line.trim()) continue;
+      const p = parseIng(line);
+      const n = (p.q1 == null ? line : p.name).split(/[,(]/)[0].replace(/^of\s+/i, '').trim().toLowerCase();
+      if (n && n.length <= 40) names.add(n);
+    }
+    return [...names];
+  }
+  function stepSuggestions(before) {
+    let m;
+    // oven temperature: a 3-digit number, not already followed by a degree sign
+    if ((m = /(?:^|[^\d.])(\d{3})$/.exec(before)) && +m[1] >= 90 && +m[1] <= 550) {
+      const n = +m[1], f = n >= 250 && n <= 550 ? { text: n + '°F (' + fToC(n) + '°C)', note: 'oven' } : null;
+      const c = n >= 90 && n <= 260 ? { text: n + '°C (' + cToF(n) + '°F)', note: 'oven' } : null;
+      const items = (n >= 250 ? [f, c] : [c, f]).filter(Boolean);
+      return { from: before.length - m[1].length, items };
+    }
+    // pan size: 9x13, 8 x 8, 9×5
+    if ((m = /(\d{1,2})\s*[x×]\s*(\d{1,2})$/i.exec(before))) {
+      const size = m[1] + '×' + m[2] + '-inch';
+      return { from: before.length - m[0].length, items: [size + ' pan', size + ' baking dish', size + ' loaf pan'].map(text => ({ text, note: 'pan' })) };
+    }
+    // a time after a cooking word: "bake 10", "for 25", "chill 2"
+    if ((m = /\b(?:for|about|another|bake|cook|simmer|roast|boil|fry|chill|rest|rise|knead|beat|whisk|stir|freeze|cool|steep|marinate)\s+(\d{1,3})$/i.exec(before))) {
+      const n = +m[1], step = n < 10 ? 1 : n < 20 ? 2 : 5;
+      const items = [{ text: n + ' minute' + (n === 1 ? '' : 's'), note: 'time' }, { text: n + ' to ' + (n + step) + ' minutes', note: 'time' }];
+      if (n <= 24) items.push({ text: n + ' hour' + (n === 1 ? '' : 's'), note: 'time' });
+      return { from: before.length - m[1].length, items };
+    }
+    // a common phrase, for the sentence being started
+    const sentence = /(?:^|[.!?]\s+)([^.!?]*)$/.exec(before)[1];
+    if (sentence.length >= 2 && sentence.split(' ').length <= 6) {
+      const s = sentence.toLowerCase();
+      const items = phrases.filter(p => p.toLowerCase().startsWith(s) && p.length > sentence.length).slice(0, 5).map(text => ({ text, note: 'phrase' }));
+      if (items.length) return { from: before.length - sentence.length, items };
+    }
+    // one of this recipe's ingredients
+    if ((m = /([A-Za-z][A-Za-z-]+)$/.exec(before)) && m[1].length >= 2) {
+      const f = m[1].toLowerCase(), out = [];
+      for (const name of ingredientNames()) {
+        if (name.startsWith(f) && name !== f) { out.push(name); continue; }
+        const at = name.indexOf(' ' + f);
+        if (at >= 0 && name.slice(at + 1) !== f) out.push(name.slice(at + 1));
+      }
+      const items = [...new Set(out)].slice(0, 6).map(text => ({ text, note: 'in this recipe' }));
+      if (items.length) return { from: before.length - m[1].length, items };
+    }
+    return null;
+  }
+  function openStepAc(t) {
+    if (t.selectionStart !== t.selectionEnd) return closeAc();
+    const caret = t.selectionStart, before = t.value.slice(0, caret);
+    if (/\S/.test(t.value.charAt(caret)) && /\w/.test(t.value.charAt(caret))) return closeAc();   // in the middle of a word
+    const s = stepSuggestions(before);
+    if (!s || !s.items.length) return closeAc();
+    Object.assign(ac, { input: t, items: s.items, from: s.from, to: caret, active: -1 });
+    drawAc();
+    const r = t.getBoundingClientRect();
+    ac.el.style.left = (r.left + window.scrollX) + 'px';
+    ac.el.style.top = (r.bottom + window.scrollY + 4) + 'px';
+    ac.el.style.width = Math.min(Math.max(r.width * 0.7, 260), 460) + 'px';
+    ac.el.hidden = false;
+  }
 
   // ---------------------------------------------------------------- reading of each line
   function readIng(v) {
@@ -521,11 +644,30 @@
     grow(t);
     t.parentNode.querySelector('.read').innerHTML = readStep(t.value);
     saveDraft();
+    if (e.isTrusted) openStepAc(t);
   });
+  stepsEl.addEventListener('focusout', e => { if (e.target.classList.contains('st')) setTimeout(() => { if (document.activeElement !== ac.input) closeAc(); }, 120); });
   stepsEl.addEventListener('keydown', e => {
     const t = e.target; if (!t.classList.contains('st')) return;
     const i = +t.dataset.i;
+    const open = !ac.el.hidden && ac.input === t;
+    if (open && e.key === 'ArrowDown') { e.preventDefault(); ac.active = (ac.active + 1) % ac.items.length; drawAc(); return; }
+    if (open && e.key === 'ArrowUp') { e.preventDefault(); ac.active = ac.active <= 0 ? ac.items.length - 1 : ac.active - 1; drawAc(); return; }
+    if (open && e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+    if (open && e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); acceptAc(ac.active); return; }
+    if (open && e.key === 'Enter' && ac.active >= 0) { e.preventDefault(); acceptAc(ac.active); return; }
+    if (open && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End')) closeAc();
+    if (autoSpace && autoSpace.input === t && /^[.,;:!?)]$/.test(e.key) && t.selectionStart === autoSpace.at && t.value[autoSpace.at - 1] === ' ') {
+      e.preventDefault();
+      const at = autoSpace.at; autoSpace = null;
+      t.value = t.value.slice(0, at - 1) + e.key + t.value.slice(at);
+      t.setSelectionRange(at, at);
+      t.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (e.key.length === 1 || e.key === 'Backspace') autoSpace = null;
     if (e.key === 'Enter' && !e.shiftKey) {
+      closeAc();
       e.preventDefault();
       const c = t.selectionStart;
       S.steps[i] = t.value.slice(0, c).trim(); S.steps.splice(i + 1, 0, t.value.slice(c).trim());
@@ -715,7 +857,7 @@
     $('cloudWho').textContent = c
       ? (c.status === 'approved' ? 'In the box' : c.status === 'submitted' ? 'Waiting for review' : 'A draft only ' + (c.mine ? 'you' : c.byName) + ' can see') +
         (c.mine ? '' : ', added by ' + c.byName) + '.'
-      : (me.admin ? 'Saving puts it straight in the box for the crew.' : 'Send it in and the admin will look it over before it goes on the public page.');
+      : (me.admin ? 'Saving puts it straight in the box, for anyone with the link.' : 'Send it in and the admin will look it over; once approved, anyone with the link can see it.');
     $('cloudNote').hidden = !(c && c.note && c.status === 'draft');
     if (c && c.note) $('cloudNote').innerHTML = '<b>From the review:</b> ' + esc(c.note);
     const btns = me.admin
@@ -723,6 +865,8 @@
       : [['submitted', 'Send for review', true], ['draft', 'Save draft (only you)']];
     $('cloudBtns').innerHTML = btns.map(([s, label, main]) =>
       '<button type="button" data-save="' + s + '"' + (main ? ' class="primary"' : '') + (blocked || why || saving ? ' disabled' : '') + '>' + label + '</button>').join('') +
+      (!S.editing && S.family !== '__new' ? '<button type="button" data-save="' + btns[0][0] + '" data-next="1"' + (blocked || why || saving ? ' disabled' : '') +
+        ' title="Saves this, then clears the form for the next one, keeping the family, From and tags">Save and add another</button>' : '') +
       (c && (c.mine || me.admin) ? '<button type="button" id="cloudDel"' + (saving ? ' disabled' : '') + '>Remove from the box</button>' : '');
     if (!saving) $('cloudMsg').textContent = why || (blocked ? 'Fix the things marked above first.' : '');
   }
@@ -743,6 +887,19 @@
       const family = S.family === '__new' ? { id: fid, name: S.famName.trim(), about: S.famAbout.trim(), isNew: true } : { id: fid };
       const saved = await Cloud.save(family, recipe, b.dataset.save, S.cloud);
       store.del(DRAFT_KEY);
+      if (b.dataset.next) {
+        // Ready for the next one: same family, From and tags; everything else blank.
+        const f = famById(fid); if (f) f.recipes.push(saved);
+        S = Object.assign(blank(), { editing: null, family: fid, from: S.from, tags: S.tags.slice() });
+        saving = false;
+        fillFields(); refreshOutput();
+        $('cloudMsg').textContent = '';
+        $('quick').open = true; $('quickMsg').textContent = '';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        $('quickText').focus({ preventScroll: true });
+        toast('Saved “' + saved.title + '”. Next one!');
+        return;
+      }
       location.href = './#/' + encodeURIComponent(fid) + '/' + encodeURIComponent(saved.id);
     } catch (x) {
       saving = false; refreshOutput();
@@ -769,6 +926,35 @@
     fillFields(); refreshOutput(); $('draftBanner').hidden = true;
   });
 
+  // ---------------------------------------------------------------- paste a whole recipe
+  // Reads it with the same parser as the bulk import, then fills the form. The family, and
+  // where it lives in the box when editing, stay as they are; tags already picked are kept.
+  const hasContent = () => !!(S.title.trim() || S.groups.some(g => g.items.some(x => x.trim())) || S.steps.some(x => x.trim()));
+  function quickFill() {
+    const text = $('quickText').value;
+    if (!text.trim()) { $('quickMsg').textContent = 'Paste a recipe into the box first.'; return; }
+    const found = window.RecipeParse.parse(text);
+    if (!found.length) { $('quickMsg').textContent = 'Couldn’t find a recipe in that.'; return; }
+    if (hasContent() && !confirm('Replace what’s in the form with the pasted recipe?')) return;
+    const { recipe: r, warnings } = found[0];
+    const s = fromRecipe({ id: S.family }, r);
+    Object.assign(s, { editing: S.editing, cloud: S.cloud, family: S.family, famName: S.famName, famAbout: S.famAbout });
+    if (S.editing) { s.id = S.id; s.idTouched = true; } else { s.id = slug(s.title); s.idTouched = false; }
+    s.tags = [...new Set(S.tags.concat(s.tags))];
+    if (!s.from && S.from) s.from = S.from;
+    S = s;
+    fillFields(); refreshOutput(); saveDraft();
+    $('quickText').value = '';
+    const n = s.groups.reduce((k, g) => k + g.items.filter(x => x.trim()).length, 0), st = s.steps.filter(x => x.trim()).length;
+    $('quickMsg').innerHTML = esc('Filled in “' + (s.title || 'untitled') + '”: ' + n + ' ingredient' + (n === 1 ? '' : 's') + ', ' + st + ' step' + (st === 1 ? '' : 's') + '. ') +
+      (warnings.length ? '<span class="warnc">' + warnings.map(esc).join(' ') + '</span> ' : 'Check it over below. ') +
+      (found.length > 1 ? 'That looked like ' + found.length + ' recipes, so only the first went in; <a href="import.html">add many at once</a> takes them all.' : '');
+    $('title').focus();
+  }
+  $('quickGo').addEventListener('click', quickFill);
+  // Pasting into an empty box fills the form straight away.
+  $('quickText').addEventListener('paste', () => setTimeout(() => { if ($('quickText').value.trim()) quickFill(); }, 0));
+
   // ---------------------------------------------------------------- start
   function startState() {
     if (editKey) {
@@ -788,7 +974,7 @@
     catch (e) { console.error(e); $('loadErr').hidden = false; $('loadErr').textContent = 'Couldn’t load the crew’s recipes: ' + Cloud.friendly(e); }
     $('family').innerHTML = families.filter(f => !f.broken).map(f => '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>').join('') +
       '<option value="__new">+ A new family…</option>';
-    buildVocab(); fillDatalists();
+    buildVocab(); buildPhrases(); fillDatalists();
     const draft = store.get(DRAFT_KEY);
     S = startState();
     // pick up an unfinished draft for the same thing (the same recipe being edited, or a new one);
@@ -802,6 +988,7 @@
       $('heading').textContent = 'Edit recipe';
       document.title = 'Edit Recipe';
     }
+    if (S.editing || hasContent()) $('quick').open = false;
     if (!S.id && S.title) S.id = slug(S.title);
     fillFields(); refreshOutput();
   }).catch(err => {
