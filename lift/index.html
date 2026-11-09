@@ -110,8 +110,15 @@
 
   /* ---------- progress ---------- */
   .candles { width: 100%; height: auto; display: block; margin: 4px 0 6px; }
-  .bar { height: 12px; background: var(--chip); border-radius: 99px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--gold))); border-radius: 99px; transition: width .6s; }
+  /* Progress bars: goals, seasons, the routine you're following, clubs, challenges. Markup is
+     <div class="bar" style="--p:40%"><i></i></div>. The theme (themes.js `bar`) sets the track, the fill, a
+     texture laid over every fill (person-colored ones too), a marker riding the tip of the fill, and a goal
+     waiting at the end of the track; a theme's css can go further (it can read --p too). */
+  :root { --bar-h: 12px; --bar-track: var(--chip); --bar-fill: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--gold))); --bar-texture: none; --bar-end: none; --bar-goal: none; --bar-flip: 1; }
+  .bar, .gt-bar, .elapsed { height: var(--bar-h); background: var(--bar-track); border-radius: 99px; position: relative; }
+  .bar > i, .gt-bar > i, .elapsed > i { display: block; width: min(var(--p, 0%), 100%); height: 100%; background: var(--bar-texture), var(--bar-fill); border-radius: 99px; transition: width .6s; position: relative; }
+  .bar > i::after, .gt-bar > i::after, .elapsed > i::after { content: var(--bar-end); position: absolute; left: max(0px, calc(100% - .9em)); top: 50%; transform: translateY(-50%) scaleX(var(--bar-flip)); font-size: calc(var(--bar-h) + 6px); line-height: 1; font-style: normal; pointer-events: none; z-index: 2; }
+  .bar::after, .gt-bar::after, .elapsed::after { content: var(--bar-goal); position: absolute; right: -2px; top: 50%; transform: translateY(-50%); font-size: calc(var(--bar-h) + 6px); line-height: 1; pointer-events: none; z-index: 1; }
   .seg { display: inline-flex; background: var(--chip); border-radius: 12px; padding: 3px; gap: 2px; }
   .seg button { border: 0; background: transparent; border-radius: 9px; padding: 7px 12px; font-weight: 600; font-size: 14px; color: var(--muted); }
   .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
@@ -366,8 +373,7 @@
   .band-who { font-size: 13px; font-weight: 700; opacity: .85; }
   .pill { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 99px; background: rgba(255,255,255,.2); letter-spacing: .02em; }
   .pill.live { background: #fff; color: #0f1720; }
-  .elapsed { height: 6px; border-radius: 99px; background: rgba(255,255,255,.25); margin-top: 12px; overflow: hidden; }
-  .elapsed i { display: block; height: 100%; background: #fff; border-radius: 99px; }
+  .elapsed { --bar-h: 6px; --bar-track: rgba(255,255,255,.25); --bar-fill: #fff; margin-top: 12px; }
   .sb-body { padding: 14px 16px 16px; }
   .sb-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .sb-stats b { display: block; font-family: var(--display); font-size: 26px; font-weight: 800; line-height: 1.05; }
@@ -382,8 +388,8 @@
   .gt-head small { flex-basis: 100%; margin-left: 34px; margin-top: -4px; }
   .gt-icon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--card); font-size: 14px; }
   .gt-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 8px; font-size: 13.5px; font-weight: 600; }
-  .gt-bar { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--chip); overflow: hidden; }
-  .gt-bar i { display: block; height: 100%; border-radius: 99px; }
+  .gt-bar { grid-column: 1 / -1; --bar-h: 8px; }
+  .gt-bar > i { --bar-fill: var(--who); }
   .who { display: inline-flex; align-items: center; gap: 6px; }
   .cmp.standings td, .cmp.standings th { font-size: 14.5px; }
   .cmp tr.me td { font-weight: 700; }
@@ -407,6 +413,13 @@
   .plan-chip { margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: var(--accent-soft); font-size: 14px; }
   .trio { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 10px; }
   .trio.two { grid-template-columns: 1.35fr 1fr; }
+  .boxwrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .steps button { height: 40px; border: 1px solid var(--line); background: var(--chip); border-radius: 12px; font: 700 22px/1 var(--body); color: var(--ink); padding: 0; }
+  .steps button:active { transform: scale(.96); background: var(--accent-soft); }
+  .chip.pending { outline: 1.5px dashed var(--muted); outline-offset: -1.5px; opacity: .85; }
+  .sync-line { margin: 10px 0 0; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+  #sheetInner .sheet-body { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .box { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .box span { font-size: 12.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
   .box span i { font-style: normal; text-transform: none; letter-spacing: 0; }

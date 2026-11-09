@@ -8,11 +8,17 @@ const SET_COLS = 'id,exercise_id,performed_on,logged_at,date_only,weight,reps,un
 
 export async function connect(demo) {
   if (demo) {
-    // ?demo&slow pretends saving takes 1.5 s (and &fail that it fails), to try the background saving.
+    // ?demo&slow pretends saving takes 1.5 s, &fail that the database refuses it, and &offline that there's
+    // no signal until window.__demoOnline is set (then fire an 'online' event), to try the outbox.
     const st = new DemoStore(), q = new URLSearchParams(location.search);
     if (q.has('slow')) {
       const add = st.addSets.bind(st);
-      st.addSets = async rows => { await new Promise(r => setTimeout(r, 1500)); if (q.has('fail')) throw new Error('pretend network failure'); return add(rows); };
+      st.addSets = async rows => {
+        await new Promise(r => setTimeout(r, 1500));
+        if (q.has('offline') && !window.__demoOnline) throw new Error('Can’t reach the server. Check your connection.');
+        if (q.has('fail')) throw new Error('That isn’t allowed for your account (pretend).');
+        return add(rows);
+      };
     }
     return st;
   }
@@ -99,6 +105,7 @@ class SupaStore {
 
   // ----- writes -----
   async addSet(row) { return must(await this.sb.from('lift_sets').insert(row).select(SET_COLS).single()); }
+  async setsByIds(ids) { const out = must(await this.sb.from('lift_sets').select(SET_COLS).in('id', ids)); return ids.map(id => out.find(o => o.id === id)).filter(Boolean); }
   async addSets(rows) {   // several sets in one request, returned in the same order
     const out = must(await this.sb.from('lift_sets').insert(rows).select(SET_COLS));
     const t = x => new Date(x).getTime();
@@ -284,7 +291,11 @@ class DemoStore {
     return [...m.values()];
   }
   async addSet(r) { return clone(this.push({ ...r, logged_at: r.logged_at || new Date().toISOString() })); }
-  async addSets(rows) { const out = []; for (const r of rows) out.push(await this.addSet(r)); return out; }
+  async addSets(rows) {
+    if (rows.some(r => r.id && this.sets.some(x => x.id === r.id))) throw new Error('duplicate key value violates unique constraint "lift_sets_pkey"');
+    const out = []; for (const r of rows) out.push(await this.addSet(r)); return out;
+  }
+  async setsByIds(ids) { return ids.map(id => this.sets.find(x => x.id === id)).filter(Boolean).map(clone); }
   async updateSet(id, patch) {
     const s = this.sets.find(x => x.id === id);
     if (!s) throw new Error('That set is gone.');

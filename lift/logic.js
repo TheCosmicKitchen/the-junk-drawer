@@ -99,9 +99,9 @@ export function compareTo(lbEq) {
 export function achievements(m) {
   const lbEq = lbEquivalent(m.volume);
   const visits = [
-    { id: 'first_visit', title: 'First Visit', desc: 'Welcome to the congregation.', have: m.visits, need: 1, unit: 'visits' },
-    { id: 'five_visits', title: 'Five Visit Rhythm', desc: 'Regular attendance.', have: m.visits, need: 5, unit: 'visits' },
-    { id: 'twenty_visits', title: 'Regular', desc: 'Twenty gym days. Front pew.', have: m.visits, need: 20, unit: 'visits' },
+    { id: 'first_visit', title: 'First Visit', desc: 'Your first day logged.', have: m.visits, need: 1, unit: 'visits' },
+    { id: 'five_visits', title: 'Five Visit Rhythm', desc: 'Five gym days.', have: m.visits, need: 5, unit: 'visits' },
+    { id: 'twenty_visits', title: 'Regular', desc: 'Twenty gym days.', have: m.visits, need: 20, unit: 'visits' },
   ];
   const pr = { id: 'first_pr', title: 'New Personal Record', desc: 'A new best for an exercise and rep count.', have: m.prs, need: 1, unit: 'PRs' };
   return [...visits, pr].map(a => ({ ...a, earned: a.have >= a.need }))
