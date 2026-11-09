@@ -160,27 +160,98 @@ function showNotMember() {
   g.querySelector('form').onsubmit = async e => { e.preventDefault(); await store.signOut(); showSignIn(); };
 }
 
+// Opening the app: if this phone has a snapshot of what you last saw, the app draws from it at once,
+// then checks your account and fetches fresh data in the background and redraws. With no signal it
+// just keeps showing the snapshot (new sets wait in the outbox). No snapshot: the usual loading screen.
 async function afterSignIn() {
-  gate('<p class="muted" style="margin-top:30px">Loading your log…</p>');
-  const aal = await store.aal();
-  if (aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
-    const f = (await store.totpFactors())[0];
-    if (f) return showCode(f);
+  const session = await store.session().catch(() => null);
+  const snap = readSnap((session && session.user && session.user.id) || (store.demo ? await store.userId() : null));
+  if (snap) {
+    me = snap.me;
+    applyData(snap.data);
+    S.wins = snap.wins || null; S.records = snap.records || null;
+    restoreOutbox();
+    showApp();
+  } else gate('<p class="muted" style="margin-top:30px">Loading your log…</p>');
+  try {
+    const aal = await store.aal();
+    if (aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+      const f = (await store.totpFactors())[0];
+      if (f) return showCode(f);
+    }
+    const who = await store.me();
+    if (!who) { clearSnap(); return showNotMember(); }
+    me = who;
+    if (me.mfa_required && !me.mfa_ok) { clearSnap(); return showEnroll(); }
+    applyData(await fetchAll());
+    if (snap) { reapplyWaiting(); S.winsAt = 0; S.recordsAt = 0; render(); }
+    else { restoreOutbox(); showApp(); }
+    writeSnap();
+  } catch (x) {
+    if (!snap) throw x;   // nothing to show: the start screen explains
+    toast('No signal. Showing what you had; new sets are kept until you’re back.');
   }
-  me = await store.me();
-  if (!me) return showNotMember();
-  if (me.mfa_required && !me.mfa_ok) return showEnroll();
-  await loadAll();
-  restoreOutbox();
-  showApp();
 }
 
-async function loadAll() {
-  const [cat, recent, days, bests, routines, seasons, names, myId, wdays, bw] = await Promise.all([
+// ---------------------------------------------------------------------------
+// The snapshot: what you last saw, kept on this phone so the app opens instantly. Your own and the
+// crew's lifting data, the same things the app already holds in memory. Written after a refresh
+// and whenever the app goes to the background; wiped when you sign out.
+// ---------------------------------------------------------------------------
+const SNAP = 'lift.snap';
+const snapOff = () => store.demo && !new URLSearchParams(location.search).has('snap');   // ?demo&snap tries it in the demo
+function readSnap(userId) {
+  if (!userId || snapOff()) return null;
+  try { const o = JSON.parse(localStorage.getItem(SNAP) || 'null'); return o && o.v === 1 && o.user === userId && o.data ? o : null; } catch (e) { return null; }
+}
+function clearSnap() { try { localStorage.removeItem(SNAP); } catch (e) {} }
+function writeSnap() {
+  if (snapOff() || !S.myId || !S.recent) return;
+  // Sets still waiting in the outbox aren't part of it: they come back from the outbox itself.
+  const waitingSets = S.recent.filter(x => x._pending);
+  const days = S.days.map(d => ({ ...d }));
+  for (const x of waitingSets) {
+    const d = days.find(y => y.performed_on === x.performed_on);
+    if (d && x.is_warmup !== true) { d.sets = Number(d.sets) - 1; d['volume_' + x.unit] = Number(d['volume_' + x.unit]) - L.setVolume(x); }
+  }
+  const data = {
+    cat: { exercises: S.exercises, aliases: [...S.aliases].flatMap(([exercise_id, list]) => list.map(alias => ({ exercise_id, alias }))) },
+    recent: S.recent.filter(x => !x._pending), days: days.filter(d => d.sets > 0), bests: S.bestRows,
+    routines: { templates: S.templates, items: S.items, subs: S.subs },
+    seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
+    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw,
+  };
+  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records })); }
+  catch (e) { clearSnap(); }   // full: better none than a half-written one
+}
+// After fresh data replaces what was on screen, put back the sets still waiting to save.
+function reapplyWaiting() {
+  const known = new Set(S.recent.map(x => x.id));
+  for (const e of Q.box) for (const r of e.rows) if (!known.has(r.id)) {
+    const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _pending: true };
+    syncCaches(t, false); bumpDay(t, +1);
+  }
+}
+// Coming back to the app after a while: refresh everything quietly; going away: save the snapshot.
+let hiddenAt = 0, refreshing = false;
+document.addEventListener('visibilitychange', async () => {
+  if (!store || !S.myId) return;
+  if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); writeSnap(); return; }
+  if (!hiddenAt || Date.now() - hiddenAt < 120000 || refreshing || store.demo) return;
+  refreshing = true;
+  try { applyData(await fetchAll()); reapplyWaiting(); S.winsAt = 0; S.recordsAt = 0; render(); refreshLoggerList(); writeSnap(); } catch (x) { /* keep what's on screen */ }
+  refreshing = false;
+});
+window.addEventListener('pagehide', () => { if (store && S.myId) writeSnap(); });
+
+function fetchAll() {
+  return Promise.all([
     store.catalog(), store.setsSince(L.addDays(today(), -RECENT_DAYS)), store.days(), store.bests(),
     store.routines(), store.seasons(), store.memberNames(), store.userId(),
     store.workoutDays(today()), store.bodyweights(),
-  ]);
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw }));
+}
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw }) {
   S.wdays = wdays;
   S.bw = bw;
   if (bw.length && prefs.bodyweight == null && bw[0].unit === prefs.unit) prefs.bodyweight = Number(bw[0].weight);
@@ -544,6 +615,8 @@ function syncWaiting() {
 function queueStore(st) {
   const update = st.updateSet.bind(st);
   st.updateSet = async (id, patch) => { if (Q.saving.has(id)) await Q.saving.get(id); return update(id, patch); };   // deleteSet and restoreSet go through this too
+  const signOut = st.signOut.bind(st);
+  st.signOut = async () => { clearSnap(); return signOut(); };
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
@@ -2403,6 +2476,11 @@ inner.addEventListener('click', async e => {
 // ===========================================================================
 // Start
 // ===========================================================================
+// Keep the app's files on the phone (see sw.js). Skipped on a local dev server unless ?sw is in the
+// address, so changes show up while working on the app.
+if ('serviceWorker' in navigator && (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || new URLSearchParams(location.search).has('sw'))) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 (async function boot() {
   try {
     store = queueStore(await connect(DEMO));
@@ -2898,7 +2976,7 @@ function checkGoalWins() {
 }
 async function loadWins() {
   if (!S.goalsDone) S.goalsDone = goalKeyDone();
-  if (S.winsLoading || (S.wins && Date.now() - S.winsAt < 60000)) return;
+  if (S.winsLoading || (S.wins && Date.now() - (S.winsAt || 0) < 600000)) return;   // ten minutes; coming back to the app refreshes sooner
   S.winsLoading = true;
   try { S.wins = await store.wins(); S.winsAt = Date.now(); } catch (x) { S.wins = S.wins || []; }
   S.winsLoading = false;
@@ -3060,7 +3138,7 @@ function weeklyCard() {
 // The Communion of Saints: crew records, one holder per lift, by estimated 1-rep max.
 // ===========================================================================
 async function loadRecords() {
-  if (S.recordsLoading || (S.records && Date.now() - S.recordsAt < 120000)) return;
+  if (S.recordsLoading || (S.records && Date.now() - (S.recordsAt || 0) < 600000)) return;
   S.recordsLoading = true;
   try { S.records = await store.crewRecords(); S.recordsAt = Date.now(); } catch (x) { S.records = S.records || []; }
   S.recordsLoading = false;
