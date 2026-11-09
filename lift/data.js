@@ -11,6 +11,8 @@ export async function connect(demo) {
     // ?demo&slow pretends saving takes 1.5 s, &fail that the database refuses it, and &offline that there's
     // no signal until window.__demoOnline is set (then fire an 'online' event), to try the outbox.
     const st = new DemoStore(), q = new URLSearchParams(location.search);
+    if (q.has('offlineload')) { st.catalog = async () => { throw new Error('Can’t reach the server. Check your connection.'); }; }   // &offlineload: loading fails like no signal
+    if (q.has('slowload')) { const cat = st.catalog.bind(st); st.catalog = async () => { await new Promise(r => setTimeout(r, 2000)); return cat(); }; }   // &slowload: loading takes 2 s
     if (q.has('slow')) {
       const add = st.addSets.bind(st);
       st.addSets = async rows => {
