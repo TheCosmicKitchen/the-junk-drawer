@@ -7,7 +7,15 @@ import { localDate, addDays, setVolume } from './logic.js';
 const SET_COLS = 'id,exercise_id,performed_on,logged_at,date_only,weight,reps,unit,count_bodyweight,bodyweight,is_warmup,notes,import_batch_id,deleted_at';
 
 export async function connect(demo) {
-  if (demo) return new DemoStore();
+  if (demo) {
+    // ?demo&slow pretends saving takes 1.5 s (and &fail that it fails), to try the background saving.
+    const st = new DemoStore(), q = new URLSearchParams(location.search);
+    if (q.has('slow')) {
+      const add = st.addSets.bind(st);
+      st.addSets = async rows => { await new Promise(r => setTimeout(r, 1500)); if (q.has('fail')) throw new Error('pretend network failure'); return add(rows); };
+    }
+    return st;
+  }
   // Arrived from a Supabase email link (magic link, password reset, invite)? The link puts
   // the sign-in in the address after '#'. Note what kind it was before supabase-js reads it.
   const params = new URLSearchParams(location.hash.slice(1));
@@ -91,6 +99,11 @@ class SupaStore {
 
   // ----- writes -----
   async addSet(row) { return must(await this.sb.from('lift_sets').insert(row).select(SET_COLS).single()); }
+  async addSets(rows) {   // several sets in one request, returned in the same order
+    const out = must(await this.sb.from('lift_sets').insert(rows).select(SET_COLS));
+    const t = x => new Date(x).getTime();
+    return rows.map((r, i) => out.find(o => t(o.logged_at) === t(r.logged_at) && o.exercise_id === r.exercise_id) || out[i]);
+  }
   async updateSet(id, patch) { return must(await this.sb.from('lift_sets').update(patch).eq('id', id).select(SET_COLS).single()); }
   deleteSet(id) { return this.updateSet(id, { deleted_at: new Date().toISOString() }); }
   restoreSet(id) { return this.updateSet(id, { deleted_at: null }); }
@@ -271,6 +284,7 @@ class DemoStore {
     return [...m.values()];
   }
   async addSet(r) { return clone(this.push({ ...r, logged_at: r.logged_at || new Date().toISOString() })); }
+  async addSets(rows) { const out = []; for (const r of rows) out.push(await this.addSet(r)); return out; }
   async updateSet(id, patch) {
     const s = this.sets.find(x => x.id === id);
     if (!s) throw new Error('That set is gone.');
@@ -425,7 +439,11 @@ class DemoStore {
       const t = localDate(), at = d => new Date(d + 'T18:00:00').toISOString();
       this.winRows = [
         { id: uid(), kind: 'pr', performed_on: addDays(t, -1), title: 'Lat Pulldown PR', summary: { weight: 180, reps: 10, unit: 'lb' }, created_by: 'alex', created_at: at(addDays(t, -1)) },
-        { id: uid(), kind: 'session', performed_on: addDays(t, -1), title: 'Alex’s pull day', summary: { lb: 15400, sets: 18, minutes: 54 }, created_by: 'alex', created_at: at(addDays(t, -1)) },
+        { id: uid(), kind: 'session', performed_on: addDays(t, -1), title: 'Alex’s pull day', created_by: 'alex', created_at: at(addDays(t, -1)),
+          summary: { lb: 15400, sets: 18, minutes: 54, lifts: 5, prs: 1, streak: 6, nth: 3, where: 'Fall block · week 3',
+            items: [['Lat Pulldown', 4, 10, 180, 'lb', 0, 1], ['Seated Cable Row', 4, 10, 160, 'lb', 0, 0], ['Face Pull', 4, 15, 45, 'lb', 0, 0], ['Bicep Curl', 3, 10, 35, 'lb', 0, 0], ['Pull-up', 3, 8, 0, 'lb', 1, 0]] } },
+        { id: uid(), kind: 'quest', performed_on: addDays(t, -1), title: 'Show up three times', summary: {}, created_by: 'alex', created_at: at(addDays(t, -1)) },
+        { id: uid(), kind: 'goal', performed_on: addDays(t, -1), title: 'Pull 60K · Fall block', summary: {}, created_by: 'alex', created_at: at(addDays(t, -1)) },
         { id: uid(), kind: 'club', performed_on: addDays(t, -3), title: '250K Club', summary: {}, created_by: 'alex', created_at: at(addDays(t, -3)) },
       ];
     }

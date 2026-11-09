@@ -415,7 +415,7 @@ view.addEventListener('click', async e => {
 });
 $('fab').addEventListener('click', () => openLogger());
 $('navLog').addEventListener('click', () => { if (location.hash !== '#log' && location.hash !== '') location.hash = '#log'; openLogger(); });
-const findSet = id => S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id);
+const findSet = id => { id = Q.alias.get(id) || id; return S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id); };
 
 // ===========================================================================
 // Weights are per person. A routine step only says exercise, sets and reps, plus a rule:
@@ -527,35 +527,76 @@ function syncCaches(saved, gone) {
     S.dayCache.set(day, rest.sort((a, b) => a.logged_at.localeCompare(b.logged_at)));
   }
 }
-async function logSet(fields) {
-  const row = { performed_on: today(), logged_at: new Date().toISOString(), notes: null, is_warmup: false, ...fields };
-  const beatsBest = L.isPr(row, S.bests);
-  const before = lbEqAll();
-  const saved = await store.addSet(row);
-  saved._pr = beatsBest;
-  syncCaches(saved, false);
-  bumpDay(saved, +1);
-  const k = L.bestKey(saved);
-  if (saved.is_warmup !== true && !(S.bests.get(k) >= Number(saved.weight))) S.bests.set(k, Number(saved.weight));
-  const after = lbEqAll();
-  const crossed = L.MILESTONES.filter(m => before < m.lb && after >= m.lb).pop();
-  saved._crossed = crossed;
-  vibrate(beatsBest || crossed ? [20, 40, 20] : 12);
-  if (beatsBest) postWin('pr', exName(saved.exercise_id) + ' PR', { weight: Number(saved.weight), reps: saved.reps, unit: saved.unit });
-  if (crossed) postWin('club', crossed.title, {});
-  checkGoalWins();
-  checkRecord(saved);
-  checkQuestWins();
-  prefs.unit = saved.unit;
-  if (saved.count_bodyweight) prefs.bodyweight = Number(saved.bodyweight);
-  savePrefs();
-  return { saved };
+// ---------------------------------------------------------------------------
+// Logging feels instant: a set shows up the moment you tap, and is saved in the background, in
+// order. The sets from one tap go in one request. Until a set is saved it has a temporary id;
+// editing, deleting or undoing it waits for the save and then uses the real one. If a save fails,
+// the sets come back off the screen and a toast offers to try again.
+// ---------------------------------------------------------------------------
+const Q = { chain: Promise.resolve(), pending: 0, real: new Map(), alias: new Map() };
+function enqueue(job) {
+  Q.pending++;
+  const p = Q.chain.then(job);
+  Q.chain = p.catch(() => {});
+  return p.finally(() => { Q.pending--; });
 }
-// Log `count` identical sets in one go (3 × 8 @ 150 is one tap). Returns what was saved.
-async function logSets(fields, count) {
-  const out = [];
-  for (let i = 0; i < count; i++) out.push((await logSet(fields)).saved);
-  return out;
+const resolveId = async id => Q.alias.get(id) || (Q.real.has(id) ? Q.real.get(id) : id);
+function queueStore(st) {
+  const update = st.updateSet.bind(st);
+  st.updateSet = async (id, patch) => update(await resolveId(id), patch);   // deleteSet and restoreSet go through this too
+  if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
+  return st;
+}
+window.addEventListener('beforeunload', e => { if (Q.pending) { e.preventDefault(); e.returnValue = ''; } });
+
+function logSets(fields, count) {
+  const rows = [], temps = [];
+  for (let i = 0; i < count; i++) {
+    const row = { performed_on: today(), logged_at: new Date(Date.now() + i).toISOString(), notes: null, is_warmup: false, ...fields };
+    rows.push(row);
+    temps.push(applyNewSet({ id: 'tmp-' + Math.random().toString(36).slice(2) + Date.now().toString(36), date_only: false, import_batch_id: null, deleted_at: null,
+      count_bodyweight: false, bodyweight: null, ...row, _pending: true }));
+  }
+  const job = enqueue(() => store.addSets(rows));
+  temps.forEach((t, i) => Q.real.set(t.id, job.then(saved => saved[i].id)));
+  job.then(saved => {
+    saved.forEach((real, i) => {
+      const t = temps[i];
+      real._pr = t._pr; real._crossed = t._crossed;
+      Q.alias.set(t.id, real.id);
+      if (!t._gone) { syncCaches(t, true); syncCaches(real, false); }   // swap the stand-in for the saved row (unless it was already undone)
+    });
+    temps.forEach(t => Q.real.delete(t.id));
+    for (const t of temps.filter(x => !x._gone)) {   // the feed only hears about sets that really saved and stayed
+      if (t._pr) postWin('pr', exName(t.exercise_id) + ' PR', { weight: Number(t.weight), reps: t.reps, unit: t.unit });
+      if (t._crossed) postWin('club', t._crossed.title, {});
+      checkRecord(t);
+    }
+  }, err => {
+    temps.forEach(t => { Q.real.delete(t.id); syncCaches(t, true); bumpDay(t, -1); });
+    refreshBests(); render(); refreshLoggerList();
+    toast('Couldn’t save ' + (count > 1 ? count + ' sets' : 'that set') + ': ' + (err && err.message ? err.message : 'no connection'), { label: 'Try again', run: () => { logSets(fields, count); render(); refreshLoggerList(); } });
+  });
+  return temps;
+}
+function logSet(fields) { return { saved: logSets(fields, 1)[0] }; }
+// Everything a new set changes on screen, done straight away with the stand-in row.
+function applyNewSet(t) {
+  t._pr = L.isPr(t, S.bests);
+  const before = lbEqAll();
+  syncCaches(t, false);
+  bumpDay(t, +1);
+  const k = L.bestKey(t);
+  if (t.is_warmup !== true && !(S.bests.get(k) >= Number(t.weight))) S.bests.set(k, Number(t.weight));
+  const after = lbEqAll();
+  t._crossed = L.MILESTONES.filter(m => before < m.lb && after >= m.lb).pop();
+  vibrate(t._pr || t._crossed ? [20, 40, 20] : 12);
+  checkGoalWins();
+  checkQuestWins();
+  prefs.unit = t.unit;
+  if (t.count_bodyweight) prefs.bodyweight = Number(t.bodyweight);
+  savePrefs();
+  return t;
 }
 function afterLogToast(saved) {
   const list = Array.isArray(saved) ? saved : [saved];
@@ -567,28 +608,28 @@ function afterLogToast(saved) {
   else if (list.some(x => x._pr)) toast(T.prToast + what + ' on ' + exName(first.exercise_id), undo);
   else toast('Logged ' + what, undo);
 }
-async function removeSets(list) {
-  for (const s of list) if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);
-  try {
-    for (const s of list) { const gone = await store.deleteSet(s.id); syncCaches(gone, true); bumpDay(s, -1); }
-  } catch (x) { fail(x); }
+// Deleting works the same way as logging: gone from the screen at once, deleted in the background
+// (after any save still running for those sets), and put back with a message if that fails.
+function dropSets(list, quiet) {
+  const cur = list.map(s => findSet(s.id) || s);
+  list.forEach(s => { s._gone = true; }); cur.forEach(s => { s._gone = true; });
+  for (const s of cur) if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);   // undoing a PR takes its line back
+  cur.forEach(s => { syncCaches(s, true); bumpDay(s, -1); });
   refreshBests(); render(); refreshLoggerList();
-  toast('Undone');
+  enqueue(async () => { for (const s of list) await store.deleteSet(s.id); }).catch(x => {
+    cur.forEach(s => { s._gone = false; syncCaches(s, false); bumpDay(s, +1); });
+    refreshBests(); render(); refreshLoggerList();
+    toast('Couldn’t delete: ' + (x && x.message ? x.message : 'no connection'));
+  });
+  if (quiet) toast('Undone');
+  else toast(cur.length > 1 ? cur.length + ' sets deleted' : 'Set deleted', { label: 'Undo', run: () => cur.forEach(s => restoreSet(s)) });
 }
-async function removeSet(s, quiet) {
-  if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);   // undoing a PR takes its line back
-  try {
-    const gone = await store.deleteSet(s.id);
-    syncCaches(gone, true);
-    bumpDay(s, -1);
-    refreshBests();
-    render(); refreshLoggerList();
-    toast(quiet ? 'Undone' : 'Set deleted', quiet ? null : { label: 'Undo', run: () => restoreSet(s) });
-  } catch (x) { fail(x); }
-}
+function removeSets(list) { dropSets(list, true); }
+function removeSet(s, quiet) { dropSets([s], quiet); }
 async function restoreSet(s) {
   try {
-    const back = await store.restoreSet(s.id);
+    s._gone = false;
+    const back = await enqueue(() => store.restoreSet(s.id));
     syncCaches(back, false);
     bumpDay(back, +1);
     refreshBests();
@@ -2249,7 +2290,7 @@ inner.addEventListener('click', async e => {
 // ===========================================================================
 (async function boot() {
   try {
-    store = await connect(DEMO);
+    store = queueStore(await connect(DEMO));
     if (store.link && store.link.error) return showSignIn('That email link didn’t work (' + store.link.error + '). Links expire after a while; ask for a new one, or sign in with your password.');
     if (!(await store.session())) return showSignIn();
     await afterSignIn();
@@ -2758,18 +2799,58 @@ function winText(w) {
   if (w.kind === 'goal') return T.win.goal + w.title;
   return T.win.session + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
 }
+// The daily card: the day's lifts with their top sets, the totals, and badges for what it earned.
+const verb = s => s.replace(/[:\s]+(the\s*)?$/, '');
+const ordinal = k => k + (k % 100 >= 11 && k % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][k % 10] || 'th');
+function sessionCardHtml(w, extra) {
+  const m = w.summary || {}, items = Array.isArray(m.items) ? m.items : [];
+  const names = new Set(items.map(it => String(it[0])));
+  const n = x => Number(x).toLocaleString('en-US');
+  const stat = (v, u, cls) => '<span class="ws-stat' + (cls ? ' ' + cls : '') + '">' + v + ' <small>' + u + '</small></span>';
+  const stats = (m.lb ? stat(n(m.lb), 'lb') : '') + (m.sets ? stat(n(m.sets), m.sets === 1 ? 'set' : 'sets') : '') +
+    (m.minutes ? stat(n(m.minutes), 'min') : '') + (m.prs ? stat(n(m.prs), m.prs === 1 ? 'PR' : 'PRs', 'gold') : '');
+  const bw = it => it[5] || !(Number(it[3]) > 0);
+  const load = it => (bw(it) ? 'bodyweight' : esc(L.fmtLoad(Number(it[3]))) + (it[4] && it[4] !== 'lb' ? ' ' + esc(it[4]) : ''));
+  const rows = items.map(it => '<li' + (it[6] ? ' class="pr"' : '') + '><b>' + esc(it[0]) + '</b><span>' + (it[6] ? T.icons.pr + ' ' : '') +
+    n(it[1]) + ' × ' + n(it[2]) + (bw(it) ? ' · ' : ' @ ') + load(it) + '</span></li>').join('');
+  const badge = (icon, label, small, isNew) => '<span class="ws-badge' + (isNew ? ' new' : '') + '"><span class="m">' + icon + '</span>' + esc(label) + (small ? ' <small>' + esc(small) + '</small>' : '') + '</span>';
+  const badges = extra.map(x =>
+    x.kind === 'club' ? badge(T.icons.club, x.title, 'new', true)
+    : x.kind === 'goal' ? badge(T.icons.goal, verb(T.win.goal), x.title.split(' · ')[0])
+    : x.kind === 'quest' ? badge(T.icons.quest, verb(T.win.quest), x.title)
+    : x.kind === 'record' ? badge(T.icons.record, verb(T.win.record), x.title.replace(/ record$/, ''), true)
+    : x.kind === 'pr' && !names.has(x.title.replace(/ PR$/, '')) ? badge(T.icons.pr, x.title, '')
+    : '').join('') + (m.streak >= 2 ? badge('🔥', m.streak + ' ' + T.streak, '') : '');
+  const foot = [m.where, m.nth ? ordinal(m.nth) + ' gym day this week' : ''].filter(Boolean).join(' · ');
+  return '<div class="ws-card"><div class="ws-top"><span class="ws-title">' + T.icons.session + ' ' + esc(w.title) + '</span><span class="ws-date">' +
+      esc(fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</span></div>' +
+    (stats ? '<div class="ws-stats">' + stats + '</div>' : '') +
+    (rows ? '<ol class="ws-lifts">' + rows + '</ol>' : '') +
+    (badges ? '<div class="ws-badges">' + badges + '</div>' : '') +
+    (foot ? '<div class="ws-foot">' + esc(foot) + '</div>' : '') + '</div>';
+}
 function winsCard() {
   const head = '<div class="card-head"><div><h3 class="card-title">' + esc(T.feed) + '</h3><small class="muted">the crew’s wins</small></div><button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button></div>';
   if (!S.wins) return '<section class="card wins" id="winsBox">' + head + '<p class="muted" style="margin:0">Loading…</p></section>';
   const people = [S.myId, ...[...S.names.keys()].filter(id => id !== S.myId)];
   const color = id => C.SERIES[Math.max(0, people.indexOf(id)) % 3];
   const who = id => (id === S.myId ? 'You' : S.names.get(id) || 'Someone');
-  const list = S.wins.slice(0, 25);
+  // A finished session gathers that person's other wins from the same day into its card.
+  const sessions = new Set(S.wins.filter(w => w.kind === 'session').map(w => w.created_by + '|' + w.performed_on));
+  const folded = new Map();
+  for (const w of S.wins) {
+    const k = w.created_by + '|' + w.performed_on;
+    if (w.kind !== 'session' && sessions.has(k)) { if (!folded.has(k)) folded.set(k, []); folded.get(k).push(w); }
+  }
+  const list = S.wins.filter(w => w.kind === 'session' || !sessions.has(w.created_by + '|' + w.performed_on)).slice(0, 25);
+  const when = d => (dayLabel(d) === 'Today' ? 'Today' : d === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(d, { weekday: 'short', month: 'short', day: 'numeric' }));
+  const del = w => (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the stream">✕</button>' : '');
+  const whoTag = w => '<b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b>';
   return '<section class="card wins" id="winsBox">' + head +
-    (list.length ? '<ol class="win-list">' + list.map(w =>
-      '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body"><b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b> ' + esc(winText(w)) +
-        '<small>' + esc(dayLabel(w.performed_on) === 'Today' ? 'Today' : w.performed_on === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</small></span>' +
-        (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the stream">✕</button>' : '') + '</li>').join('') + '</ol>'
+    (list.length ? '<ol class="win-list">' + list.map(w => (w.kind === 'session'
+      ? '<li class="win-session"><div class="ws-head">' + whoTag(w) + '<small>' + esc(when(w.performed_on)) + '</small>' + del(w) + '</div>' + sessionCardHtml(w, folded.get(w.created_by + '|' + w.performed_on) || []) + '</li>'
+      : '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body">' + whoTag(w) + ' ' + esc(winText(w)) +
+        '<small>' + esc(when(w.performed_on)) + '</small></span>' + del(w) + '</li>')).join('') + '</ol>'
       : '<p class="muted" style="margin:0">' + esc(T.feedEmpty) + '</p>') + '</section>';
 }
 
@@ -2789,6 +2870,25 @@ function sessionSummary() {
   const f = following();
   const prev = S.days.find(x => x.performed_on < today() && x.sets > 0);
   return { title: f ? f.template.name : nameFrom(exIds), lb, sets: sets.length, minutes: minutes >= 5 ? minutes : 0, exIds, prs: [...byEx.values()], prev };
+}
+// What a finished session puts in the feed: totals, every lift's top set, and a little context.
+// Names travel with it so the crew sees them without a lookup. Kept well under the 4 KB a post allows.
+function sessionPost(r) {
+  const sets = todaySets().filter(x => x.is_warmup !== true && !x._gone);
+  const prEx = new Set(r.prs.map(p => p.exercise_id)), by = new Map();
+  for (const x of sets) {
+    const g = by.get(x.exercise_id) || { n: 0, top: x };
+    g.n++;
+    if (Number(x.weight) > Number(g.top.weight) || (Number(x.weight) === Number(g.top.weight) && x.reps > g.top.reps)) g.top = x;
+    by.set(x.exercise_id, g);
+  }
+  const items = [...by].slice(0, 10).map(([id, g]) => [exName(id).slice(0, 40), g.n, g.top.reps, Number(g.top.weight), g.top.unit,
+    g.top.count_bodyweight && !(Number(g.top.weight) > 0) ? 1 : 0, prEx.has(id) ? 1 : 0]);
+  const t = today(), sn = (S.seasons || []).find(x => inSeason(x) && x.starts_on <= t && t <= x.ends_on);
+  const where = sn ? sn.name + ' · week ' + (Math.floor((Date.parse(t) - Date.parse(sn.starts_on)) / 864e5 / 7) + 1) : '';
+  const nth = S.days.filter(d => d.performed_on >= weekOf(t) && d.performed_on <= t && d.sets > 0).length;
+  return { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length,
+    items, streak: streakWeeks() || 0, nth, where: where.slice(0, 60) };
 }
 function openRecap() {
   const r = sessionSummary();
@@ -2812,7 +2912,7 @@ async function recapClick(b) {
   if (b.id !== 'recapFinish') return;
   const r = sessionSummary();
   b.disabled = true;
-  if (r && shareOn()) await postWin('session', r.title, { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length });
+  if (r && shareOn()) await postWin('session', r.title, sessionPost(r));
   stopRest(); sheet.close(); render();
   try { localStorage.setItem('lift.finished', today()); } catch (e) {}
   toast(shareOn() ? T.endedFeed : T.ended);

@@ -446,6 +446,33 @@
   .win-body b { display: inline-flex; align-items: center; gap: 6px; }
   .win-body b i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .win-body small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .win-list li.win-session { display: block; }
+  .ws-head { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+  .ws-head b { display: inline-flex; align-items: center; gap: 6px; }
+  .ws-head b i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .ws-head small { color: var(--muted); font-size: 12.5px; }
+  .ws-head .iconbtn { margin-left: auto; }
+  .ws-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-top: 8px; }
+  .ws-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .ws-title { font: 700 17px var(--headfont); min-width: 0; overflow-wrap: anywhere; }
+  .ws-date { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .ws-stats { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
+  .ws-stat { background: var(--chip); border-radius: 9px; padding: 2px 9px; font: 700 15px var(--display); font-variant-numeric: tabular-nums; }
+  .ws-stat small { font: 500 11.5px var(--body); color: var(--muted); }
+  .ws-stat.gold { background: var(--gold-soft); color: var(--gold); }
+  .ws-stat.gold small { color: var(--gold); }
+  .ws-lifts { list-style: none; margin: 4px 0 0; padding: 0; }
+  .ws-lifts li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+  .ws-lifts li:first-child { border-top: 0; }
+  .ws-lifts li b { font-weight: 600; min-width: 0; }
+  .ws-lifts li span { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ws-lifts li.pr span { color: var(--gold); font-weight: 700; }
+  .ws-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .ws-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--gold-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent); border-radius: 99px; padding: 3px 10px 3px 4px; font-size: 12.5px; font-weight: 600; max-width: 100%; }
+  .ws-badge .m { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--card); font-size: 13px; flex: none; }
+  .ws-badge small { font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-badge.new { box-shadow: 0 0 0 2px var(--gold); }
+  .ws-foot { margin-top: 8px; font-size: 12px; color: var(--muted); }
   .wins .linkbtn { padding: 0; color: var(--muted); font-size: 13px; }
   .recap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
   .recap-grid div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 8px; text-align: center; }
