@@ -21,6 +21,11 @@ export async function connect(demo) {
         if (q.has('fail')) throw new Error('That isn’t allowed for your account (pretend).');
         return add(rows);
       };
+      // Edits, a past day and a lift's history are slow too (and edits refused with &fail).
+      const later = f => async (...a) => { await new Promise(r => setTimeout(r, 1500)); return f(...a); };
+      const upd = st.updateSet.bind(st);
+      st.updateSet = later(async (...a) => { if (q.has('fail')) throw new Error('That isn’t allowed for your account (pretend).'); return upd(...a); });
+      st.daySets = later(st.daySets.bind(st)); st.exerciseHistory = later(st.exerciseHistory.bind(st));
     }
     return st;
   }

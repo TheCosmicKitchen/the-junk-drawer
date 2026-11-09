@@ -277,6 +277,8 @@ function applyData({ cat, recent, days, bests, routines, seasons, names, myId, w
   S.tips = new Map();
   for (const [name, tip] of Object.entries(TIPS)) { const id = S.nameIndex.get(L.norm(name)); if (id && !S.tips.has(id)) S.tips.set(id, tip); }
   S.recent = recent;
+  const cut = L.addDays(today(), -RECENT_DAYS);   // the phone's copies of recent days follow the fresh data
+  for (const d of [...S.dayCache.keys()]) if (d >= cut) S.dayCache.delete(d);
   S.days = days;
   S.bestRows = bests;
   S.bests = L.bestsMap(bests);
@@ -376,7 +378,7 @@ function renderLog() {
 // Turn a day's lifting into a routine: one step per exercise, in the order you did them,
 // with the number of working sets and your heaviest set's reps and weight.
 async function saveDayAsRoutine(day, btn) {
-  const sets = (day === today() ? todaySets() : S.dayCache.get(day) || []).filter(s => s.is_warmup !== true);
+  const sets = (day === today() ? todaySets() : (localDay(day), S.dayCache.get(day)) || []).filter(s => s.is_warmup !== true);
   const groups = groupByExercise(sets);
   if (!groups.length) return toast('Nothing to save from that day.');
   btn.disabled = true;
@@ -572,6 +574,7 @@ function bumpDay(s, sign) {
   if (d.sets <= 0) S.days = S.days.filter(x => x !== d);
 }
 function syncCaches(saved, gone) {
+  if (S.hist) S.hist.delete(saved.exercise_id);
   S.recent = S.recent.filter(s => s.id !== saved.id);
   if (!gone && saved.performed_on >= L.addDays(today(), -RECENT_DAYS)) { S.recent.push(saved); S.recent.sort((a, b) => (b.performed_on + b.logged_at).localeCompare(a.performed_on + a.logged_at)); }
   for (const [day, list] of S.dayCache) {
@@ -685,6 +688,7 @@ function landed(e, saved) {
     settle(real.id, true);
     if (!cur || cur._gone) continue;   // undone while it was on its way
     real._pr = cur._pr; real._crossed = cur._crossed;
+    const ed = EDITS.get(real.id); if (ed && ed.patch) Object.assign(real, ed.patch);   // edited while on its way
     syncCaches(real, false);   // the saved row replaces the waiting one
     if (real._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, unit: real.unit });
     if (real._crossed) postWin('club', real._crossed.title, {});
@@ -1123,6 +1127,9 @@ function readForm() {
   const note = $('noteIn') ? $('noteIn').value.trim() : '';
   return { weight, reps, unit: s.unit, count_bodyweight: s.bw, bodyweight: s.bw ? bodyweight : null, is_warmup: s.warm, notes: s.showNote && note ? note : null };
 }
+// set id -> the latest edit on its way: a late answer can't undo a newer edit, and a set that lands
+// after you edited it keeps showing the edit.
+const EDITS = new Map();
 async function saveEntry(btn) {
   $('formErr').textContent = '';
   let fields;
@@ -1132,13 +1139,21 @@ async function saveEntry(btn) {
     if (LG.mode === 'edit') {
       const old = LG.editing;
       const patch = { ...fields, exercise_id: old.exercise_id, performed_on: $('dateIn').value || old.performed_on };
-      const saved = await store.updateSet(old.id, patch);
-      bumpDay(old, -1);
-      syncCaches(saved, false);
-      bumpDay(saved, +1);
-      refreshBests();
+      // Shows the change at once and saves in the background; if the database refuses, it's put back.
+      const shown = { ...old, ...patch };
+      bumpDay(old, -1); syncCaches(shown, false); bumpDay(shown, +1);
       sheet.close(); render();
       toast('Saved');
+      const ver = ((EDITS.get(old.id) || {}).ver || 0) + 1; EDITS.set(old.id, { ver, patch });
+      const put = row => {   // unless it was edited again or deleted since
+        const cur = findSet(old.id), ed = EDITS.get(old.id);
+        if (ed.ver !== ver) return;
+        ed.patch = null;
+        if (!cur || cur._gone) return;
+        row._pr = shown._pr; bumpDay(cur, -1); syncCaches(row, false); bumpDay(row, +1); render();
+      };
+      enqueue(() => store.updateSet(old.id, patch)).then(saved => { put(saved); refreshBests().then(render); })
+        .catch(x => { put({ ...old, _pending: false }); toast('Couldn’t save that change: ' + msgOf(x)); });
     } else {
       const n = Math.max(1, Math.min(20, parseInt(($('nIn') || {}).value, 10) || st().sets || 1));
       const saved = await logSets({ exercise_id: LG.exId, ...fields }, n);
@@ -2215,8 +2230,16 @@ function calDayDetail() {
   if (d >= L.addDays(today(), -7)) html += '<button class="btn" style="margin-top:12px" data-cal-schedule="' + d + '">📅 Put a workout on this day</button>';
   return html + '</section>';
 }
+// A day's sets: anything in the last 120 days is already on the phone, so it opens at once.
+// Older days ask the database.
+function localDay(d) {
+  if (S.dayCache.has(d) || d < L.addDays(today(), -RECENT_DAYS)) return S.dayCache.has(d);
+  S.dayCache.set(d, S.recent.filter(x => x.performed_on === d).sort((a, b) => a.logged_at.localeCompare(b.logged_at)));
+  return true;
+}
 async function selectCalDay(d) {
   S.cal.day = d;
+  localDay(d);
   renderHistory();
   if (S.days.some(x => x.performed_on === d && x.sets > 0) && !S.dayCache.has(d)) {
     try { S.dayCache.set(d, await store.daySets(d)); } catch (x) { return fail(x); }
@@ -2259,6 +2282,7 @@ function renderHistory() {
   view.innerHTML = html;
 }
 function dayBody(day) {
+  localDay(day);
   const sets = S.dayCache.get(day);
   if (!sets) return '<p class="muted">Loading…</p>';
   return groupByExercise(sets).map(g => '<div class="ex"><b>' + esc(exName(g.exercise_id)) + '</b><div class="chips">' +
@@ -2267,11 +2291,12 @@ function dayBody(day) {
 }
 async function toggleDay(day) {
   if (S.open.has(day)) S.open.delete(day); else S.open.add(day);
-  renderHistory();
+  if (S.open.has(day)) localDay(day);
   if (S.open.has(day) && !S.dayCache.has(day)) {
-    try { S.dayCache.set(day, await store.daySets(day)); } catch (x) { fail(x); S.open.delete(day); }
     renderHistory();
+    try { S.dayCache.set(day, await store.daySets(day)); } catch (x) { fail(x); S.open.delete(day); }
   }
+  renderHistory();
 }
 
 // ===========================================================================
@@ -2367,7 +2392,7 @@ function trendChoices() {
   for (const r of S.bestRows) if (!count.has(r.exercise_id)) count.set(r.exercise_id, 0.5);
   return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 40);
 }
-async function drawTrend() {
+function drawTrend() {
   const box = $('trendBox'); if (!box) return;
   const ids = trendChoices();
   if (S.trendEx && !ids.includes(S.trendEx)) ids.unshift(S.trendEx);   // a lift linked from a season plan stays picked
@@ -2376,13 +2401,21 @@ async function drawTrend() {
   const head = '<div class="card-head"><h3 class="card-title">Lift trend</h3><select class="plain-input trend-pick" id="trendEx" aria-label="Lift to chart">' +
     ids.map(id => '<option value="' + esc(id) + '"' + (id === S.trendEx ? ' selected' : '') + '>' + esc(exName(id)) + '</option>').join('') + '</select></div>';
   S.hist = S.hist || new Map();
-  if (!S.hist.has(S.trendEx)) {
-    box.innerHTML = head + '<p class="muted">Loading…</p>';
+  S.histLoading = S.histLoading || new Set();
+  let src = S.hist.get(S.trendEx);
+  if (!src) {
+    // The last 120 days are on the phone: chart those now, then the full history when it arrives.
     const id = S.trendEx;
-    try { S.hist.set(id, await store.exerciseHistory(id)); } catch (x) { box.innerHTML = head + '<p class="warn">Couldn’t load it: ' + esc(x.message) + '</p>'; return; }
-    if (id !== S.trendEx || !$('trendBox')) return;
+    src = S.recent.filter(r => r.exercise_id === id).slice().reverse();
+    if (!S.histLoading.has(id)) {
+      S.histLoading.add(id);
+      store.exerciseHistory(id).then(h => { S.hist.set(id, h); if (id === S.trendEx && $('trendBox')) drawTrend(); })
+        .catch(x => { if (!src.length && id === S.trendEx && $('trendBox')) box.innerHTML = head + '<p class="warn">Couldn’t load it: ' + esc(x.message) + '</p>'; })
+        .finally(() => S.histLoading.delete(id));
+    }
+    if (!src.length) { box.innerHTML = head + '<p class="muted">Loading…</p>'; return; }
   }
-  const rows = S.hist.get(S.trendEx).filter(r => r.is_warmup !== true && Number(r.weight) > 0);
+  const rows = src.filter(r => r.is_warmup !== true && Number(r.weight) > 0);
   const unit = rows.filter(r => r.unit === 'kg').length > rows.length / 2 ? 'kg' : 'lb';
   const byDay = new Map();
   for (const r of rows.filter(r => r.unit === unit)) {
