@@ -420,9 +420,9 @@
   .trio { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 10px; }
   .trio.two { grid-template-columns: 1.35fr 1fr; }
   .boxwrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .steps button { height: 40px; border: 1px solid var(--line); background: var(--chip); border-radius: 12px; font: 700 22px/1 var(--body); color: var(--ink); padding: 0; }
-  .steps button:active { transform: scale(.96); background: var(--accent-soft); }
+  .nudge { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }   /* the − / + under a number box (not the routine's ol.steps) */
+  .nudge button { height: 40px; border: 1px solid var(--line); background: var(--chip); border-radius: 12px; font: 700 22px/1 var(--body); color: var(--ink); padding: 0; }
+  .nudge button:active { transform: scale(.96); background: var(--accent-soft); }
   .chip.pending { outline: 1.5px dashed var(--muted); outline-offset: -1.5px; opacity: .85; }
   .sync-line { margin: 10px 0 0; font-size: 13.5px; font-weight: 600; color: var(--muted); }
   #sheetInner .sheet-body { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }

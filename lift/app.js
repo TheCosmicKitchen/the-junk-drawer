@@ -983,7 +983,7 @@ async function openEntry(exId, editing, item) {
   }
 }
 // − and + under each box: the weight moves by your usual jump (5 lb or 2.5 kg), reps and sets by one.
-const steppers = (k, what) => '<div class="steps"><button type="button" data-' + k + '="-1" aria-label="Less ' + what + '">−</button><button type="button" data-' + k + '="1" aria-label="More ' + what + '">+</button></div>';
+const steppers = (k, what) => '<div class="nudge"><button type="button" data-' + k + '="-1" aria-label="Less ' + what + '">−</button><button type="button" data-' + k + '="1" aria-label="More ' + what + '">+</button></div>';
 // Small jumps for fine-tuning: micro plates in lb, and half that in kg.
 const NUDGES = { lb: [-10, -5, -2.5, 2.5, 5, 10], kg: [-5, -2.5, -1.25, 1.25, 2.5, 5] };
 function drawNudges() {
