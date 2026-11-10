@@ -47,11 +47,13 @@ const PLAIN = {
   // Colors on top of the steel palette in index.html, each becoming a CSS variable (--bg, --accent...).
   // Extra keys are fine too, for the theme's own css to use.
   colors: { light: {}, dark: {} },
+  // Tab bar icons: the inside of a 24 x 24 line drawing, stroked in the tab's color with no fill.
+  tabIcons: { log: '<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>', routines: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>', seasons: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>', progress: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>' },
 };
 
 const theme = (id, name, blurb, o) => ({
   ...PLAIN, ...o, id, name, blurb,
-  titles: { ...PLAIN.titles, ...o.titles }, tabs: { ...PLAIN.tabs, ...o.tabs },
+  titles: { ...PLAIN.titles, ...o.titles }, tabs: { ...PLAIN.tabs, ...o.tabs }, tabIcons: { ...PLAIN.tabIcons, ...o.tabIcons },
   icons: { ...PLAIN.icons, ...o.icons }, win: { ...PLAIN.win, ...o.win },
   ach: { ...o.ach }, achTitle: { ...o.achTitle }, bar: { ...PLAIN.bar, ...o.bar },
   colors: { light: { ...(o.colors || {}).light }, dark: { ...(o.colors || {}).dark } },
@@ -78,6 +80,7 @@ const COLUMNS = maskUrl('viewBox="0 0 120 20" preserveAspectRatio="none">' +
 
 export const THEMES = {
   church: theme('church', 'Church of Iron', 'Gothic lettering, gold, candles and saints', {
+    tabIcons: { log: '<path d="M9 10h6v11H9z"/><path d="M12 10V7"/><path d="M12 2c2 2 2 3.5 0 5c-2-1.5-2-3 0-5z"/>', routines: '<path d="M12 6c-2-1.5-5-2-8-1.5V19c3-.5 6 0 8 1.5c2-1.5 5-2 8-1.5V4.5C17 4 14 4.5 12 6z"/><path d="M12 6v14.5"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M12 12.5v5M10 14.5h4"/>', seasons: '<path d="M7 3h10c0 5-2 8-5 8s-5-3-5-8z"/><path d="M12 11v7M8 21h8M9.5 18h5"/>', progress: '<path d="M3 19h18"/><path d="M6 19a6 6 0 0 1 12 0"/><path d="M12 9V4M5.6 12.6 3.5 10.5M18.4 12.6l2.1-2.1"/>' },
     brand: 'The Church of Iron', motto: 'ORA ET LEVA · PRAY AND LIFT', tagline: 'Keep the faith. Log the set.',
     fonts: 'family=Cinzel:wght@600;700&family=UnifrakturMaguntia', brandFont: 'UnifrakturMaguntia, Cinzel, Georgia, serif',
     headFont: 'Cinzel, Georgia, "Times New Roman", serif', brandWeight: 400,
@@ -115,6 +118,7 @@ export const THEMES = {
   }),
 
   trains: theme('trains', 'The Iron Line', 'Railway green, brass, timetables and stations', {
+    tabIcons: { log: '<rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 10h14"/><circle cx="9" cy="13.5" r="1"/><circle cx="15" cy="13.5" r="1"/><path d="M8 17l-2 4M16 17l2 4"/>', routines: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', history: '<path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M14 7v10" stroke-dasharray="2 2"/>', seasons: '<circle cx="5" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="18" r="2"/><path d="M6.5 7.5l4 3M13.5 13.5l4 3"/>', progress: '<path d="M8 21 11 3M16 21 13 3M7.5 17h9M8.5 12h7M9.5 7.5h5"/>' },
     brand: 'The Iron Line', motto: 'ALL ABOARD · LIFT ON TIME', tagline: 'Mind the gap. Log the set.',
     fonts: 'family=Alfa+Slab+One&family=Oswald:wght@500;600;700', brandFont: '"Alfa Slab One", Rockwell, Georgia, serif',
     headFont: 'Oswald, "Arial Narrow", system-ui, sans-serif', brandWeight: 400,
@@ -156,6 +160,7 @@ export const THEMES = {
   }),
 
   kitchen: theme('kitchen', 'The Iron Skillet', 'Tomato and butter, recipes and specials', {
+    tabIcons: { log: '<circle cx="10" cy="13" r="7"/><path d="M17 13h5"/>', routines: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>', history: '<path d="M5 4h11a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3z"/><path d="M5 18a3 3 0 0 1 3-3h11"/>', seasons: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10"/><path d="M17 21V3c-2 1-3 4-3 8h3"/>', progress: '<path d="M7 14a4 4 0 1 1 1.5-7.7a4 4 0 0 1 7 0A4 4 0 1 1 17 14z"/><path d="M7 14v6h10v-6M7 17h10"/>' },
     brand: 'The Iron Skillet', motto: 'MISE EN PLACE · THEN LIFT', tagline: 'Prep, cook, lift.',
     fonts: 'family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Pacifico', brandFont: 'Pacifico, "Brush Script MT", cursive',
     headFont: 'Fraunces, Georgia, serif', brandWeight: 400,
@@ -197,6 +202,7 @@ export const THEMES = {
   }),
 
   kaiju: theme('kaiju', 'The Iron Kaiju', 'Hazard tape, a skyline, radioactive green and alarm orange', {
+    tabIcons: { log: '<path d="M8 21c-2-2-2-6 0-8s6-2 8 0 2 6 0 8-6 2-8 0z"/><path d="M7 9 5 5M12 8V3M17 9l2-4"/>', routines: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', history: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M12 8.5v7"/>', seasons: '<path d="M3 21 9 9h6l6 12z"/><path d="M9 9l1.5 3 1.5-2 1.5 2L15 9M10 6 9 3M14 6l1-3M12 5V2"/>', progress: '<path d="M3 20 7 11l3 4 4-11 4 10 3-5v11z"/>' },
     brand: 'The Iron Kaiju', motto: 'RISE FROM THE DEEP · LEVEL THE CITY', tagline: 'Something stirs. Log the set.',
     fonts: 'family=Bungee&family=Chakra+Petch:wght@600;700', brandFont: 'Bungee, Impact, sans-serif',
     headFont: '"Chakra Petch", "Arial Narrow", system-ui, sans-serif', brandWeight: 400,
@@ -272,6 +278,7 @@ export const THEMES = {
   }),
 
   dungeon: theme('dungeon', 'The Iron Dungeon', 'Parchment, torchlight, loot chests and an XP bar', {
+    tabIcons: { log: '<path d="M20 4 9 15M20 4v4M20 4h-4"/><path d="M6 12l6 6M4 20l4-4"/>', routines: '<path d="M4 20 15 9"/><path d="M17 3v4M15 5h4M20 10v2M19 11h2M10 4v2M9 5h2"/>', history: '<path d="M7 4h11v13a3 3 0 0 1-3 3H6a2 2 0 0 1-2-2v-1h11"/><path d="M7 4a2 2 0 0 0-2 2v1h2M10 8h5M10 12h5"/>', seasons: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>', progress: '<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/><path d="M12 16V9M9 12l3-3 3 3"/>' },
     brand: 'The Iron Dungeon', motto: 'ROLL FOR STRENGTH · LOOT THE GYM', tagline: 'Roll initiative. Log the set.',
     fonts: 'family=Pirata+One&family=Alegreya+SC:wght@700', brandFont: '"Pirata One", Georgia, serif',
     headFont: '"Alegreya SC", Georgia, serif', brandWeight: 400,
@@ -320,6 +327,7 @@ export const THEMES = {
   }),
 
   arcade: theme('arcade', 'Iron Arcade', 'Neon on black, pixel lettering, coins and high scores', {
+    tabIcons: { log: '<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 10.5v4M5 12.5h4"/><circle cx="16" cy="11.5" r=".9"/><circle cx="18" cy="13.5" r=".9"/>', routines: '<path d="M5 17h14v4H5z"/><path d="M12 17V9"/><circle cx="12" cy="6" r="3"/>', history: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>', seasons: '<circle cx="12" cy="12" r="6.5"/><path d="M2.5 15.5c3 2.5 16 0 19-7"/>', progress: '<path d="M4 20h4v-6H4zM10 20h4V8h-4zM16 20h4V4h-4z"/>' },
     brand: 'IRON ARCADE', motto: 'INSERT COIN · PRESS START', tagline: 'Player 1 ready. Log the set.',
     fonts: 'family=Press+Start+2P&family=Silkscreen:wght@400;700', brandFont: '"Press Start 2P", ui-monospace, monospace',
     headFont: 'Silkscreen, ui-monospace, monospace', brandWeight: 400,
@@ -372,6 +380,7 @@ export const THEMES = {
   }),
 
   viking: theme('viking', 'The Iron Forge', 'Smoke and embers, rune stones and sagas', {
+    tabIcons: { log: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3v6.5M12 14.5V21M3 12h6.5M14.5 12H21"/>', routines: '<path d="M3 6c5 0 14 3 18 11l-3 2C14 12 7 10 3 10z"/><path d="M8 6.4v3.8M14 8.6l-1.6 3.6"/>', history: '<path d="M6 21V8a6 6 0 0 1 12 0v13z"/><path d="M11 8v10M11 10l3-2M11 13l3-2"/>', seasons: '<path d="M2 15h20l-3 4H5z"/><path d="M12 15V3l6 9h-6"/>', progress: '<path d="M4 15a8 8 0 0 1 16 0v4H4z"/><path d="M12 7v12M6 9 3 4M18 9l3-5"/>' },
     brand: 'The Iron Forge', motto: 'FORGED IN FIRE · CARVED IN STONE', tagline: 'Strike while it’s hot. Log the set.',
     fonts: 'family=New+Rocker&family=Alegreya+Sans+SC:wght@800', brandFont: '"New Rocker", Georgia, serif',
     headFont: '"Alegreya Sans SC", system-ui, sans-serif', brandWeight: 400,
@@ -417,6 +426,7 @@ export const THEMES = {
   }),
 
   deep: theme('deep', 'The Iron Deep', 'Teal water, bubbles, portholes and glowing creatures', {
+    tabIcons: { log: '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M8 10h8M4 13a8 8 0 0 0 16 0"/>', routines: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>', history: '<path d="M3 12c3-4 9-5 13-1l5-3v8l-5-3c-4 4-10 3-13-1z"/><circle cx="8" cy="11" r=".9"/>', seasons: '<rect x="3" y="10" width="16" height="7" rx="3.5"/><path d="M9 10V7h4v3M19 13.5h2"/><circle cx="8" cy="13.5" r=".9"/><circle cx="12" cy="13.5" r=".9"/>', progress: '<path d="M2 6c2 2 4 2 6 0s4-2 6 0 4 2 6 0"/><path d="M12 10v11M8 17l4 4 4-4"/>' },
     brand: 'The Iron Deep', motto: 'DIVE DEEP · COME UP STRONGER', tagline: 'Hold your breath. Log the set.',
     fonts: 'family=Righteous&family=Exo+2:wght@700', brandFont: 'Righteous, "Trebuchet MS", sans-serif',
     headFont: '"Exo 2", system-ui, sans-serif', brandWeight: 400,
@@ -465,6 +475,7 @@ export const THEMES = {
   }),
 
   patisserie: theme('patisserie', 'The Iron Patisserie', 'Blush and raspberry, piped frosting and showstoppers', {
+    tabIcons: { log: '<path d="M12 21v-7"/><path d="M12 14c-4 0-6-4-6-7a6 6 0 0 1 12 0c0 3-2 7-6 7z"/><path d="M12 14c-1.5 0-2.5-4-2.5-7s1-5 2.5-5 2.5 2 2.5 5-1 7-2.5 7z"/>', routines: '<path d="M3 3l3.5 3.5M17.5 17.5 21 21"/><path d="M5 9l4-4 10 10-4 4z"/>', history: '<path d="M6 12h12l-2 9H8z"/><path d="M5 12a4 4 0 0 1 3-6 4 4 0 0 1 8 0 4 4 0 0 1 3 6"/>', seasons: '<path d="M3 19h18v-7L3 7z"/><path d="M3 13l18 3"/>', progress: '<path d="M4 21h16v-6H4zM6 15v-5h12v5M8 10V6h8v4M12 6V3"/>' },
     brand: 'The Iron Patisserie', motto: 'KNEAD · PROOF · LIFT', tagline: 'No soggy bottoms. Log the set.',
     fonts: 'family=Playball&family=Playfair+Display:wght@700', brandFont: 'Playball, "Brush Script MT", cursive',
     headFont: '"Playfair Display", Georgia, serif', brandWeight: 400,
@@ -577,7 +588,11 @@ export function applyTheme(id) {
   document.title = t.brand;
   document.querySelectorAll('.brand-logo').forEach(e => { e.innerHTML = t.logo; });
   document.querySelectorAll('.brand-name').forEach(e => { e.textContent = t.brand; });
-  document.querySelectorAll('.tabs a[href^="#"]').forEach(a => { const k = a.getAttribute('href').slice(1), lab = a.querySelector('.tab-label'); if (lab && t.tabs[k]) lab.textContent = t.tabs[k]; });
+  document.querySelectorAll('.tabs a[href^="#"]').forEach(a => {
+    const k = a.getAttribute('href').slice(1), lab = a.querySelector('.tab-label'), ic = a.querySelector('svg');
+    if (lab && t.tabs[k]) lab.textContent = t.tabs[k];
+    if (ic && t.tabIcons[k]) { ic.innerHTML = t.tabIcons[k]; ic.setAttribute('stroke-linejoin', 'round'); ic.setAttribute('aria-hidden', 'true'); }
+  });
   const light = document.querySelector('meta[name="theme-color"][media*="light"]'), dark = document.querySelector('meta[name="theme-color"][media*="dark"]');
   if (light) light.content = color(t, 'light', 'bg');
   if (dark) dark.content = color(t, 'dark', 'bg');
