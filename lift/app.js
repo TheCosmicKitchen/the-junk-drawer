@@ -184,7 +184,7 @@ async function afterSignIn() {
     me = who;
     if (me.mfa_required && !me.mfa_ok) { clearSnap(); return showEnroll(); }
     applyData(await fetchAll());
-    if (snap) { reapplyWaiting(); S.winsAt = 0; S.recordsAt = 0; render(); }
+    if (snap) { replay(); S.winsAt = 0; S.recordsAt = 0; render(); }
     else { restoreOutbox(); showApp(); }
     writeSnap();
   } catch (x) {
@@ -208,7 +208,7 @@ function clearSnap() { try { localStorage.removeItem(SNAP); } catch (e) {} }
 function writeSnap() {
   if (snapOff() || !S.myId || !S.recent) return;
   // Sets still waiting in the outbox aren't part of it: they come back from the outbox itself.
-  const waitingSets = S.recent.filter(x => x._pending);
+  const waitingSets = S.recent.filter(x => x._sync === 'waiting');
   const days = S.days.map(d => ({ ...d }));
   for (const x of waitingSets) {
     const d = days.find(y => y.performed_on === x.performed_on);
@@ -216,21 +216,13 @@ function writeSnap() {
   }
   const data = {
     cat: { exercises: S.exercises, aliases: [...S.aliases].flatMap(([exercise_id, list]) => list.map(alias => ({ exercise_id, alias }))) },
-    recent: S.recent.filter(x => !x._pending), days: days.filter(d => d.sets > 0), bests: S.bestRows,
+    recent: S.recent.filter(x => x._sync !== 'waiting').map(x => { const { _sync, ...rest } = x; return rest; }), days: days.filter(d => d.sets > 0), bests: S.bestRows,
     routines: { templates: S.templates, items: S.items, subs: S.subs },
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
     names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw,
   };
   try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
-}
-// After fresh data replaces what was on screen, put back the sets still waiting to save.
-function reapplyWaiting() {
-  const known = new Set(S.recent.map(x => x.id));
-  for (const e of Q.box) for (const r of e.rows) if (!known.has(r.id)) {
-    const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _pending: true };
-    syncCaches(t, false); bumpDay(t, +1);
-  }
 }
 // Coming back to the app after a while: refresh everything quietly; going away: save the snapshot.
 let hiddenAt = 0, refreshing = false;
@@ -239,7 +231,7 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); writeSnap(); return; }
   if (!hiddenAt || Date.now() - hiddenAt < 120000 || refreshing || store.demo) return;
   refreshing = true;
-  try { applyData(await fetchAll()); reapplyWaiting(); S.winsAt = 0; S.recordsAt = 0; render(); refreshLoggerList(); writeSnap(); } catch (x) { /* keep what's on screen */ }
+  try { applyData(await fetchAll()); replay(); S.winsAt = 0; S.recordsAt = 0; render(); refreshLoggerList(); writeSnap(); } catch (x) { /* keep what's on screen */ }
   refreshing = false;
 });
 window.addEventListener('pagehide', () => { if (store && S.myId) writeSnap(); });
@@ -399,7 +391,7 @@ async function saveDayAsRoutine(day, btn) {
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
   return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + '</h3><span class="muted num">' + esc(volText(v)) + '</span></div>' +
-    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (s._pending ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') + '</div>' +
+    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') + '</div>' +
     '<div class="actions"><button class="btn primary" data-again="' + esc(g.exercise_id) + '">+ Same again</button><button class="btn" data-more="' + esc(g.exercise_id) + '">Change it up</button></div></section>';
 }
 // Sets aren't logged "to" a season: a season is a date range, so today's sets count toward every
@@ -470,7 +462,7 @@ view.addEventListener('click', async e => {
 });
 $('fab').addEventListener('click', () => openLogger());
 $('navLog').addEventListener('click', () => { if (location.hash !== '#log' && location.hash !== '') location.hash = '#log'; openLogger(); });
-const findSet = id => { id = Q.alias.get(id) || id; return S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id); };
+const findSet = id => { return S.recent.find(s => s.id === id) || [...S.dayCache.values()].flat().find(s => s.id === id); };
 
 // ===========================================================================
 // Weights are per person. A routine step only says exercise, sets and reps, plus a rule:
@@ -584,48 +576,83 @@ function syncCaches(saved, gone) {
   }
 }
 // ---------------------------------------------------------------------------
-// Logging feels instant and survives a bad signal. A set shows up the moment you tap, with its final
-// id already chosen, and goes into an outbox kept on the phone until the database has it. The outbox
-// sends in order, one request per tap. No signal: the sets stay on screen marked as waiting, and the
-// outbox keeps trying (on reconnect, on coming back to the app, every 15 s), even after the app is
-// closed and opened again. A resend can't double up: the database refuses the same id twice, and
-// that counts as saved. Anything else it refuses takes the sets back off the screen with a message.
-// Edits and deletes wait for the save they depend on; undoing a set that hasn't gone yet just takes
-// it out of the outbox.
+// The outbox. Every change to your sets (logging, editing, deleting, undoing a delete) shows on
+// screen the moment you tap and goes into one outbox kept on the phone until the database has it.
+// It sends in order, one request per change. No signal: the changes stay on screen marked as
+// waiting, and the outbox keeps trying (on reconnect, on coming back to the app, every 15 s), even
+// after the app is closed and opened again. Resending can't double anything up: a new set's id is
+// chosen on the phone and the database refuses the same id twice (that counts as saved), and edits,
+// deletes and restores land the same however often they're sent. Anything the database refuses is
+// put back the way it was, with a message.
+//
+// A change that hasn't been sent yet is folded into the outbox rather than sent separately: editing
+// a set that's still waiting rewrites it, deleting it just takes it out, and undoing a delete that
+// hasn't gone yet cancels it.
+//
+// The changes (each kept on the phone as plain data):
+//   { kind: 'add',   rows }               new sets, one request for the whole tap
+//   { kind: 'edit',  id, patch, before }  before = the old values, to put back if it's refused
+//   { kind: 'del',   id, row }            row = the set as it was, to put back or restore
+//   { kind: 'undel', id, row }
+// Each set on screen carries its state in _sync:
+//   'waiting'   logged, not in the database yet
+//   'changing'  in the database, with an edit, delete or restore still to send
+//   'gone'      deleted on screen (only old references to it ever see this)
+//   (none)      saved, nothing waiting
 // ---------------------------------------------------------------------------
-const Q = { chain: Promise.resolve(), pending: 0, saving: new Map(), res: new Map(), alias: new Map(), box: [], busy: false, timer: null, offline: false, inflight: null };
-function enqueue(job) {
-  Q.pending++;
-  const p = Q.chain.then(job);
-  Q.chain = p.catch(() => {});
-  return p.finally(() => { Q.pending--; });
-}
+const Q = { box: [], busy: false, timer: null, stall: null, inflight: null };   // stall: null, 'net' (no signal) or 'auth' (sign-in needs refreshing)
 const newId = () => (crypto.randomUUID ? crypto.randomUUID()
   : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
 const msgOf = x => String((x && (x.message || x.code)) || x || '');
-const retryable = x => /reach the server|Failed to fetch|NetworkError|Load failed|network|expired|Too many changes|timeout/i.test(msgOf(x));
+const authErr = x => /JWT|not authenticated|invalid claim|refresh token|session (has )?expired|401|PGRST30/i.test(msgOf(x));
+const retryable = x => /reach the server|Failed to fetch|NetworkError|Load failed|network|Too many changes|timeout/i.test(msgOf(x));
 const isDuplicate = x => /duplicate key|23505|already exists/i.test(msgOf(x));
+const unsaved = s => s._sync === 'waiting' || s._sync === 'changing';
 const outboxKey = () => 'lift.outbox' + (store && store.demo ? '.demo' : '');
-function saveBox() { try { localStorage.setItem(outboxKey(), JSON.stringify({ user: S.myId, box: Q.box.map(e => ({ rows: e.rows })) })); } catch (e) {} }
-function loadBox() { try { const o = JSON.parse(localStorage.getItem(outboxKey()) || 'null'); return o && o.user === S.myId && Array.isArray(o.box) ? o.box : []; } catch (e) { return []; } }
-const waiting = () => Q.box.reduce((a, e) => a + e.rows.length, 0);
-const syncText = n => '☁️ ' + n + ' set' + (n === 1 ? '' : 's') + ' waiting to save' + (Q.offline ? '. No signal; they’ll go as soon as you’re back.' : '…');
+const plain = s => { const o = {}; for (const k in s) if (k[0] !== '_') o[k] = s[k]; return o; };   // a set without its on-screen flags
+function saveBox() { try { localStorage.setItem(outboxKey(), JSON.stringify({ v: 2, user: S.myId, box: Q.box })); } catch (e) {} }
+function loadBox() {
+  try {
+    const o = JSON.parse(localStorage.getItem(outboxKey()) || 'null');
+    if (!o || o.user !== S.myId || !Array.isArray(o.box)) return [];
+    return o.box.map(e => (e.kind ? e : { kind: 'add', rows: e.rows || [] }));   // an outbox from before edits went in it: just new sets
+  } catch (e) { return []; }
+}
+const opsFor = (id, all) => Q.box.filter(e => (all || e !== Q.inflight) && (e.kind === 'add' ? e.rows.some(r => r.id === id) : e.id === id));
+// What a set's state should be, from what's still in the outbox for it.
+function syncOf(id) {
+  const ops = opsFor(id, true);
+  return ops.some(e => e.kind === 'add') ? 'waiting' : ops.length ? 'changing' : undefined;
+}
+// Put a set on screen in the state the outbox says it's in (replacing whatever was there).
+function show(row, was) {
+  const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...row };
+  t._sync = syncOf(t.id);
+  if (was) { t._pr = was._pr; t._crossed = was._crossed; bumpDay(was, -1); }
+  syncCaches(t, false); bumpDay(t, +1);
+  return t;
+}
+function hide(cur) { cur._sync = 'gone'; syncCaches(cur, true); bumpDay(cur, -1); }
+const waiting = () => Q.box.reduce((a, e) => a + (e.kind === 'add' ? e.rows.length : 1), 0);
+function syncText(n) {
+  const what = n + (Q.box.every(e => e.kind === 'add') ? ' set' : ' change') + (n === 1 ? '' : 's');
+  return '☁️ ' + what + ' waiting to save' + (Q.stall === 'net' ? '. No signal; they’ll go as soon as you’re back.'
+    : Q.stall === 'auth' ? '. Your sign-in needs refreshing; if it doesn’t sort itself out, sign out and back in. Nothing is lost.' : '…');
+}
 const syncLine = () => { const n = waiting(); return '<p class="sync-line"' + (n ? '' : ' hidden') + '>' + esc(syncText(n)) + '</p>'; };
 function syncWaiting() {
   const n = waiting();
   document.querySelectorAll('.sync-line').forEach(el => { el.hidden = !n; el.textContent = syncText(n); });
 }
 function queueStore(st) {
-  const update = st.updateSet.bind(st);
-  st.updateSet = async (id, patch) => { if (Q.saving.has(id)) await Q.saving.get(id); return update(id, patch); };   // deleteSet and restoreSet go through this too
   const signOut = st.signOut.bind(st);
   st.signOut = async () => { clearSnap(); return signOut(); };
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
-window.addEventListener('beforeunload', e => { if (Q.pending) { e.preventDefault(); e.returnValue = ''; } });
 window.addEventListener('online', () => flush());
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Q.box.length) flush(); });
+function queue(op) { Q.box.push(op); saveBox(); syncWaiting(); flush(); }
 
 function logSets(fields, count) {
   const rows = [];
@@ -633,27 +660,29 @@ function logSets(fields, count) {
   return logRows(rows, true);
 }
 function logSet(fields) { return { saved: logSets(fields, 1)[0] }; }
-// Put rows on screen and in the outbox. fresh = just tapped (counts PRs, clubs, quests); otherwise
-// they're coming back from an outbox the last visit didn't finish sending.
+// Put new sets on screen and in the outbox. fresh = just tapped (counts PRs, clubs, quests); otherwise
+// it's a set coming back (undoing the delete of one that hadn't saved yet).
 function logRows(rows, fresh) {
+  Q.box.push({ kind: 'add', rows: rows.map(plain) });
   const temps = rows.map(r => {
-    const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _pending: true };
+    const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _sync: 'waiting' };
     if (fresh) return applyNewSet(t);
     syncCaches(t, false); bumpDay(t, +1); return t;
   });
-  for (const r of rows) {
-    const p = new Promise((resolve, reject) => Q.res.set(r.id, { resolve, reject }));
-    p.catch(() => {});
-    Q.saving.set(r.id, p);
-  }
-  Q.box.push({ rows });
   saveBox(); syncWaiting(); flush();
   return temps;
 }
-function settle(id, ok, err) {
-  const r = Q.res.get(id);
-  Q.res.delete(id); Q.saving.delete(id);
-  if (r) (ok ? r.resolve(id) : r.reject(err));
+// Change a set: on screen now, and into the outbox (folded into a change still waiting, if there is one).
+function editSet(old, patch) {
+  const cur = findSet(old.id);
+  if (!cur || cur._sync === 'gone') return;
+  const add = Q.box.find(e => e.kind === 'add' && e !== Q.inflight && e.rows.some(r => r.id === cur.id));
+  const prev = Q.box.find(e => e.kind === 'edit' && e !== Q.inflight && e.id === cur.id);
+  if (add) Object.assign(add.rows.find(r => r.id === cur.id), patch);
+  else if (prev) { for (const k in patch) if (!(k in prev.before)) prev.before[k] = cur[k]; Object.assign(prev.patch, patch); }
+  else { const before = {}; for (const k in patch) before[k] = cur[k]; Q.box.push({ kind: 'edit', id: cur.id, patch: { ...patch }, before }); }
+  show({ ...plain(cur), ...patch }, cur);
+  saveBox(); syncWaiting(); flush();
 }
 async function flush() {
   if (Q.busy || !store) return;
@@ -661,73 +690,88 @@ async function flush() {
   while (Q.box.length) {
     const e = Q.box[0];
     Q.inflight = e;
-    let saved = null, err = null;
-    try { saved = await store.addSets(e.rows); }
-    catch (x) {
+    let res = null, err = null;
+    try {
+      res = e.kind === 'add' ? await store.addSets(e.rows)
+        : e.kind === 'edit' ? await store.updateSet(e.id, e.patch)
+        : e.kind === 'del' ? await store.deleteSet(e.id)
+        : await store.restoreSet(e.id);
+    } catch (x) {
       err = x;
-      if (isDuplicate(x)) { try { saved = await store.setsByIds(e.rows.map(r => r.id)); err = null; } catch (y) { err = y; } }
+      if (e.kind === 'add' && isDuplicate(x)) { try { res = await store.setsByIds(e.rows.map(r => r.id)); err = null; } catch (y) { err = y; } }
     }
     Q.inflight = null;
-    if (err && retryable(err)) {
-      if (!Q.offline) { Q.offline = true; toast('No signal. Your sets are kept on this phone and will save when you’re back.'); }
+    if (err && (retryable(err) || authErr(err))) {
+      const stall = authErr(err) ? 'auth' : 'net';
+      if (Q.stall !== stall) toast(stall === 'auth' ? 'Your sign-in needs refreshing. Changes are kept on this phone until it does.' : 'No signal. Your changes are kept on this phone and will save when you’re back.');
+      Q.stall = stall;
       syncWaiting();
       Q.timer = setTimeout(flush, 15000);
       Q.busy = false;
       return;
     }
     Q.box.shift(); saveBox();
-    if (err) refused(e, err); else landed(e, saved || []);
+    if (err) refused(e, err); else landed(e, res);
   }
-  if (Q.offline) { Q.offline = false; toast('Back online. Everything’s saved.'); }
+  if (Q.stall) { Q.stall = null; toast('Back online. Everything’s saved.'); }
   Q.busy = false;
   syncWaiting();
 }
-function landed(e, saved) {
-  for (const real of saved) {
-    const cur = findSet(real.id);
-    settle(real.id, true);
-    if (!cur || cur._gone) continue;   // undone while it was on its way
-    real._pr = cur._pr; real._crossed = cur._crossed;
-    const ed = EDITS.get(real.id); if (ed && ed.patch) Object.assign(real, ed.patch);   // edited while on its way
-    syncCaches(real, false);   // the saved row replaces the waiting one
-    if (real._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, unit: real.unit });
-    if (real._crossed) postWin('club', real._crossed.title, {});
-    checkRecord(real);
-  }
-  e.rows.forEach(r => { if (Q.saving.has(r.id)) settle(r.id, true); });
+function landed(e, res) {
+  if (e.kind === 'add') {
+    for (const real of res || []) {
+      const cur = findSet(real.id);
+      if (!cur || cur._sync === 'gone') continue;   // deleted while it was on its way (the delete follows it out)
+      for (const o of opsFor(real.id, true)) if (o.kind === 'edit') Object.assign(real, o.patch);   // edited while on its way
+      show(real, cur);
+      if (cur._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, unit: real.unit });
+      if (cur._crossed) postWin('club', cur._crossed.title, {});
+      checkRecord(real);
+    }
+  } else if (!opsFor(e.id, true).length) {   // nothing newer waiting for this set: the database's copy is the truth
+    const cur = findSet(e.id);
+    if (e.kind !== 'del' && res && cur && cur._sync !== 'gone') show(res, cur);
+    refreshBests().then(() => { if (!sheet.open) render(); });
+  } else { const cur = findSet(e.id); if (cur) cur._sync = syncOf(e.id); }
   refreshLoggerList();
   if (!sheet.open) render();   // the sheet re-renders the page when it closes
 }
 function refused(e, err) {
-  e.rows.forEach(r => { const cur = findSet(r.id); if (cur) { syncCaches(cur, true); bumpDay(cur, -1); } settle(r.id, false, err); });
-  refreshBests(); render(); refreshLoggerList();
-  const n = e.rows.length;
-  toast('Couldn’t save ' + (n > 1 ? n + ' sets' : 'that set') + ': ' + msgOf(err), { label: 'Try again', run: () => { logRows(e.rows.map(r => ({ ...r, id: newId() })), true); render(); refreshLoggerList(); } });
-}
-// Take a set that hasn't been sent yet out of the outbox. False if it's already gone or on its way.
-function takeFromBox(id) {
-  for (const e of Q.box) {
-    if (e === Q.inflight) continue;
-    const i = e.rows.findIndex(r => r.id === id);
-    if (i < 0) continue;
-    e.rows.splice(i, 1);
-    if (!e.rows.length) Q.box.splice(Q.box.indexOf(e), 1);
-    settle(id, true); saveBox(); syncWaiting();
-    return true;
+  const why = msgOf(err);
+  if (e.kind === 'add') {
+    for (const r of e.rows) {
+      const cur = findSet(r.id); if (cur) hide(cur);
+      for (const o of opsFor(r.id)) Q.box.splice(Q.box.indexOf(o), 1);   // its later edits and deletes have nothing to change
+    }
+    saveBox(); refreshBests(); render(); refreshLoggerList();
+    const n = e.rows.length;
+    return toast('Couldn’t save ' + (n > 1 ? n + ' sets' : 'that set') + ': ' + why, { label: 'Try again', run: () => { logRows(e.rows.map(r => ({ ...r, id: newId() })), true); render(); refreshLoggerList(); } });
   }
-  return false;
+  const cur = findSet(e.id), live = cur && cur._sync !== 'gone';
+  if (e.kind === 'edit' && live) show({ ...plain(cur), ...e.before }, cur);
+  if (e.kind === 'del' && !live) show(e.row);
+  if (e.kind === 'undel' && live) hide(cur);
+  refreshBests(); render(); refreshLoggerList();
+  toast((e.kind === 'edit' ? 'Couldn’t save that change: ' : e.kind === 'del' ? 'Couldn’t delete: ' : 'Couldn’t restore: ') + why);
+}
+// Fresh data from the database (or the snapshot) replaces what was on screen: lay everything still
+// in the outbox back on top of it. Safe to do more than once.
+function replay() {
+  for (const e of Q.box) {
+    if (e.kind === 'add') { for (const r of e.rows) if (!findSet(r.id)) show(r); continue; }
+    const cur = findSet(e.id);
+    if (e.kind === 'edit' && cur) show({ ...plain(cur), ...e.patch }, cur);
+    if (e.kind === 'del' && cur) hide(cur);
+    if (e.kind === 'undel' && !cur) show(e.row);
+  }
+  for (const s of S.recent) if (s._sync !== 'gone') s._sync = syncOf(s.id);
 }
 // After signing in: anything the last visit didn't get to send goes back on screen and out again.
 function restoreOutbox() {
-  const left = loadBox();
-  Q.box = [];
-  const known = new Set(S.recent.map(x => x.id));
-  for (const e of left) {
-    const rows = (e.rows || []).filter(r => r && r.id && !known.has(r.id));
-    if (rows.length) logRows(rows, false);
-  }
-  saveBox();
-  if (Q.box.length) refreshBests();
+  Q.box = loadBox();
+  replay();
+  saveBox(); syncWaiting();
+  if (Q.box.length) { refreshBests(); flush(); }
 }
 // Everything a new set changes on screen, done straight away with the stand-in row.
 function applyNewSet(t) {
@@ -757,35 +801,47 @@ function afterLogToast(saved) {
   else if (list.some(x => x._pr)) toast(T.prToast + what + ' on ' + exName(first.exercise_id), undo);
   else toast('Logged ' + what, undo);
 }
-// Deleting works the same way as logging: gone from the screen at once, deleted in the background
-// (after any save still running for those sets), and put back with a message if that fails.
+// Deleting works the same way as logging: gone from the screen at once and into the outbox. A set
+// that hasn't been sent yet is just taken back out of it. Undo puts each set back the way it went:
+// a never-sent set goes back in the outbox as new, a delete still waiting is cancelled, and one
+// that already reached the database is restored.
 function dropSets(list, quiet) {
-  const cur = list.map(s => findSet(s.id) || s);
-  list.forEach(s => { s._gone = true; }); cur.forEach(s => { s._gone = true; });
-  for (const s of cur) if (s._pr) unpostWin('pr', exName(s.exercise_id) + ' PR', s.performed_on);   // undoing a PR takes its line back
-  cur.forEach(s => { syncCaches(s, true); bumpDay(s, -1); });
+  const undo = [];
+  for (const s of list) {
+    const cur = findSet(s.id) || s;
+    if (cur._sync === 'gone') continue;
+    if (cur._pr) unpostWin('pr', exName(cur.exercise_id) + ' PR', cur.performed_on);   // undoing a PR takes its line back
+    const row = plain(cur), add = Q.box.find(e => e.kind === 'add' && e !== Q.inflight && e.rows.some(r => r.id === cur.id));
+    hide(cur); s._sync = 'gone';
+    if (add) {   // never sent: take it (and anything queued for it) back out
+      add.rows = add.rows.filter(r => r.id !== cur.id);
+      if (!add.rows.length) Q.box.splice(Q.box.indexOf(add), 1);
+      for (const o of opsFor(cur.id)) Q.box.splice(Q.box.indexOf(o), 1);
+      undo.push({ row, pr: cur._pr, sent: false });
+    } else {
+      const back = Q.box.find(e => e.kind === 'undel' && e !== Q.inflight && e.id === cur.id);
+      if (back) Q.box.splice(Q.box.indexOf(back), 1); else Q.box.push({ kind: 'del', id: cur.id, row });
+      undo.push({ row, pr: cur._pr, sent: true });
+    }
+  }
+  saveBox(); syncWaiting(); flush();
   refreshBests(); render(); refreshLoggerList();
-  const sent = list.filter(s => !takeFromBox(s.id));   // not sent yet: just drop it from the outbox
-  if (sent.length) enqueue(async () => { for (const s of sent) await store.deleteSet(s.id); }).catch(x => {
-    cur.forEach(s => { s._gone = false; syncCaches(s, false); bumpDay(s, +1); });
-    refreshBests(); render(); refreshLoggerList();
-    toast('Couldn’t delete: ' + (x && x.message ? x.message : 'no connection'));
-  });
   if (quiet) toast('Undone');
-  else toast(cur.length > 1 ? cur.length + ' sets deleted' : 'Set deleted', { label: 'Undo', run: () => cur.forEach(s => restoreSet(s)) });
+  else toast(undo.length > 1 ? undo.length + ' sets deleted' : 'Set deleted', { label: 'Undo', run: () => restoreSets(undo) });
 }
 function removeSets(list) { dropSets(list, true); }
 function removeSet(s, quiet) { dropSets([s], quiet); }
-async function restoreSet(s) {
-  try {
-    s._gone = false;
-    const back = await enqueue(() => store.restoreSet(s.id));
-    syncCaches(back, false);
-    bumpDay(back, +1);
-    refreshBests();
-    render(); refreshLoggerList();
-    toast('Restored');
-  } catch (x) { fail(x); }
+function restoreSets(undo) {
+  for (const u of undo) {
+    if (findSet(u.row.id)) continue;
+    if (!u.sent) { logRows([u.row], false); continue; }
+    const del = Q.box.find(e => e.kind === 'del' && e !== Q.inflight && e.id === u.row.id);
+    if (del) Q.box.splice(Q.box.indexOf(del), 1); else Q.box.push({ kind: 'undel', id: u.row.id, row: u.row });
+    show(u.row)._pr = u.pr;
+  }
+  saveBox(); syncWaiting(); flush();
+  refreshBests(); render(); refreshLoggerList();
+  toast('Restored');
 }
 
 // ===========================================================================
@@ -1052,7 +1108,7 @@ function refreshLoggerList() {
     } else next = '<p class="hint-line">' + working + ' of ' + LG.item.sets + ' sets done for this step.</p>';
   }
   box.innerHTML = (sets.length
-    ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (s._pending ? ' pending' : '') + '" data-edit="' + esc(s.id) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
+    ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
       (next ? '' : '<button class="btn block" style="margin-top:14px" data-close>Done with ' + esc(exName(LG.exId)) + '</button>')
     : '') + next;
   updateLive();
@@ -1127,9 +1183,6 @@ function readForm() {
   const note = $('noteIn') ? $('noteIn').value.trim() : '';
   return { weight, reps, unit: s.unit, count_bodyweight: s.bw, bodyweight: s.bw ? bodyweight : null, is_warmup: s.warm, notes: s.showNote && note ? note : null };
 }
-// set id -> the latest edit on its way: a late answer can't undo a newer edit, and a set that lands
-// after you edited it keeps showing the edit.
-const EDITS = new Map();
 async function saveEntry(btn) {
   $('formErr').textContent = '';
   let fields;
@@ -1139,21 +1192,10 @@ async function saveEntry(btn) {
     if (LG.mode === 'edit') {
       const old = LG.editing;
       const patch = { ...fields, exercise_id: old.exercise_id, performed_on: $('dateIn').value || old.performed_on };
-      // Shows the change at once and saves in the background; if the database refuses, it's put back.
-      const shown = { ...old, ...patch };
-      bumpDay(old, -1); syncCaches(shown, false); bumpDay(shown, +1);
-      sheet.close(); render();
+      sheet.close();
+      editSet(old, patch);   // shows at once, saves in the background (put back with a message if refused)
+      render();
       toast('Saved');
-      const ver = ((EDITS.get(old.id) || {}).ver || 0) + 1; EDITS.set(old.id, { ver, patch });
-      const put = row => {   // unless it was edited again or deleted since
-        const cur = findSet(old.id), ed = EDITS.get(old.id);
-        if (ed.ver !== ver) return;
-        ed.patch = null;
-        if (!cur || cur._gone) return;
-        row._pr = shown._pr; bumpDay(cur, -1); syncCaches(row, false); bumpDay(row, +1); render();
-      };
-      enqueue(() => store.updateSet(old.id, patch)).then(saved => { put(saved); refreshBests().then(render); })
-        .catch(x => { put({ ...old, _pending: false }); toast('Couldn’t save that change: ' + msgOf(x)); });
     } else {
       const n = Math.max(1, Math.min(20, parseInt(($('nIn') || {}).value, 10) || st().sets || 1));
       const saved = await logSets({ exercise_id: LG.exId, ...fields }, n);
@@ -3100,7 +3142,7 @@ function sessionSummary() {
 // What a finished session puts in the feed: totals, every lift's top set, and a little context.
 // Names travel with it so the crew sees them without a lookup. Kept well under the 4 KB a post allows.
 function sessionPost(r) {
-  const sets = todaySets().filter(x => x.is_warmup !== true && !x._gone);
+  const sets = todaySets().filter(x => x.is_warmup !== true && x._sync !== 'gone');
   const prEx = new Set(r.prs.map(p => p.exercise_id)), by = new Map();
   for (const x of sets) {
     const g = by.get(x.exercise_id) || { n: 0, top: x };
