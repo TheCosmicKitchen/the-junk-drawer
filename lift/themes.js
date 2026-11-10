@@ -271,6 +271,247 @@ export const THEMES = {
     },
   }),
 
+  dungeon: theme('dungeon', 'The Iron Dungeon', 'Parchment, torchlight, loot chests and an XP bar', {
+    brand: 'The Iron Dungeon', motto: 'ROLL FOR STRENGTH · LOOT THE GYM', tagline: 'Roll initiative. Log the set.',
+    fonts: 'family=Pirata+One&family=Alegreya+SC:wght@700', brandFont: '"Pirata One", Georgia, serif',
+    headFont: '"Alegreya SC", Georgia, serif', brandWeight: 400,
+    // A sword crossed over a shield.
+    logo: svg('<path d="M20 4 L34 9 V20 C34 28 28 33 20 36 C12 33 6 28 6 20 V9 Z" fill="var(--accent)"/><path d="M20 8 L30 11.6 V20 C30 26 26 29.6 20 32 Z" fill="#000" opacity=".22"/><rect x="18.8" y="2" width="2.4" height="26" rx="1" fill="var(--ink)"/><rect x="13" y="24" width="14" height="2.6" rx="1.3" fill="var(--gold)"/><rect x="18.6" y="26.4" width="2.8" height="7" rx="1" fill="var(--gold)"/><circle cx="20" cy="35" r="2" fill="var(--gold)"/>'),
+    css: '.hero { border-top: 4px double var(--gold); border-bottom: 4px double var(--gold); }' +
+      '.hero .date::before { content: "⚔ "; color: var(--gold); }' +
+      BAR + ' { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 30%, transparent); border-radius: 3px; }' + FILL() + ' { border-radius: 2px; }',
+    titles: { log: 'Today’s Quest', routines: 'Spellbook', history: 'The Chronicle', seasons: 'Campaigns', progress: 'Character sheet' },
+    tabs: { log: 'Fight', routines: 'Spells', history: 'Chronicle', seasons: 'Campaigns', progress: 'Level up' },
+    helloBig: 'Boss fight.', helloSome: 'In the dungeon.', helloNone: 'At the tavern.',
+    finish: 'Leave the dungeon · Finish ›', finishFeed: 'Leave the dungeon · tell the tavern', finishPrivate: 'Leave the dungeon · finish', updateFeed: 'Update the tale',
+    ended: 'Dungeon cleared. Rest at the inn.', endedFeed: 'Dungeon cleared. The bards are singing of it.', endedClock: '✓ Cleared · ',
+    routineDone: '🎉 Every room cleared.', routineBtn: 'Dungeon cleared 🗝️',
+    emptyH: 'The torches are lit.', emptyP: 'Log a set and the adventure begins.',
+    prToast: '⚔️ Critical hit! ', clubToast: '🧰 Loot! Welcome to the ', goalToast: 'Quest complete: ',
+    pr: 'crit', prs: 'crits',
+    prFlag: (reps, was) => 'Critical hit! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'Critical hit on ' + ex + ': ',
+    clubs: 'Loot chests', clubsSub: n => 'one opened for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' chests opened, one for each club; the next creaks open as you near the ' + next,
+    weekly: 'Last week’s tale', streak: 'weeks adventuring', restWeek: 'A long rest',
+    rest: n => n + ' weeks adventuring in a row. Consider a long rest: same lifts at about 60% of the weight, then back into the dungeon.',
+    feed: 'The tavern', feedSub: 'tales of the crew’s deeds', feedEmpty: 'Crits, loot, quests, legends and cleared dungeons from the crew are told here.',
+    icons: { pr: '⚔️', club: '🧰', goal: '📜', session: '🗝️', record: '🐉', quest: '🗺️', holder: '🐉', questOpen: '🗺️', rest: '🍺', dry: '🕸️' },
+    win: { club: 'Opened a chest: the ', record: 'Slew the dragon: ', quest: 'Finished a side quest: ', goal: 'Completed a quest: ', session: 'Cleared a dungeon: ' },
+    records: 'Dragon hoard', holderCol: 'Dragon', recordsBlurb: 'Beat the dragon’s best and the hoard is yours.', recordToast: '🐉 Dragon slain: the crew record on ',
+    quests: 'Side quests', questsSub: 'this week’s bounties, the same for the whole party', questDone: '🗺️ Side quest complete: ',
+    goals: 'Quests', goalsKept: 'Quests complete', plan: 'The campaign', points: 'XP', pointsEarned: 'XP earned',
+    dry: 'Stuck in a web: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'You entered the dungeon.', five_visits: 'Five dungeons cleared. A seasoned adventurer.', twenty_visits: 'Twenty gym days. A legend of the realm.', first_pr: 'A new best for an exercise and rep count. A critical hit.' },
+    achTitle: { first_visit: 'Level 1', five_visits: 'Adventurer', twenty_visits: 'Legend', first_pr: 'First Critical Hit' },
+    // An XP bar, a sword at its tip and the dragon waiting at the end.
+    bar: { fill: 'linear-gradient(180deg, color-mix(in srgb, var(--good) 60%, #fff), var(--good) 55%, color-mix(in srgb, var(--good) 75%, #000))', end: '⚔️', goal: '🐉' },
+    // A treasure chest per club: open and full of gold. The next one's lid lifts as you near it.
+    token: (cx, glow, next) => {
+      const open = next ? glow : 1, coins = open > 0.02 ? '<g opacity="' + glowOp(glow, next) + '"><ellipse cx="' + cx + '" cy="89" rx="14" ry="4" fill="var(--gold)"/><circle cx="' + (cx - 6) + '" cy="85" r="3.4" fill="var(--gold)"/><circle cx="' + (cx + 5) + '" cy="84" r="3" fill="var(--gold)"/><circle cx="' + (cx + 5) + '" cy="83" r="1" fill="#fff" opacity=".8"/></g>' : '';
+      return '<rect x="' + (cx - 16) + '" y="88" width="32" height="24" rx="3" fill="var(--gold-soft)" stroke="var(--gold)" stroke-width="1.5"/>' + coins +
+        '<rect x="' + (cx - 16) + '" y="96" width="32" height="3" fill="var(--gold)"/><rect x="' + (cx - 3) + '" y="94" width="6" height="8" rx="1.5" fill="var(--ink)"/>' +
+        '<g transform="rotate(' + (-open * 62).toFixed(1) + ' ' + (cx - 16) + ' 88)"><path d="M' + (cx - 16) + ' 88 V80 Q' + cx + ' 68 ' + (cx + 16) + ' 80 V88 Z" fill="var(--gold-soft)" stroke="var(--gold)" stroke-width="1.5"/></g>';
+    },
+    colors: {
+      light: { bg: '#f3ead8', card: '#fbf5e8', ink: '#2a1d12', muted: '#6e5b45', line: '#e2d4ba', chip: '#ece0c8', accent: '#8f2d1f', 'accent-ink': '#ffffff', 'accent-soft': '#f3dcd3', good: '#3f7d2a', gold: '#9a6a00', 'gold-soft': '#f6e7c4', grid: '#ebdfc8', axis: '#d2c09f' },
+      dark: { bg: '#130e0a', card: '#1d1610', ink: '#f1e4cc', muted: '#b09c80', line: '#33281d', chip: '#271e16', accent: '#e0614a', 'accent-ink': '#1a0703', 'accent-soft': '#3a1a12', good: '#7bc96f', gold: '#e8b04a', 'gold-soft': '#352710', grid: '#271f17', axis: '#463829' },
+    },
+  }),
+
+  arcade: theme('arcade', 'Iron Arcade', 'Neon on black, pixel lettering, coins and high scores', {
+    brand: 'IRON ARCADE', motto: 'INSERT COIN · PRESS START', tagline: 'Player 1 ready. Log the set.',
+    fonts: 'family=Press+Start+2P&family=Silkscreen:wght@400;700', brandFont: '"Press Start 2P", ui-monospace, monospace',
+    headFont: 'Silkscreen, ui-monospace, monospace', brandWeight: 400,
+    // A pixel space invader.
+    logo: svg('<path fill="var(--accent)" d="M10 8h4v4h-4zM26 8h4v4h-4zM14 12h12v4H14zM10 16h20v4H10zM6 20h8v4H6zM18 20h4v4h-4zM26 20h8v4h-8zM6 24h28v4H6zM6 28h4v4H6zM14 28h12v4H14zM30 28h4v4h-4zM14 32h4v4h-4zM22 32h4v4h-4z"/>'),
+    css: '.hero { background-image: repeating-linear-gradient(0deg, color-mix(in srgb, var(--ink) 6%, transparent) 0 1px, transparent 1px 3px); border: 2px solid var(--accent); }' +
+      '.hero h1 { text-shadow: 3px 3px 0 var(--accent-soft); } .hero .date::before { content: "▶ "; color: var(--gold); }' +
+      '.top .brand { font-size: clamp(11px, 3.4vw, 16px); letter-spacing: .02em; }' +   // Press Start runs very wide
+      '.card-title, .section-title, .page-title, .sheet-head h2 { letter-spacing: .02em; }' +
+      BAR + ' { border-radius: 0; }' + FILL() + ' { border-radius: 0; }',
+    titles: { log: 'Player 1', routines: 'Combos', history: 'High scores', seasons: 'Worlds', progress: 'Stats' },
+    tabs: { log: 'Play', routines: 'Combos', history: 'Scores', seasons: 'Worlds', progress: 'Stats' },
+    helloBig: 'Boss level.', helloSome: 'Game on.', helloNone: 'Press start.',
+    finish: 'Game over · Finish ›', finishFeed: 'Game over · post your score', finishPrivate: 'Game over · finish', updateFeed: 'Update your score',
+    ended: 'Game over. Well played.', endedFeed: 'Game over. Your score is on the board.', endedClock: '✓ Game over · ',
+    routineDone: '🎉 Level complete.', routineBtn: 'Level complete 🕹️',
+    emptyH: 'Insert coin.', emptyP: 'Log a set to press start.',
+    prToast: '🌟 New high score! ', clubToast: '🪙 Coin collected: welcome to the ', goalToast: 'Level cleared: ',
+    pr: 'high score', prs: 'high scores',
+    prFlag: (reps, was) => 'New high score! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'New high score on ' + ex + ': ',
+    clubs: 'Coins', clubsSub: n => 'one collected for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' coins collected, one for each club; the next spins in as you near the ' + next,
+    weekly: 'Last week’s run', streak: 'week combo', restWeek: 'Paused',
+    rest: n => n + '-week combo. Consider a bonus stage: same lifts at about 60% of the weight, then continue.',
+    feed: 'Scoreboard', feedSub: 'the crew’s high scores', feedEmpty: 'High scores, coins, levels, world records and finished games from the crew show up here.',
+    icons: { pr: '🌟', club: '🪙', goal: '🏁', session: '🕹️', record: '🏆', quest: '👾', holder: '🏆', questOpen: '👾', rest: '⏸️', dry: '🧱' },
+    win: { club: 'Collected a coin: the ', record: 'World record: ', quest: 'Beat a bonus stage: ', goal: 'Cleared a level: ', session: 'Played a game: ' },
+    records: 'World records', holderCol: 'Champ', recordsBlurb: 'Beat the champ’s best and your initials go on the board.', recordToast: '🏆 World record on ',
+    quests: 'Bonus stages', questsSub: 'this week’s bonus stages, the same for every player', questDone: '👾 Bonus stage cleared: ',
+    goals: 'Levels', goalsKept: 'Levels cleared', plan: 'The level map', points: 'pts', pointsEarned: 'pts scored',
+    dry: 'Stuck on this level: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Player 1 has entered the game.', five_visits: 'Five games played.', twenty_visits: 'Twenty gym days. Arcade regular.', first_pr: 'A new best for an exercise and rep count. New high score.' },
+    achTitle: { first_visit: '1UP', five_visits: 'Combo x5', twenty_visits: 'Arcade legend', first_pr: 'First High Score' },
+    // Chunky blocks, like an 8-bit health bar, with a space invader on the front.
+    bar: { height: '14px', track: 'repeating-linear-gradient(90deg, var(--chip) 0 10px, transparent 10px 13px)', fill: 'var(--good)',
+      texture: 'repeating-linear-gradient(90deg, transparent 0 10px, var(--card) 10px 13px)', end: '👾' },
+    // A gold coin per club; the next one spins in edge-on and turns to face you as you near it.
+    token: (cx, glow, next) => {
+      const rx = next ? Math.max(2, 17 * glow) : 17;
+      return '<circle cx="' + cx + '" cy="88" r="17" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 3"/>' +
+        (glow > 0.02 ? '<g opacity="' + glowOp(glow, next) + '"><ellipse cx="' + cx + '" cy="88" rx="' + rx.toFixed(1) + '" ry="17" fill="var(--gold)"/>' +
+          '<ellipse cx="' + cx + '" cy="88" rx="' + (rx * 0.7).toFixed(1) + '" ry="12" fill="none" stroke="var(--gold-soft)" stroke-width="2"/>' +
+          '<rect x="' + (cx - Math.min(2.5, rx * 0.15)).toFixed(1) + '" y="80" width="' + Math.min(5, rx * 0.3).toFixed(1) + '" height="16" fill="var(--gold-soft)"/></g>' : '');
+    },
+    colors: {
+      light: { bg: '#f2f0fa', card: '#ffffff', ink: '#14112a', muted: '#5d5878', line: '#dedaf0', chip: '#ebe8f7', accent: '#c2189b', 'accent-ink': '#ffffff', 'accent-soft': '#fbdcf2', good: '#1f8a3a', gold: '#a86b00', 'gold-soft': '#fbecc8', grid: '#e7e4f3', axis: '#c9c4e0' },
+      dark: { bg: '#05040c', card: '#0f0d1c', ink: '#f1efff', muted: '#9a95bd', line: '#24203d', chip: '#1a1730', accent: '#ff4fd8', 'accent-ink': '#1a0216', 'accent-soft': '#3a0f33', good: '#7dff4f', gold: '#ffe14f', 'gold-soft': '#36300c', grid: '#1b1830', axis: '#36305a' },
+    },
+  }),
+
+  viking: theme('viking', 'The Iron Forge', 'Smoke and embers, rune stones and sagas', {
+    brand: 'The Iron Forge', motto: 'FORGED IN FIRE · CARVED IN STONE', tagline: 'Strike while it’s hot. Log the set.',
+    fonts: 'family=New+Rocker&family=Alegreya+Sans+SC:wght@800', brandFont: '"New Rocker", Georgia, serif',
+    headFont: '"Alegreya Sans SC", system-ui, sans-serif', brandWeight: 400,
+    // A hammer over an anvil.
+    logo: svg('<path d="M6 22 H32 C32 26 28 27 25 27 L27 34 H11 L13 27 C9 27 6 25 6 22 Z" fill="var(--ink)"/><rect x="18.6" y="4" width="3" height="16" rx="1.2" fill="var(--gold)" transform="rotate(-35 20 12)"/><rect x="20" y="2" width="14" height="7" rx="1.6" fill="var(--accent)" transform="rotate(-35 20 12)"/><circle cx="31" cy="18" r="1.4" fill="var(--accent)"/><circle cx="34" cy="14" r="1" fill="var(--gold)"/>'),
+    css: '.hero { position: relative; overflow: hidden; padding-top: 24px; }' +
+      '.hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: linear-gradient(90deg, transparent, var(--accent) 20%, #ffd27a 50%, var(--accent) 80%, transparent); }' +
+      '.hero .date::before { content: "⚒ "; color: var(--accent); }' +
+      '.card-title, .section-title, .page-title, .hero h1, .sheet-head h2 { letter-spacing: .03em; }',
+    titles: { log: 'Today’s Raid', routines: 'Sagas', history: 'Runestones', seasons: 'Voyages', progress: 'Glory' },
+    tabs: { log: 'Raid', routines: 'Sagas', history: 'Runes', seasons: 'Voyages', progress: 'Glory' },
+    helloBig: 'A great raid.', helloSome: 'At the forge.', helloNone: 'The fire is banked.',
+    finish: 'Sail home · Finish ›', finishFeed: 'Sail home · tell it in the hall', finishPrivate: 'Sail home · finish', updateFeed: 'Update the saga',
+    ended: 'Home from the raid. Feast well.', endedFeed: 'Home from the raid. The skalds tell of it in the hall.', endedClock: '✓ Home · ',
+    routineDone: '🎉 The saga is told.', routineBtn: 'Saga complete ⚒️',
+    emptyH: 'The forge is cold.', emptyP: 'Log a set and the fire catches.',
+    prToast: '🔥 Saga-worthy! ', clubToast: '🪨 A rune carved: welcome to the ', goalToast: 'Oath fulfilled: ',
+    pr: 'saga', prs: 'sagas',
+    prFlag: (reps, was) => 'Saga-worthy! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'A saga-worthy ' + ex + ': ',
+    clubs: 'Rune stones', clubsSub: n => 'one carved for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' rune stones carved, one for each club; the next takes shape as you near the ' + next,
+    weekly: 'Last week’s raid', streak: 'weeks raiding', restWeek: 'Wintering',
+    rest: n => n + ' weeks raiding in a row. Consider a winter week: same lifts at about 60% of the weight, then sail again.',
+    feed: 'The mead hall', feedSub: 'the crew’s deeds, told in the hall', feedEmpty: 'Sagas, runes, oaths, jarls and raids from the crew are told here.',
+    icons: { pr: '🔥', club: '🪨', goal: '🛡️', session: '⛵', record: '👑', quest: '🧭', holder: '👑', questOpen: '🧭', rest: '❄️', dry: '🧊' },
+    win: { club: 'Carved a rune: the ', record: 'Became jarl: ', quest: 'Finished a voyage: ', goal: 'Fulfilled an oath: ', session: 'Went raiding: ' },
+    records: 'The jarls', holderCol: 'Jarl', recordsBlurb: 'Beat the jarl’s best and the hall is yours.', recordToast: '👑 Jarl now: the crew record on ',
+    quests: 'Voyages', questsSub: 'this week’s voyages, the same for the whole crew', questDone: '🧭 Voyage complete: ',
+    goals: 'Oaths', goalsKept: 'Oaths fulfilled', plan: 'The saga', points: 'glory', pointsEarned: 'glory won',
+    dry: 'Frozen in: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Your first raid.', five_visits: 'Five raids. The crew knows your name.', twenty_visits: 'Twenty gym days. Your saga is sung.', first_pr: 'A new best for an exercise and rep count. Worth a saga.' },
+    achTitle: { first_pr: 'First Saga' },
+    // Iron in the fire: cold grey at the start, glowing hotter toward the tip, with the hammer coming down.
+    bar: { fill: 'linear-gradient(90deg, #5d5a55, color-mix(in srgb, var(--accent) 85%, #000) 55%, var(--accent) 80%, #ffd27a)', end: '🔨' },
+    // A rune stone per club, carved and glowing. The next one's rune is cut deeper as you near it.
+    token: (cx, glow, next) => '<path d="M' + (cx - 14) + ' 112 V66 Q' + (cx - 14) + ' 50 ' + cx + ' 50 Q' + (cx + 14) + ' 50 ' + (cx + 14) + ' 66 V112 Z" fill="color-mix(in srgb, var(--muted) 28%, var(--card))" stroke="var(--axis)" stroke-width="1.5"/>' +
+      (glow > 0.02 ? '<path d="M' + (cx - 4) + ' 60 V104 M' + (cx - 4) + ' 66 L' + (cx + 7) + ' 59 M' + (cx - 4) + ' 78 L' + (cx + 7) + ' 71" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" opacity="' + glowOp(glow, next) + '"/>' : ''),
+    colors: {
+      light: { bg: '#ecebe7', card: '#faf9f6', ink: '#1d1b18', muted: '#5f5a52', line: '#dad6ce', chip: '#e5e2dc', accent: '#b8441b', 'accent-ink': '#ffffff', 'accent-soft': '#f7dfd3', good: '#3f7d4a', gold: '#8a6a1f', 'gold-soft': '#f1e7cf', grid: '#e4e1da', axis: '#c9c3b8' },
+      dark: { bg: '#100f0e', card: '#1a1816', ink: '#efe6da', muted: '#a59a8c', line: '#2c2925', chip: '#23201d', accent: '#ff7a3d', 'accent-ink': '#1c0800', 'accent-soft': '#3a1c0e', good: '#8fd39b', gold: '#d9b45a', 'gold-soft': '#2f2614', grid: '#24211e', axis: '#3e3a34' },
+    },
+  }),
+
+  deep: theme('deep', 'The Iron Deep', 'Teal water, bubbles, portholes and glowing creatures', {
+    brand: 'The Iron Deep', motto: 'DIVE DEEP · COME UP STRONGER', tagline: 'Hold your breath. Log the set.',
+    fonts: 'family=Righteous&family=Exo+2:wght@700', brandFont: 'Righteous, "Trebuchet MS", sans-serif',
+    headFont: '"Exo 2", system-ui, sans-serif', brandWeight: 400,
+    // A porthole with a wave inside.
+    logo: svg('<circle cx="20" cy="20" r="16" fill="var(--accent)"/><circle cx="20" cy="20" r="16" fill="none" stroke="var(--gold)" stroke-width="3"/><path d="M7 22 C11 18 15 18 20 22 C25 26 29 26 33 22 V27 C30 33 10 33 7 27 Z" fill="var(--card)" opacity=".85"/><circle cx="15" cy="13" r="2" fill="var(--card)" opacity=".7"/><circle cx="21" cy="10" r="1.3" fill="var(--card)" opacity=".7"/>'),
+    css: '.hero { position: relative; overflow: hidden; padding-bottom: 30px; } .hero > * { position: relative; z-index: 1; }' +
+      '.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px; background: radial-gradient(14px 12px at 14px 0, transparent 92%, color-mix(in srgb, var(--accent) 22%, transparent)) 0 0 / 28px 14px repeat-x; }' +
+      '.hero .date::before { content: "≈ "; color: var(--accent); }',
+    titles: { log: 'Today’s Dive', routines: 'Dive charts', history: 'Dive log', seasons: 'Expeditions', progress: 'Depth' },
+    tabs: { log: 'Dive', routines: 'Charts', history: 'Dive log', seasons: 'Trips', progress: 'Depth' },
+    helloBig: 'The abyss.', helloSome: 'Under water.', helloNone: 'On deck.',
+    finish: 'Surface · Finish ›', finishFeed: 'Surface · radio it in', finishPrivate: 'Surface · finish', updateFeed: 'Update the radio log',
+    ended: 'Back on the surface. Breathe.', endedFeed: 'Back on the surface. It’s on the radio.', endedClock: '✓ Surfaced · ',
+    routineDone: '🎉 Dive complete.', routineBtn: 'Dive complete 🤿',
+    emptyH: 'Calm waters.', emptyP: 'Log a set to start the dive.',
+    prToast: '🐋 A new depth! ', clubToast: '🪼 A new creature: welcome to the ', goalToast: 'Treasure found: ',
+    pr: 'new depth', prs: 'new depths',
+    prFlag: (reps, was) => 'A new depth! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'New depth on ' + ex + ': ',
+    clubs: 'Creatures found', clubsSub: n => 'one discovered for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' creatures found, one for each club; the next one glows into view as you near the ' + next,
+    weekly: 'Last week’s dives', streak: 'weeks diving', restWeek: 'Shore leave',
+    rest: n => n + ' weeks diving in a row. Consider a shallow week: same lifts at about 60% of the weight, then go deep again.',
+    feed: 'Sonar', feedSub: 'pings from the crew', feedEmpty: 'New depths, creatures, treasure, records and dives from the crew ping here.',
+    icons: { pr: '🐋', club: '🪼', goal: '💎', session: '🤿', record: '🔱', quest: '🧭', holder: '🔱', questOpen: '🧭', rest: '🏝️', dry: '🪸' },
+    win: { club: 'Discovered a creature: the ', record: 'Claimed the trident: ', quest: 'Finished an expedition: ', goal: 'Found treasure: ', session: 'Went diving: ' },
+    records: 'The trench', holderCol: 'Deepest', recordsBlurb: 'Dive deeper than the record and the trident is yours.', recordToast: '🔱 The trident: the crew record on ',
+    quests: 'Expeditions', questsSub: 'this week’s expeditions, the same for the whole crew', questDone: '🧭 Expedition complete: ',
+    goals: 'Treasure', goalsKept: 'Treasure found', plan: 'The dive plan', points: 'fathoms', pointsEarned: 'fathoms dived',
+    dry: 'Stuck in the reef: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'First dive.', five_visits: 'Five dives. Getting your sea legs.', twenty_visits: 'Twenty gym days. Deep-sea veteran.', first_pr: 'A new best for an exercise and rep count. Deeper than ever.' },
+    achTitle: { first_pr: 'First New Depth' },
+    // Water getting darker as it goes down, with bubbles rising and a fish swimming for the octopus.
+    bar: { fill: 'linear-gradient(90deg, color-mix(in srgb, var(--accent) 50%, #fff), var(--accent) 55%, color-mix(in srgb, var(--accent) 55%, #031a2a))',
+      texture: 'radial-gradient(circle, rgba(255,255,255,.55) 0 1.4px, transparent 2px) 0 30% / 11px 100% repeat-x', end: '🐠', flip: true, goal: '🐙' },
+    // A porthole per club, each with a jellyfish glowing inside; the next one glows brighter as you near it.
+    token: (cx, glow, next) => '<circle cx="' + cx + '" cy="88" r="19" fill="var(--chip)" stroke="var(--gold)" stroke-width="3"/>' +
+      [[-14, -14], [14, -14], [-14, 14], [14, 14]].map(([x, y]) => '<circle cx="' + (cx + x * 0.98) + '" cy="' + (88 + y * 0.98) + '" r="1.4" fill="var(--gold)"/>').join('') +
+      (glow > 0.02 ? '<g opacity="' + glowOp(glow, next) + '"><circle cx="' + cx + '" cy="88" r="15" fill="var(--accent-soft)"/>' +
+        '<path d="M' + (cx - 8) + ' 88 Q' + (cx - 8) + ' 76 ' + cx + ' 76 Q' + (cx + 8) + ' 76 ' + (cx + 8) + ' 88 Z" fill="var(--accent)"/>' +
+        '<path d="M' + (cx - 5) + ' 88 q2 5 0 10 M' + cx + ' 88 q2 5 0 11 M' + (cx + 5) + ' 88 q2 5 0 10" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/></g>' : ''),
+    colors: {
+      light: { bg: '#e8f4f6', card: '#fbfeff', ink: '#0b2430', muted: '#4c6a75', line: '#cfe3e8', chip: '#dcedf1', accent: '#0b7f86', 'accent-ink': '#ffffff', 'accent-soft': '#d3eeef', good: '#1d8a64', gold: '#a35f00', 'gold-soft': '#f6e6cc', grid: '#d9eaee', axis: '#b5cfd6' },
+      dark: { bg: '#03121a', card: '#082029', ink: '#d9f3f8', muted: '#86aab4', line: '#123542', chip: '#0c2a35', accent: '#3fe0d0', 'accent-ink': '#021412', 'accent-soft': '#0d3a3e', good: '#5dcaa5', gold: '#ffc65c', 'gold-soft': '#2f2610', grid: '#0d2833', axis: '#1d4452' },
+    },
+  }),
+
+  patisserie: theme('patisserie', 'The Iron Patisserie', 'Blush and raspberry, piped frosting and showstoppers', {
+    brand: 'The Iron Patisserie', motto: 'KNEAD · PROOF · LIFT', tagline: 'No soggy bottoms. Log the set.',
+    fonts: 'family=Playball&family=Playfair+Display:wght@700', brandFont: 'Playball, "Brush Script MT", cursive',
+    headFont: '"Playfair Display", Georgia, serif', brandWeight: 400,
+    // A cupcake with a cherry on top.
+    logo: svg('<path d="M10 22 H30 L27 36 H13 Z" fill="var(--gold)"/><path d="M15 22 L16 36 M20 22 V36 M25 22 L24 36" stroke="var(--card)" stroke-width="1.2" opacity=".6"/><path d="M8 23 C6 16 12 11 16 12 C17 7 23 7 24 12 C28 11 34 16 32 23 Z" fill="var(--accent)"/><path d="M12 16 C15 15 18 17 21 15" stroke="var(--card)" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".7"/><circle cx="21" cy="7" r="3" fill="#d02a3c"/><path d="M21 4 Q22 1 25 1" stroke="var(--good)" stroke-width="1.2" fill="none"/>'),
+    css: '.hero { position: relative; overflow: hidden; padding-top: 24px; }' +
+      '.hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 12px; background: radial-gradient(circle at 10px 0, var(--accent-soft) 9px, transparent 9.5px) 0 0 / 20px 12px repeat-x; }' +
+      '.hero .date::before { content: "✿ "; color: var(--accent); }',
+    titles: { log: 'Today’s Bake', routines: 'Recipes', history: 'The Bake book', seasons: 'Menus', progress: 'Layers' },
+    tabs: { log: 'Bake', routines: 'Recipes', history: 'Bake book', seasons: 'Menus', progress: 'Layers' },
+    helloBig: 'Showstopper day.', helloSome: 'In the oven.', helloNone: 'Preheating.',
+    finish: 'Out of the oven · Finish ›', finishFeed: 'Out of the oven · put it in the window', finishPrivate: 'Out of the oven · finish', updateFeed: 'Update the window',
+    ended: 'Out of the oven. Let it cool.', endedFeed: 'Out of the oven. It’s in the shop window.', endedClock: '✓ Baked · ',
+    routineDone: '🎉 Every layer baked.', routineBtn: 'Bake complete 🧁',
+    emptyH: 'The oven is warming.', emptyP: 'Log a set to start today’s bake.',
+    prToast: '🎂 A showstopper! ', clubToast: '🧁 A new tier: welcome to the ', goalToast: 'Bake done: ',
+    pr: 'showstopper', prs: 'showstoppers',
+    prFlag: (reps, was) => 'A showstopper! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'A showstopper ' + ex + ': ',
+    clubs: 'Cupcakes', clubsSub: n => 'one iced for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' cupcakes iced, one for each club; the next gets its frosting as you near the ' + next,
+    weekly: 'Last week’s bakes', streak: 'weeks baking', restWeek: 'Proving',
+    rest: n => n + ' weeks baking in a row. Consider a proving week: same lifts at about 60% of the weight, then back in the oven.',
+    feed: 'The shop window', feedSub: 'the crew’s bakes on display', feedEmpty: 'Showstoppers, cupcakes, bakes, star bakers and finished sessions from the crew go in the window.',
+    icons: { pr: '🎂', club: '🧁', goal: '🍰', session: '🥐', record: '⭐', quest: '🥧', holder: '⭐', questOpen: '🥧', rest: '🫖', dry: '🍞' },
+    win: { club: 'Iced a cupcake: the ', record: 'Star baker: ', quest: 'Won a technical: ', goal: 'Finished a bake: ', session: 'Baked a session: ' },
+    records: 'Star bakers', holderCol: 'Star baker', recordsBlurb: 'Beat the star baker’s best and the apron is yours.', recordToast: '⭐ Star baker on ',
+    quests: 'Technicals', questsSub: 'this week’s technical challenges, the same for the whole crew', questDone: '🥧 Technical won: ',
+    goals: 'Bakes', goalsKept: 'Bakes finished', plan: 'The recipe', points: 'sprinkles', pointsEarned: 'sprinkles earned',
+    dry: 'A sunken middle: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Your first bake.', five_visits: 'Five bakes. Flour on your apron.', twenty_visits: 'Twenty gym days. Master baker.', first_pr: 'A new best for an exercise and rep count. A showstopper.' },
+    achTitle: { first_pr: 'First Showstopper' },
+    // Frosting piped along the bar, a cupcake on the front, and the cake at the end.
+    bar: { height: '14px', fill: 'linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, #fff), var(--accent))',
+      texture: 'radial-gradient(circle at 50% 35%, rgba(255,255,255,.7) 0 2px, transparent 2.6px) 0 0 / 8px 100% repeat-x', end: '🧁', goal: '🎂' },
+    // A cupcake per club, frosted and topped with a cherry. The next one's frosting fills in as you near it.
+    token: (cx, glow, next) => '<path d="M' + (cx - 13) + ' 112 L' + (cx - 16) + ' 88 H' + (cx + 16) + ' L' + (cx + 13) + ' 112 Z" fill="var(--gold-soft)" stroke="var(--line)" stroke-width="1.5"/>' +
+      '<path d="M' + (cx - 6) + ' 89 L' + (cx - 5) + ' 111 M' + cx + ' 89 V111 M' + (cx + 6) + ' 89 L' + (cx + 5) + ' 111" stroke="var(--line)" stroke-width="1.2"/>' +
+      '<path d="M' + (cx - 18) + ' 89 Q' + (cx - 18) + ' 70 ' + cx + ' 66 Q' + (cx + 18) + ' 70 ' + (cx + 18) + ' 89 Z" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
+      (glow > 0.02 ? '<path d="M' + (cx - 18) + ' 89 Q' + (cx - 18) + ' 70 ' + cx + ' 66 Q' + (cx + 18) + ' 70 ' + (cx + 18) + ' 89 Z" fill="var(--accent)" opacity="' + glowOp(glow, next) + '"/>' : '') +
+      (!next || glow > 0.95 ? '<circle cx="' + cx + '" cy="62" r="4.5" fill="#d02a3c"/><circle cx="' + (cx - 1.5) + '" cy="60.5" r="1.3" fill="#fff" opacity=".7"/>' : ''),
+    colors: {
+      light: { bg: '#fdf1f4', card: '#fffafb', ink: '#3a1424', muted: '#7a5363', line: '#f3d9e1', chip: '#f8e3ea', accent: '#c2306a', 'accent-ink': '#ffffff', 'accent-soft': '#fbdbe7', good: '#3d7d4a', gold: '#9a6a10', 'gold-soft': '#f7eacd', grid: '#f6e3e9', axis: '#e2bfcb' },
+      dark: { bg: '#170c0c', card: '#22130f', ink: '#f9e6ea', muted: '#c49aa6', line: '#3a221c', chip: '#2c1915', accent: '#ff7fb0', 'accent-ink': '#2a0612', 'accent-soft': '#43182a', good: '#8fd39b', gold: '#f0c56a', 'gold-soft': '#33271a', grid: '#2c1a16', axis: '#4c3029' },
+    },
+  }),
+
   stone: theme('stone', 'Stone', 'Plain graphite and gray, no costume', {
     // Bars as a little bar chart: twelve columns stepping up, filled from the left.
     bar: { fill: 'var(--accent)' },
@@ -299,7 +540,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'stone', 'sand'];
+export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {
