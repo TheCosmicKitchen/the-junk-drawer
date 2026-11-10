@@ -21,10 +21,15 @@ export async function connect(demo) {
         if (q.has('fail')) throw new Error('That isn’t allowed for your account (pretend).');
         return add(rows);
       };
-      // Edits, a past day and a lift's history are slow too (and edits refused with &fail).
+      // Edits, deletes, a past day and a lift's history are slow too (edits and deletes refused with &fail,
+      // and stuck without signal with &offline until window.__demoOnline = true).
       const later = f => async (...a) => { await new Promise(r => setTimeout(r, 1500)); return f(...a); };
       const upd = st.updateSet.bind(st);
-      st.updateSet = later(async (...a) => { if (q.has('fail')) throw new Error('That isn’t allowed for your account (pretend).'); return upd(...a); });
+      st.updateSet = later(async (...a) => {
+        if (q.has('offline') && !window.__demoOnline) throw new Error('Can’t reach the server. Check your connection.');
+        if (q.has('fail')) throw new Error('That isn’t allowed for your account (pretend).');
+        return upd(...a);
+      });
       st.daySets = later(st.daySets.bind(st)); st.exerciseHistory = later(st.exerciseHistory.bind(st));
     }
     return st;
