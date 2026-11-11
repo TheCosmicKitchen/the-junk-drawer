@@ -170,6 +170,7 @@ async function afterSignIn() {
     me = snap.me;
     applyData(snap.data);
     S.wins = snap.wins || null; S.records = snap.records || null;
+    S.lastOld = new Map(snap.lastOld || []);
     restoreOutbox();
     showApp();
   } else gate('<p class="muted" style="margin-top:30px">Loading your log…</p>');
@@ -221,15 +222,16 @@ function writeSnap() {
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
     names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw,
   };
-  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records })); }
+  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld] })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
 }
-// Coming back to the app after a while: refresh everything quietly; going away: save the snapshot.
+// Coming back to the app after a real break (15 minutes; not the phone sleeping between sets, since
+// your own sets come from this phone anyway): refresh everything quietly. Going away: save the snapshot.
 let hiddenAt = 0, refreshing = false;
 document.addEventListener('visibilitychange', async () => {
   if (!store || !S.myId) return;
   if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); writeSnap(); return; }
-  if (!hiddenAt || Date.now() - hiddenAt < 120000 || refreshing || store.demo) return;
+  if (!hiddenAt || Date.now() - hiddenAt < 15 * 60000 || refreshing || store.demo) return;
   refreshing = true;
   try { applyData(await fetchAll()); replay(); S.winsAt = 0; S.recordsAt = 0; render(); refreshLoggerList(); writeSnap(); } catch (x) { /* keep what's on screen */ }
   refreshing = false;
@@ -459,6 +461,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.calDay) selectCalDay(b.dataset.calDay);
   else if (b.dataset.calSchedule) openWorkoutPicker(b.dataset.calSchedule);
   else if (b.dataset.leaveSeason) leaveSeason(b.dataset.leaveSeason, b);
+  else if (b.dataset.restPick) pickRest(b);
 });
 $('fab').addEventListener('click', () => openLogger());
 $('navLog').addEventListener('click', () => { if (location.hash !== '#log' && location.hash !== '') location.hash = '#log'; openLogger(); });
@@ -547,7 +550,6 @@ async function sameAgain(exId, btn) {
       bodyweight: last.bodyweight, is_warmup: last.is_warmup,
     });
     afterLogToast(saved);
-    startRest(restFor(last.reps));
     render();
   } catch (x) { fail(x); btn.disabled = false; }
 }
@@ -646,7 +648,7 @@ function syncWaiting() {
 }
 function queueStore(st) {
   const signOut = st.signOut.bind(st);
-  st.signOut = async () => { clearSnap(); return signOut(); };
+  st.signOut = async () => { clearSnap(); S.lastOld.clear(); lastAsked.clear(); return signOut(); };
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
@@ -940,6 +942,16 @@ function logsAtEnd() {
   for (const ts of at.values()) if (ts.length > 1) { if (Math.max(...ts) - Math.min(...ts) < 5000) whole++; else each++; }
   return whole + each < 3 || whole >= each;   // too little to go on: the full count
 }
+// Last time for lifts older than the 120 days on the phone: asked for once, then kept (in the
+// snapshot too), and asked for ahead of time for every step of a routine you're following.
+S.lastOld = new Map();
+const lastAsked = new Set();
+function fetchLast(exId) {
+  if (lastAsked.has(exId)) return;
+  lastAsked.add(exId);
+  store.lastFor(exId, today()).then(rows => { S.lastOld.set(exId, rows); }).catch(() => { lastAsked.delete(exId); });
+}
+function prefetchLast(exIds) { for (const id of exIds) if (!localLast(id) && !S.lastOld.has(id)) fetchLast(id); }
 // Your most recent day of this lift before today, from what's already loaded. Null if it isn't there.
 function localLast(exId) {
   const t = today();
@@ -1011,7 +1023,7 @@ async function openEntry(exId, editing, item) {
           '<div id="noteRow"' + (st.showNote ? '' : ' hidden') + '><div class="field-label"><span>Note</span></div><input class="plain-input" id="noteIn" maxlength="300" value="' + esc(st.note) + '" placeholder="How did it feel?"></div>' +
           '<div id="bestLine"></div>' + tipLine(exId) +
         '</div></details>' +
-      (editing ? '<button class="btn block ghost" style="margin-top:10px;color:var(--accent)" id="delBtn">Delete this set</button>' : '<div id="doneToday"></div>') +
+      (editing ? '<button class="btn block ghost" style="margin-top:10px;color:var(--accent)" id="delBtn">Delete this set</button>' : '<div id="doneToday"></div>' + restRow()) +
     '</div>';
   openSheet();
   wireEntry();
@@ -1020,8 +1032,10 @@ async function openEntry(exId, editing, item) {
   refreshLoggerList();
   if (!editing) {
     // Prefill from last time, unless already lifting this today. The phone already has the last
-    // 120 days, so this is instant; only an older lift asks the server.
-    const prev = localLast(exId) || await store.lastFor(exId, today()).catch(() => []);
+    // 120 days and anything older it has looked up before, so this is instant; only an older lift
+    // it has never seen asks the server.
+    let prev = localLast(exId) || S.lastOld.get(exId);
+    if (!prev) { prev = await store.lastFor(exId, today()).catch(() => []); S.lastOld.set(exId, prev); lastAsked.add(exId); }
     if (LG.exId !== exId || LG.mode !== 'entry') return;
     LG.last = prev;
     const working = prev.find(s => s.is_warmup !== true) || prev[0];
@@ -1140,6 +1154,7 @@ inner.addEventListener('click', async e => {
   if (LG.mode === 'design') return designerClick(b);
   if (LG.mode === 'season') return seasonClick(b);
   if (LG.mode !== 'entry' && LG.mode !== 'edit') return;
+  if (b.dataset.restPick) return pickRest(b);
   const s = st();
   if (b.dataset.unit && b.dataset.unit !== s.unit) {
     const factor = b.dataset.unit === 'kg' ? 1 / L.LB_PER_KG : L.LB_PER_KG;
@@ -1200,7 +1215,6 @@ async function saveEntry(btn) {
       const n = Math.max(1, Math.min(20, parseInt(($('nIn') || {}).value, 10) || st().sets || 1));
       const saved = await logSets({ exercise_id: LG.exId, ...fields }, n);
       afterLogToast(saved);
-      startRest(restFor(fields.reps, LG.item));
       if (fields.notes) { $('noteIn').value = ''; st().showNote = false; $('noteRow').hidden = true; inner.querySelector('[data-t="note"]').setAttribute('aria-pressed', 'false'); }
       st().sets = 1; syncInputs();   // the block is in; the next tap adds one more
       btn.disabled = false;
@@ -1282,6 +1296,7 @@ function startFollowing(id) {
   const t = S.templates.find(x => x.id === id);
   if (!t) return;
   markSeen(t);
+  prefetchLast(routineItems(t.id).map(it => it.exercise_id));
   try { localStorage.setItem('lift.follow', JSON.stringify({ id, day: today() })); } catch (e) {}
   if (sheet.open) { flushSaves(); sheet.close(); }
   if (location.hash !== '#log') location.hash = '#log'; else render();
@@ -1291,6 +1306,7 @@ function stopFollowing() { try { localStorage.removeItem('lift.follow'); } catch
 function followCard() {
   const f = following();
   if (!f) return '';
+  prefetchLast(f.items.map(it => it.exercise_id));
   const nextIdx = f.items.findIndex(it => stepDone(it) < it.sets);
   const done = f.items.filter(it => stepDone(it) >= it.sets).length;
   return '<section class="card follow"><div class="row"><div><div class="date">Following</div><h2>' + esc(f.template.name) + '</h2></div>' +
@@ -1306,7 +1322,7 @@ function followCard() {
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
     (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div><button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>'
-      : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>') +
+      : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>' + restRow()) +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
 
@@ -2682,7 +2698,18 @@ async function programClick(b) {
 // Rest timer: starts after you log, counts down, buzzes when it's time.
 // ===========================================================================
 const REST = { end: 0, timer: null, el: null };
-const restFor = (reps, item) => (item && item.rest_s != null ? item.rest_s : reps <= 5 ? 180 : reps <= 8 ? 120 : reps <= 12 ? 90 : 60);
+// Rest is never started for you: a row of times under the logger (and on a routine you're following)
+// starts it when you tap one. The last one you picked is marked, as a reminder, nothing more.
+const REST_TIMES = [60, 90, 120, 180];
+const restLabel = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+const restRow = () => '<div class="rest-pick" role="group" aria-label="Start a rest timer"><span>⏱ Rest</span>' +
+  REST_TIMES.map(t => '<button type="button" data-rest-pick="' + t + '" aria-pressed="' + (prefs.restSec === t) + '">' + restLabel(t) + '</button>').join('') + '</div>';
+function pickRest(b) {
+  const sec = Number(b.dataset.restPick);
+  prefs.restSec = sec; savePrefs();
+  document.querySelectorAll('[data-rest-pick]').forEach(x => x.setAttribute('aria-pressed', String(Number(x.dataset.restPick) === sec)));
+  startRest(sec);
+}
 function restEl() {
   if (!REST.el) {
     REST.el = document.createElement('div');
