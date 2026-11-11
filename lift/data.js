@@ -216,6 +216,13 @@ class SupaStore {
   }
   async addBodyweight(f) { return must(await this.sb.from('lift_bodyweight').insert(f).select('id,measured_on,weight,unit,created_at').single()); }
   async removeBodyweight(id) { must(await this.sb.from('lift_bodyweight').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
+
+  // ----- season packs: who joined which pack (a run), and the stamps earned (everyone's, for the crew) -----
+  async seasonRuns() { return must(await this.sb.from('lift_season_runs').select('id,season_key,starts_on,created_by').is('deleted_at', null).order('starts_on')); }
+  async addRun(f) { return must(await this.sb.from('lift_season_runs').insert(f).select('id,season_key,starts_on,created_by').single()); }
+  async endRun(id) { must(await this.sb.from('lift_season_runs').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
+  async stamps() { return must(await this.sb.from('lift_stamps').select('id,season_key,stamp_key,earned_on,created_by').is('deleted_at', null).order('earned_on')); }
+  async addStamp(f) { return must(await this.sb.from('lift_stamps').insert(f).select('id,season_key,stamp_key,earned_on,created_by').single()); }
   async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by').single()); }
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
@@ -494,6 +501,15 @@ class DemoStore {
   }
   async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
   async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
+  async seasonRuns() { this.runRows = this.runRows || []; return this.runRows.filter(r => !r.deleted_at).map(clone); }
+  async addRun(f) { await this.seasonRuns(); const r = { id: uid(), created_by: 'me', ...f }; this.runRows.push(r); return clone(r); }
+  async endRun(id) { const r = (this.runRows || []).find(x => x.id === id); if (r) r.deleted_at = new Date().toISOString(); }
+  async stamps() { this.stampRows = this.stampRows || []; return this.stampRows.filter(r => !r.deleted_at).map(clone); }
+  async addStamp(f) {
+    await this.stamps();
+    if (this.stampRows.some(s => s.created_by === 'me' && s.season_key === f.season_key && s.stamp_key === f.stamp_key)) throw new Error('duplicate key value violates unique constraint "lift_stamps_once"');
+    const s = { id: uid(), created_by: 'me', ...f }; this.stampRows.push(s); return clone(s);
+  }
   async addGoal(f) { const g = { id: uid(), unit: null, exercise_id: null, template_id: null, created_by: 'me', ...f }; this.goalRows.push(g); return clone(g); }
   async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }
