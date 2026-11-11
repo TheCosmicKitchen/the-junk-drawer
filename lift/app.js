@@ -4,6 +4,7 @@ import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as C from './charts.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
+import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, holidayDates } from './seasons.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -188,6 +189,7 @@ async function afterSignIn() {
     me = who;
     if (me.mfa_required && !me.mfa_ok) { clearSnap(); return showEnroll(); }
     applyData(await fetchAll());
+    checkStamps();
     if (snap) { replay(); S.winsAt = 0; S.recordsAt = 0; render(); }
     else { restoreOutbox(); showApp(); }
     writeSnap();
@@ -223,7 +225,7 @@ function writeSnap() {
     recent: S.recent.filter(x => x._sync !== 'waiting').map(x => { const { _sync, ...rest } = x; return rest; }), days: days.filter(d => d.sets > 0), bests: S.bestRows,
     routines: { templates: S.templates, items: S.items, subs: S.subs },
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
-    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw,
+    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows,
   };
   try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld] })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
@@ -246,10 +248,12 @@ function fetchAll() {
     store.catalog(), store.setsSince(L.addDays(today(), -RECENT_DAYS)), store.days(), store.bests(),
     store.routines(), store.seasons(), store.memberNames(), store.userId(),
     store.workoutDays(today()), store.bodyweights(),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw }));
+    Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps }) {
   S.wdays = wdays;
+  S.runs = runs || []; S.stampRows = stamps || [];
   S.bw = bw;
   if (bw.length && prefs.bodyweight == null && bw[0].unit === prefs.unit) prefs.bodyweight = Number(bw[0].weight);
   setRoutines(routines);
@@ -429,6 +433,11 @@ view.addEventListener('click', async e => {
   else if (b.dataset.quickItem) quickStep(b.dataset.quickItem, b);
   else if (b.dataset.followItem) { const it = S.itemsById.get(b.dataset.followItem); if (it) openEntry(it.exercise_id, null, it); }
   else if (b.dataset.start) startFollowing(b.dataset.start);
+  else if (b.dataset.pack) { S.packOpen = b.dataset.pack; renderSeasons(); window.scrollTo(0, 0); }
+  else if (b.dataset.packBack != null) { S.packOpen = null; renderSeasons(); }
+  else if (b.dataset.packJoin) joinPack(b.dataset.packJoin, b);
+  else if (b.dataset.packLeave) leavePack(b.dataset.packLeave, b);
+  else if (b.dataset.trySkin) trySkin(b.dataset.trySkin);
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
   else if (b.dataset.seen) { const t = S.templates.find(x => x.id === b.dataset.seen); if (t) { markSeen(t); render(); } }
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
@@ -739,6 +748,7 @@ function landed(e, res) {
     refreshBests().then(() => { if (!sheet.open) render(); });
   } else { const cur = findSet(e.id); if (cur) cur._sync = syncOf(e.id); }
   refreshLoggerList();
+  if (e.kind === 'add') checkStamps();
   if (!sheet.open) render();   // the sheet re-renders the page when it closes
 }
 function refused(e, err) {
@@ -2770,7 +2780,160 @@ function bannerHtml(sn, big) {
     '<p>' + esc(fmtDay(sn.starts_on, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(sn.ends_on, { month: 'short', day: 'numeric', year: 'numeric' })) + '</p>' +
     '<div class="elapsed" style="--p:' + pct + '%" role="img" aria-label="' + pct + '% of the season gone"><i></i></div></div>';
 }
+// ===========================================================================
+// Season packs and stamps. A pack (seasons.js) is a curated season: its own workouts, a little
+// world (a road of stations, an advent calendar, a coach's trials) and stamps for small
+// achievements. Joining starts a run and adds its workouts to your routines; stamps are checked
+// from your own sets and kept for good. Packs are extras: nothing else in the app needs them.
+// ===========================================================================
+const packIds = names => new Set(names.map(n => S.nameIndex.get(L.norm(n))).filter(Boolean));
+const packHelp = { addDays: L.addDays, daysBetween: L.daysBetween, e1rm: L.e1rm, ids: packIds };
+const myRuns = key => (S.runs || []).filter(r => r.created_by === S.myId && r.season_key === key);
+// Your run of a pack that's on now or coming up (the latest one), else null.
+function liveRun(pack) {
+  const r = myRuns(pack.key).slice().sort((a, b) => b.starts_on.localeCompare(a.starts_on))[0];
+  return r && runWindow(pack, r, L.addDays).to >= today() ? r : null;
+}
+const savedSets = () => S.recent.filter(s => s._sync !== 'waiting' && s._sync !== 'gone');
+function packProgress(pack, run) { return packProgressOf(pack, run, savedSets(), packHelp); }
+const myStamp = (key, stamp) => (S.stampRows || []).find(s => s.created_by === S.myId && s.season_key === key && s.stamp_key === stamp);
+const stampsEarned = key => (S.stampRows || []).filter(s => s.created_by === S.myId && s.season_key === key).length;
+const routineNameFor = (pack, w) => ((pack.short || pack.name) + ' · ' + w.name).slice(0, 60);
+const packRoutine = (pack, w) => S.templates.find(t => t.name === routineNameFor(pack, w) && isMine(t) && !t.deleted_at);
+const stepName = names => { for (const n of names) { const id = S.nameIndex.get(L.norm(n)); if (id) return exName(id); } return names[0]; };
+
+// Earn any stamps your sets have reached, once each. Runs after data loads and after sets save.
+const STAMPING = new Set();
+let stampTimer = null;
+function checkStamps() { clearTimeout(stampTimer); stampTimer = setTimeout(earnStamps, 800); }
+async function earnStamps() {
+  if (!S.myId || !S.runs || !S.stampRows) return;
+  for (const key of PACK_ORDER) {
+    const pack = PACKS[key];
+    for (const run of myRuns(key)) {
+      const { earned } = packProgress(pack, run);
+      for (const st of pack.stamps) {
+        const id = key + '|' + st.key;
+        if (!earned[st.key] || myStamp(key, st.key) || STAMPING.has(id)) continue;
+        STAMPING.add(id);
+        try {
+          const row = await store.addStamp({ season_key: key, stamp_key: st.key, earned_on: earned[st.key] });
+          S.stampRows.push(row);
+          toast(T.icons.stamp + ' ' + T.stampToast + st.name);
+          vibrate([20, 40, 20]);
+          if (earned[st.key] >= L.addDays(today(), -6)) postWin('stamp', st.name + ' · ' + pack.name, { season: key }, earned[st.key]);
+        } catch (x) { /* already earned on another phone, or no signal: the next check tries again */ }
+        STAMPING.delete(id);
+      }
+    }
+  }
+  if (currentTab === 'seasons') renderSeasons();
+}
+
+async function joinPack(key, btn) {
+  const pack = PACKS[key];
+  if (liveRun(pack)) return;
+  btn.disabled = true;
+  try {
+    const starts_on = pack.kind === 'holiday' ? holidayDates(pack, today()).from : today();
+    const run = await store.addRun({ season_key: key, starts_on });
+    S.runs = (S.runs || []).concat(run);
+    // Its workouts become your routines (weights follow your last time), so they work with Start and the logger.
+    for (const w of pack.workouts) {
+      if (packRoutine(pack, w)) continue;
+      const t = await store.addRoutine({ name: routineNameFor(pack, w), kind: 'workout', notes: null });
+      S.templates.push(t);
+      let pos = 0;
+      for (const [names, sets, reps, flavour] of w.steps) {
+        const exId = [...packIds(names)][0] || names.map(n => S.nameIndex.get(L.norm(n))).find(Boolean);
+        if (!exId) continue;
+        const it = await store.addItem({ template_id: t.id, exercise_id: exId, position: ++pos, sets: Math.min(20, sets), reps: Math.min(100, reps),
+          load_mode: 'last', load_value: 0, unit: lastLoad(exId).unit, rest_s: null, note: flavour || null });
+        S.items.push(it); S.itemsById.set(it.id, it);
+      }
+    }
+    toast('Joined ' + pack.name + '. Its workouts are in your routines.', T.id !== pack.theme && THEMES[pack.theme] ? { label: 'Try its look', run: () => trySkin(pack.theme) } : null);
+    renderSeasons(); checkStamps();
+  } catch (x) { fail(x); btn.disabled = false; }
+}
+async function leavePack(key, btn) {
+  const run = liveRun(PACKS[key]); if (!run) return;
+  btn.disabled = true;
+  try { await store.endRun(run.id); S.runs = S.runs.filter(r => r.id !== run.id); toast('Left ' + PACKS[key].name + '. Your stamps stay.'); renderSeasons(); }
+  catch (x) { fail(x); btn.disabled = false; }
+}
+function trySkin(id) {
+  prefs.theme = id; savePrefs(); T = applyTheme(id);
+  if (currentTab) $('pageTitle').textContent = T.titles[currentTab];
+  render();
+}
+
+function stampHtml(pack, st, small) {
+  const got = myStamp(pack.key, st.key), size = small ? 44 : 58;
+  return '<div class="stamp' + (got ? ' got' : '') + '" title="' + esc(st.name + ': ' + st.hint) + '">' +
+    '<span class="stamp-face" style="width:' + size + 'px;height:' + size + 'px;border-radius:' + esc(T.stampFrame) + ';' + (got ? 'background:' + esc(st.color) + ';box-shadow:0 0 0 2px ' + esc(st.color) : '') + '">' + (got ? esc(st.mark) : '?') + '</span>' +
+    (small ? '' : '<b>' + esc(st.name) + '</b><small>' + esc(got ? fmtDay(got.earned_on, { month: 'short', day: 'numeric' }) : st.hint) + '</small>') + '</div>';
+}
+function packCard(pack) {
+  const run = liveRun(pack), n = stampsEarned(pack.key);
+  const when = pack.kind === 'holiday' ? (() => { const d = holidayDates(pack, today()); return fmtDay(d.from, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(d.to, { month: 'short', day: 'numeric' }) + ' · back every year'; })() : pack.weeks + ' weeks · start any time';
+  let status = '';
+  if (run) { const p = packProgress(pack, run); status = run.starts_on > today() ? 'Joined · starts ' + fmtDay(run.starts_on, { month: 'short', day: 'numeric' }) : 'Joined · ' + p.days + (p.days === 1 ? ' session' : ' sessions') + ' so far'; }
+  return '<section class="card pack-card"><div class="date">' + esc(when) + '</div><h2>' + esc(pack.name) + '</h2>' +
+    '<p class="muted" style="margin:6px 0 10px">' + esc(pack.blurb) + '</p>' +
+    '<div class="pack-mini">' + pack.stamps.map(st => stampHtml(pack, st, true)).join('') + '</div>' +
+    '<p class="hint-line">' + esc((status ? status + ' · ' : '') + n + ' of ' + pack.stamps.length + ' ' + T.stamps.toLowerCase()) + '</p>' +
+    '<div class="actions"><button class="btn primary" data-pack="' + esc(pack.key) + '">' + (run ? 'Open' : 'Have a look') + '</button></div></section>';
+}
+function renderPackPage(pack) {
+  const run = liveRun(pack), p = run ? packProgress(pack, run) : null, live = run && run.starts_on <= today();
+  const holiday = pack.kind === 'holiday' ? holidayDates(pack, today()) : null;
+  const canJoin = !run && (!holiday || L.daysBetween(today(), holiday.from) <= 50);
+  let html = '<div class="row page-actions"><button class="btn ghost" data-pack-back>‹ Seasons</button></div>' +
+    '<section class="card pack-hero"><div class="date">' + esc(pack.kind === 'holiday' ? fmtDay(holiday.from, { month: 'long', day: 'numeric' }) + ' – ' + fmtDay(holiday.to, { month: 'long', day: 'numeric' }) + ' · back every year' : pack.weeks + ' weeks · start any time') + '</div>' +
+    '<h1>' + esc(pack.name) + '</h1><p>' + esc(pack.blurb) + '</p>' +
+    (THEMES[pack.theme] && T.id !== pack.theme ? '<p class="hint-line">Pairs with the ' + esc(THEMES[pack.theme].name) + ' look; works in any theme. <button class="linkish" data-try-skin="' + esc(pack.theme) + '">Try it</button></p>' : '') +
+    '<div class="actions">' + (run ? '<button class="btn ghost" data-pack-leave="' + esc(pack.key) + '">Leave</button>' : canJoin ? '<button class="btn primary" data-pack-join="' + esc(pack.key) + '">Join</button>' : '<p class="muted" style="margin:0">Opens again ' + esc(fmtDay(holiday.from, { month: 'long', day: 'numeric' })) + '.</p>') + '</div></section>';
+
+  // Its world.
+  if (pack.stations) {
+    const reached = p ? Math.min(pack.stations.length, Math.floor(p.days / 2)) : 0;
+    html += '<section class="card"><h3 class="card-title">The road</h3><ol class="stations">' + pack.stations.map((name, i) =>
+      '<li class="' + (i < reached ? 'got' : i === reached && run ? 'next' : '') + '"><span></span>' + esc(name) + (i === reached && run ? '<small>' + (2 * (i + 1) - p.days) + ' more</small>' : '') + '</li>').join('') + '</ol>' +
+      '<p class="hint-line">Every two sessions reach the next station' + (p ? '. ' + p.days + (p.days === 1 ? ' session' : ' sessions') + ' so far.' : '.') + '</p></section>';
+  }
+  if (pack.doors) {
+    const t = today(), from = (p ? p.from : holiday.from);
+    const n = live ? Math.min(24, L.daysBetween(from, t) + 1) : 0;
+    const todayDoor = n >= 1 ? pack.doors[n - 1] : null;
+    html += '<section class="card"><h3 class="card-title">The advent calendar</h3><div class="doors">' + pack.doors.map((d, i) => {
+      const done = p && p.doorDone[i] != null, due = i < n;
+      return '<span class="door' + (done ? ' got' : due ? ' due' : '') + (i === n - 1 ? ' today' : '') + '" title="' + esc(d.name) + '">' + (i + 1) + '</span>';
+    }).join('') + '</div>' +
+      (todayDoor ? '<p class="door-today"><b>Door ' + n + ': ' + esc(todayDoor.name) + '.</b> ' + esc(todayDoor.workout ? 'Finish the Christmas Eve workout.' : todayDoor.sets + ' sets of ' + stepName(todayDoor.lifts) + '.') + '</p>'
+        : '<p class="hint-line">The first door opens ' + esc(fmtDay(from, { month: 'long', day: 'numeric' })) + '. Missed doors stay open until the 24th.</p>') + '</section>';
+  }
+  if (pack.letters) {
+    const wk = live ? Math.min(pack.weeks, Math.floor(L.daysBetween(run.starts_on, today()) / 7) + 1) : 1;
+    html += '<section class="card"><h3 class="card-title">' + (live ? 'Week ' + wk + ' of ' + pack.weeks : 'Week 1') + '</h3><blockquote class="letter">' + esc(pack.letters[wk - 1]) + '</blockquote></section>';
+  }
+
+  // Its workouts.
+  const wk = live ? Math.floor(L.daysBetween(run.starts_on, today()) / 7) + 1 : 0;
+  html += '<section class="card"><h3 class="card-title">Workouts</h3><div class="pack-workouts">' + pack.workouts.map(w => {
+    const t = run && packRoutine(pack, w), locked = w.unlock && (!live || wk < w.unlock), done = p && p.workoutDone[w.key];
+    return '<div class="pack-workout' + (locked ? ' locked' : '') + '"><div class="row"><b>' + esc(w.name) + '</b>' +
+      (done ? '<span class="good-tag">done ' + esc(fmtDay(done, { month: 'short', day: 'numeric' })) + '</span>' : locked ? '<small class="muted">week ' + w.unlock + '</small>' : t ? '<button class="btn primary sm" data-start="' + esc(t.id) + '">Start</button>' : '') + '</div>' +
+      '<small>' + esc(w.steps.map(([names, sets, reps, fl]) => (fl ? fl + ': ' : '') + stepName(names) + ' ' + sets + '×' + reps).join(' · ')) + '</small></div>';
+  }).join('') + '</div></section>';
+
+  // Its stamps.
+  html += '<section class="card"><h3 class="card-title">' + esc(T.stamps) + '</h3><div class="stamp-grid">' + pack.stamps.map(st => stampHtml(pack, st)).join('') + '</div></section>';
+  view.innerHTML = html;
+}
+
 function renderSeasons() {
+  if (S.packOpen && PACKS[S.packOpen]) return renderPackPage(PACKS[S.packOpen]);
   const sn = S.seasonOpen && seasonById(S.seasonOpen);
   if (sn && inSeason(sn)) return renderSeasonPage(sn);
   if (sn && !inSeason(sn)) S.seasonOpen = null;
@@ -2787,7 +2950,10 @@ function renderSeasons() {
         (x.is_shared ? '<button class="btn ghost" data-link="s-' + esc(x.id) + '" aria-label="Copy a link to ' + esc(x.name) + '">🔗</button>' : '') + '</div></div></section>';
   };
   const group = (title, list) => list.length ? '<h3 class="section-title">' + title + '</h3><div class="season-grid">' + list.map(card).join('') + '</div>' : '';
-  view.innerHTML =
+  const got = PACK_ORDER.reduce((n, k) => n + stampsEarned(k), 0), allStamps = PACK_ORDER.reduce((n, k) => n + PACKS[k].stamps.length, 0);
+  const packs = '<h3 class="section-title">Season packs</h3><p class="hint-line" style="margin-top:0">Your ' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + '. Packs are extras: join one for its workouts and ' + esc(T.stamps.toLowerCase()) + ', or skip them all.</p><div class="season-grid">' + PACK_ORDER.map(k => packCard(PACKS[k])).join('') + '</div>';
+  view.innerHTML = packs +
+    '<h3 class="section-title">Your seasons</h3>' +
     '<div class="row page-actions"><p class="muted" style="margin:0">A season is a stretch of dates with goals. Every set you log counts toward every season running that day.</p>' +
       '<span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
     (invites.length ? '<h3 class="section-title">Join the crew</h3><div class="season-grid">' + invites.map(x => '<section class="card sbanner">' + bannerHtml(x) +
@@ -3094,6 +3260,7 @@ function winText(w) {
   if (w.kind === 'club') return T.win.club + w.title;
   if (w.kind === 'record') return T.win.record + w.title.replace(/ record$/, '') + ' record, ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps + (m.from ? ' (was ' + m.from + '’s)' : '');
   if (w.kind === 'quest') return T.win.quest + w.title;
+  if (w.kind === 'stamp') return T.win.stamp + w.title;
   if (w.kind === 'goal') return T.win.goal + w.title;
   return T.win.session + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
 }
@@ -3116,6 +3283,7 @@ function sessionCardHtml(w, extra) {
     x.kind === 'club' ? badge(T.icons.club, x.title, 'new', true)
     : x.kind === 'goal' ? badge(T.icons.goal, verb(T.win.goal), x.title.split(' · ')[0])
     : x.kind === 'quest' ? badge(T.icons.quest, verb(T.win.quest), x.title)
+    : x.kind === 'stamp' ? badge(T.icons.stamp, x.title.split(' · ')[0], T.stamp, true)
     : x.kind === 'record' ? badge(T.icons.record, verb(T.win.record), x.title.replace(/ record$/, ''), true)
     : x.kind === 'pr' && !names.has(x.title.replace(/ PR$/, '')) ? badge(T.icons.pr, x.title.replace(/ PR$/, ''), T.pr)
     : '').join('') + (m.streak >= 2 ? badge(T.icons.streak, m.streak + ' ' + T.streak, '') : '');
