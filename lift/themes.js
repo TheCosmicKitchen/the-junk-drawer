@@ -14,6 +14,8 @@ const PLAIN = {
   // Stamps: what a season gives you for its little achievements. The season decides each stamp's
   // name, mark and colour; the theme decides what they're called and the shape of the frame.
   stamp: 'Stamp', stamps: 'Stamps', stampBook: 'Stamp book', stampToast: 'Stamp earned: ', stampFrame: '50%',
+  // What this theme calls a season (a long arc, start any time) and an event (shared, fixed dates).
+  seasonWord: 'Season', seasonsWord: 'Seasons', eventWord: 'Event', eventsWord: 'Events',
   finish: 'Finish ›', finishFeed: 'Finish · share it', finishPrivate: 'Finish', updateFeed: 'Update it in the feed',
   ended: 'Session done. Nice work.', endedFeed: 'Session done. It’s in the feed.', endedClock: '✓ Done · ',
   routineDone: '🎉 Routine complete.', routineBtn: 'Routine done 🎉',
@@ -85,6 +87,7 @@ const COLUMNS = maskUrl('viewBox="0 0 120 20" preserveAspectRatio="none">' +
 
 export const THEMES = {
   church: theme('church', 'Church of Iron', 'Gothic lettering, gold, candles and saints', {
+    seasonWord: 'Pilgrimage', seasonsWord: 'Pilgrimages', eventWord: 'Feast day', eventsWord: 'Feast days',
     stamp: 'Seal', stamps: 'Seals', stampBook: 'The Book of Seals', stampFrame: '8px', stampToast: 'A seal for your book: ',
     tabIcons: { log: '<path d="M9 10h6v11H9z"/><path d="M12 10V7"/><path d="M12 2c2 2 2 3.5 0 5c-2-1.5-2-3 0-5z"/>', routines: '<path d="M12 6c-2-1.5-5-2-8-1.5V19c3-.5 6 0 8 1.5c2-1.5 5-2 8-1.5V4.5C17 4 14 4.5 12 6z"/><path d="M12 6v14.5"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M12 12.5v5M10 14.5h4"/>', seasons: '<path d="M7 3h10c0 5-2 8-5 8s-5-3-5-8z"/><path d="M12 11v7M8 21h8M9.5 18h5"/>', progress: '<path d="M3 19h18"/><path d="M6 19a6 6 0 0 1 12 0"/><path d="M12 9V4M5.6 12.6 3.5 10.5M18.4 12.6l2.1-2.1"/>' },
     brand: 'The Church of Iron', motto: 'ORA ET LEVA · PRAY AND LIFT', tagline: 'Keep the faith. Log the set.',
@@ -124,6 +127,7 @@ export const THEMES = {
   }),
 
   trains: theme('trains', 'The Iron Line', 'Railway green, brass, timetables and stations', {
+    seasonWord: 'Line', seasonsWord: 'Lines', eventWord: 'Special service', eventsWord: 'Special services',
     stamp: 'Ticket punch', stamps: 'Ticket punches', stampBook: 'Ticket book', stampFrame: '6px', stampToast: 'Ticket punched: ',
     tabIcons: { log: '<rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 10h14"/><circle cx="9" cy="13.5" r="1"/><circle cx="15" cy="13.5" r="1"/><path d="M8 17l-2 4M16 17l2 4"/>', routines: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', history: '<path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M14 7v10" stroke-dasharray="2 2"/>', seasons: '<circle cx="5" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="18" r="2"/><path d="M6.5 7.5l4 3M13.5 13.5l4 3"/>', progress: '<path d="M8 21 11 3M16 21 13 3M7.5 17h9M8.5 12h7M9.5 7.5h5"/>' },
     brand: 'The Iron Line', motto: 'ALL ABOARD · LIFT ON TIME', tagline: 'Mind the gap. Log the set.',
@@ -167,6 +171,7 @@ export const THEMES = {
   }),
 
   kitchen: theme('kitchen', 'The Iron Skillet', 'Tomato and butter, recipes and specials', {
+    seasonWord: 'Tasting menu', seasonsWord: 'Tasting menus', eventWord: 'Pop-up', eventsWord: 'Pop-ups',
     stamp: 'Sticker', stamps: 'Stickers', stampBook: 'Sticker book', stampFrame: '50%', stampToast: 'A sticker for the fridge: ',
     tabIcons: { log: '<circle cx="10" cy="13" r="7"/><path d="M17 13h5"/>', routines: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>', history: '<path d="M5 4h11a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3z"/><path d="M5 18a3 3 0 0 1 3-3h11"/>', seasons: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10"/><path d="M17 21V3c-2 1-3 4-3 8h3"/>', progress: '<path d="M7 14a4 4 0 1 1 1.5-7.7a4 4 0 0 1 7 0A4 4 0 1 1 17 14z"/><path d="M7 14v6h10v-6M7 17h10"/>' },
     brand: 'The Iron Skillet', motto: 'MISE EN PLACE · THEN LIFT', tagline: 'Prep, cook, lift.',
@@ -210,6 +215,7 @@ export const THEMES = {
   }),
 
   kaiju: theme('kaiju', 'The Iron Kaiju', 'Hazard tape, a skyline, radioactive green and alarm orange', {
+    seasonWord: 'Era', seasonsWord: 'Eras', eventWord: 'Monster week', eventsWord: 'Monster weeks',
     stamp: 'Footprint', stamps: 'Footprints', stampBook: 'Field journal', stampFrame: '50%', stampToast: 'A new footprint: ',
     tabIcons: { log: '<path d="M8 21c-2-2-2-6 0-8s6-2 8 0 2 6 0 8-6 2-8 0z"/><path d="M7 9 5 5M12 8V3M17 9l2-4"/>', routines: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', history: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M12 8.5v7"/>', seasons: '<path d="M3 21 9 9h6l6 12z"/><path d="M9 9l1.5 3 1.5-2 1.5 2L15 9M10 6 9 3M14 6l1-3M12 5V2"/>', progress: '<path d="M3 20 7 11l3 4 4-11 4 10 3-5v11z"/>' },
     brand: 'The Iron Kaiju', motto: 'RISE FROM THE DEEP · LEVEL THE CITY', tagline: 'Something stirs. Log the set.',
@@ -287,6 +293,7 @@ export const THEMES = {
   }),
 
   coach: theme('coach', 'The Dread Coach', 'Dark violet and green fire, and a menacing coach who secretly cares', {
+    seasonWord: 'Apprenticeship', seasonsWord: 'Apprenticeships', eventWord: 'Blood moon', eventsWord: 'Blood moons',
     stamp: 'Sigil', stamps: 'Sigils', stampBook: 'The Grimoire of Sigils', stampFrame: '50%', stampToast: '“A sigil, earned.” ',
     tabIcons: { log: '<circle cx="12" cy="12" r="9"/><path d="M12 3l3 9-3 9-3-9z"/>', routines: '<path d="M5 4h11a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3z"/><path d="M12 9l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 15l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4z"/>', history: '<path d="M7 4h11v13a3 3 0 0 1-3 3H6a2 2 0 0 1-2-2v-1h11"/><path d="M7 4a2 2 0 0 0-2 2v1h2M10 8h5M10 12h5"/>', seasons: '<circle cx="12" cy="12" r="8"/><path d="M15 6a7 7 0 0 1 0 12"/>', progress: '<path d="M6 21L16 6"/><circle cx="17.5" cy="4.5" r="2.5"/><path d="M4 14l3 3"/>' },
     brand: 'The Dread Coach', motto: 'SUFFER · GROW · HYDRATE', tagline: 'Return, apprentice. Log the set.',
@@ -352,6 +359,7 @@ export const THEMES = {
   }),
 
   claus: theme('claus', 'Iron Claus', 'Santa red and pine, snow, the Nice List and a tree to decorate', {
+    seasonWord: 'Holiday season', seasonsWord: 'Holiday seasons', eventWord: 'Holiday', eventsWord: 'Holidays',
     stamp: 'Gift tag', stamps: 'Gift tags', stampBook: 'The Nice List book', stampFrame: '10px', stampToast: 'A gift tag for you: ',
     tabIcons: { log: '<path d="M4 14C5 6 15 3 20 9l-2 5z"/><circle cx="20.5" cy="8.5" r="1.8"/><path d="M3 14h16v3H3z"/>', routines: '<path d="M3 21V10l9-6 9 6v11z"/><path d="M9 21v-6h6v6"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M10 14l2-1.5 2 1.5-.8 2.4h-2.4z"/>', seasons: '<path d="M12 2l6 9h-3l4 6H5l4-6H6z"/><path d="M12 17v4"/>', progress: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/>' },
     brand: 'Iron Claus', motto: 'MAKE A LIST · LIFT IT TWICE', tagline: 'Ho ho hoist. Log the set.',
@@ -418,7 +426,196 @@ export const THEMES = {
     },
   }),
 
+  mission: theme('mission', 'Mission Control', 'Deep navy, starlight and rocket fire; every club a new world', {
+    seasonWord: 'Mission', seasonsWord: 'Missions', eventWord: 'Launch window', eventsWord: 'Launch windows',
+    stamp: 'Mission patch', stamps: 'Mission patches', stampBook: 'Patch collection', stampFrame: '50%', stampToast: 'Patch earned: ',
+    tabIcons: { log: '<path d="M12 2c3 3 4 7 4 11l-4 3-4-3c0-4 1-8 4-11z"/><circle cx="12" cy="9" r="1.6"/><path d="M8 13l-3 4h4M16 13l3 4h-4M10 19l2 3 2-3"/>', routines: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M8 10l2 2 4-4M8 16h8"/>', history: '<path d="M3 21l6-6M14 4l6 6-5 5-6-6z"/><path d="M12 12l-3 3"/><circle cx="19" cy="19" r="2"/>', seasons: '<circle cx="12" cy="12" r="5"/><path d="M2 15c4 3 17 1 20-7"/>', progress: '<path d="M3 20h18M6 17l4-6 4 3 5-9"/><path d="M15 5h4v4"/>' },
+    brand: 'Mission Control', motto: 'T-MINUS NOW · ALL SYSTEMS GO', tagline: 'All systems go. Log the set.',
+    fonts: 'family=Orbitron:wght@700&family=Rajdhani:wght@600;700', brandFont: 'Orbitron, "Arial Narrow", sans-serif',
+    headFont: 'Rajdhani, system-ui, sans-serif', brandWeight: 700,
+    // A rocket on its way up past a planet.
+    logo: svg('<circle cx="29" cy="28" r="7" fill="var(--gold)" opacity=".85"/><path d="M14 30 C20 14 26 7 34 4 C33 12 26 19 10 26 Z" fill="var(--ink)"/><circle cx="26" cy="13" r="2.4" fill="var(--accent)"/><path d="M10 26 L6 34 L14 30 Z" fill="var(--gold)"/>'),
+    // A field of stars behind the hero.
+    css: '.hero { background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 35%, transparent) 1px, transparent 1.6px), radial-gradient(circle, color-mix(in srgb, var(--accent) 50%, transparent) 1.2px, transparent 1.8px); background-size: 34px 34px, 57px 57px; background-position: 0 0, 17px 11px; }' +
+      '.hero .date::before { content: "◉ "; color: var(--accent); }' +
+      '.card-title, .section-title, .page-title, .sheet-head h2 { letter-spacing: .03em; }',
+    titles: { log: 'Today’s Launch', routines: 'Flight plans', history: 'Mission log', seasons: 'Missions', progress: 'Altitude' },
+    tabs: { log: 'Launch', routines: 'Flight plans', history: 'Mission log', seasons: 'Missions', progress: 'Altitude' },
+    helloBig: 'Maximum thrust.', helloSome: 'In orbit.', helloNone: 'On the launch pad.',
+    restUp: 'Countdown complete. Next set: go!',
+    finish: 'Splashdown · Finish ›', finishFeed: 'Splashdown · transmit to base', finishPrivate: 'Splashdown · finish', updateFeed: 'Update the transmission',
+    ended: 'Splashdown. Welcome home.', endedFeed: 'Splashdown. Mission control has the report.', endedClock: '✓ Landed · ',
+    routineDone: '🎉 Mission accomplished.', routineBtn: 'Mission accomplished 🚀',
+    emptyH: 'On the launch pad.', emptyP: 'Log a set and the countdown starts.',
+    prToast: '🚀 New apogee! ', clubToast: '🪐 A new world: welcome to the ', goalToast: 'Objective complete: ',
+    pr: 'apogee', prs: 'apogees',
+    prFlag: (reps, was) => 'New apogee! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'New apogee on ' + ex + ': ',
+    clubs: 'The flight path', clubsSub: n => 'one world reached for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' worlds reached along the flight path, one for each club; the next comes into view as you near the ' + next,
+    weekly: 'Last week’s flight report', streak: 'weeks in orbit', restWeek: 'Re-entry week',
+    rest: n => n + ' weeks in orbit. Consider a re-entry week: same lifts at about 60% of the weight, then launch again.',
+    feed: 'Transmissions', feedSub: 'the crew’s transmissions', feedEmpty: 'Apogees, new worlds, objectives, commanders and missions from the crew come in here.',
+    icons: { pr: '🚀', club: '🪐', goal: '🎯', session: '🛰️', record: '👨‍🚀', quest: '📡', holder: '👨‍🚀', questOpen: '📡', rest: '🌙', dry: '☄️', stamp: '🎖️' },
+    win: { club: 'Reached a new world: the ', record: 'Became commander: ', quest: 'Flew a sortie: ', goal: 'Hit an objective: ', session: 'Flew a mission: ', stamp: 'Earned a mission patch: ' },
+    records: 'Mission records', holderCol: 'Commander', recordsBlurb: 'Beat the commander’s best and the patch is yours.', recordToast: '👨‍🚀 New commander: the crew record on ',
+    quests: 'Sorties', questsSub: 'this week’s sorties, the same for the whole crew', questDone: '📡 Sortie complete: ',
+    goals: 'Objectives', goalsKept: 'Objectives complete', plan: 'The flight plan', points: 'fuel', pointsEarned: 'fuel earned',
+    dry: 'Stuck in orbit: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Lift-off.', five_visits: 'Five missions flown.', twenty_visits: 'Twenty gym days. Veteran astronaut.', first_pr: 'A new best for an exercise and rep count. A new apogee.' },
+    achTitle: { first_visit: 'Lift-off', first_pr: 'First Apogee' },
+    bar: { fill: 'linear-gradient(90deg, var(--gold), var(--accent))', end: '🚀', goal: '🪐' },
+    // One flight path curving up from Earth: each club is a world along it; the next comes into
+    // view as you near it, and a fresh path starts once all twelve are reached.
+    rack: (lit, ratio) => {
+      const colors = ['#ff7b54', '#ffd166', '#5ee6a8', '#6e9cff', '#c77dff', '#f2f2f2'];
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      const pt = t => { const x = (1 - t) * (1 - t) * 26 + 2 * (1 - t) * t * 70 + t * t * 300, y = (1 - t) * (1 - t) * 116 + 2 * (1 - t) * t * 8 + t * t * 16; return [x.toFixed(1), y.toFixed(1)]; };
+      let s = '<path d="M26 116 Q70 8 300 16" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="3 5"/>' +
+        '<circle cx="26" cy="116" r="11" fill="#3b82f6"/><path d="M19 112 q5 -3 9 1 q3 4 -2 7" fill="#5ee6a8"/>';
+      for (let i = 0; i < 12; i++) {
+        const [x, y] = pt((i + 1) / 12.4), r = 4 + (i % 4);
+        if (i < k) s += '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + colors[i % colors.length] + '"/>';
+        else if (!done && i === k) s += '<circle cx="' + x + '" cy="' + y + '" r="' + (r + 5) + '" fill="var(--accent)" opacity="' + (ratio * 0.25).toFixed(2) + '"/><circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="none" stroke="var(--accent)" stroke-width="1.6" opacity="' + (0.4 + ratio * 0.6).toFixed(2) + '"/>';
+        else s += '<circle cx="' + x + '" cy="' + y + '" r="1.5" fill="var(--muted)"/>';
+      }
+      if (rounds) s += '<text x="314" y="124" text-anchor="end" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' flight path' : ' flight paths') + ' flown</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<circle cx="' + cx + '" cy="88" r="16" fill="' + (glow > 0.02 ? 'var(--accent)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#eef2fb', card: '#ffffff', ink: '#0f1733', muted: '#4e5a80', line: '#d8def0', chip: '#e7ecf8', accent: '#2b4fd8', 'accent-ink': '#ffffff', 'accent-soft': '#dfe6fb', good: '#1f8a52', gold: '#d9480f', 'gold-soft': '#fde3d5', grid: '#e4e9f6', axis: '#c5cde6' },
+      dark: { bg: '#0b1026', card: '#141c42', ink: '#dfe6ff', muted: '#9fb0e8', line: '#22306b', chip: '#1a2452', accent: '#ffd166', 'accent-ink': '#1a1000', 'accent-soft': '#2a2c4a', good: '#5ee6a8', gold: '#ff7b54', 'gold-soft': '#3a2018', grid: '#18214d', axis: '#2c3a78' },
+    },
+  }),
+
+  greenhouse: theme('greenhouse', 'The Iron Greenhouse', 'Leaf green and terracotta; one plant that grows a leaf for every club', {
+    seasonWord: 'Growing season', seasonsWord: 'Growing seasons', eventWord: 'Harvest festival', eventsWord: 'Harvest festivals',
+    stamp: 'Pressed flower', stamps: 'Pressed flowers', stampBook: 'The flower press', stampFrame: '50%', stampToast: 'A flower for the press: ',
+    tabIcons: { log: '<path d="M4 10h11l-1.5 10h-8z"/><path d="M15 12l4-4M17 6l3 3"/>', routines: '<path d="M12 21V11"/><path d="M12 11C12 6 8 4 4 4c0 5 3 7 8 7zM12 13c0-4 3-6 7-6 0 4-3 6-7 6z"/>', history: '<path d="M5 4h11a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3z"/><path d="M12 15c0-3 2-4 4-4 0 2-2 4-4 4zM12 15c0-2-1.5-3-3-3 0 1.6 1.4 3 3 3z"/>', seasons: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>', progress: '<path d="M7 21h10M12 21V9"/><path d="M12 9c0-4-3-6-6-6 0 4 2 6 6 6zM12 13c0-3 3-5 6-5 0 3-3 5-6 5z"/>' },
+    brand: 'The Iron Greenhouse', motto: 'PLANT · WATER · GROW', tagline: 'Water the roots. Log the set.',
+    fonts: 'family=Caprasimo&family=Lora:wght@700', brandFont: 'Caprasimo, Georgia, serif',
+    headFont: 'Lora, Georgia, serif', brandWeight: 400,
+    // A seedling in a terracotta pot.
+    logo: svg('<path d="M10 22h20l-3 14H13z" fill="var(--gold)"/><rect x="8" y="19" width="24" height="5" rx="1.5" fill="var(--gold)"/><path d="M20 19V10" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"/><path d="M20 12C20 6 15 4 10 4c0 6 4 8 10 8z" fill="var(--accent)"/><path d="M20 14c0-5 4-7 9-7 0 5-4 7-9 7z" fill="var(--good)"/>'),
+    // A strip of grass along the bottom of the hero.
+    css: '.hero { position: relative; overflow: hidden; padding-bottom: 30px; } .hero > * { position: relative; z-index: 1; }' +
+      '.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 16px; background: linear-gradient(135deg, transparent 50%, var(--accent) 50%) 0 0 / 10px 16px repeat-x, linear-gradient(225deg, transparent 50%, color-mix(in srgb, var(--accent) 70%, #000) 50%) 5px 0 / 10px 16px repeat-x; opacity: .55; }' +
+      '.hero .date::before { content: "❀ "; color: var(--gold); }' +
+      '.top .brand { font-size: clamp(16px, 4.8vw, 22px); }',   // Caprasimo runs wide
+    titles: { log: 'Today’s Watering', routines: 'Seeds', history: 'The Almanac', seasons: 'Growing seasons', progress: 'Growth' },
+    tabs: { log: 'Water', routines: 'Seeds', history: 'Almanac', seasons: 'Growing', progress: 'Growth' },
+    helloBig: 'Full bloom.', helloSome: 'Growing.', helloNone: 'The soil is ready.',
+    restUp: 'Watered. Next set!',
+    finish: 'Done for today · Finish ›', finishFeed: 'Done for today · show the garden', finishPrivate: 'Done for today · finish', updateFeed: 'Update the garden',
+    ended: 'Watered and growing.', endedFeed: 'Watered and growing. It’s in the garden.', endedClock: '✓ Watered · ',
+    routineDone: '🎉 Every bed tended.', routineBtn: 'All tended 🌿',
+    emptyH: 'Fresh soil.', emptyP: 'Log a set and something sprouts.',
+    prToast: '🌸 In bloom! ', clubToast: '🌱 New growth: welcome to the ', goalToast: 'Harvest in: ',
+    pr: 'bloom', prs: 'blooms',
+    prFlag: (reps, was) => 'In bloom! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'A new bloom on ' + ex + ': ',
+    clubs: 'The plant', clubsSub: n => 'one leaf grown for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' leaves on the plant, one for each club; the next unfurls as you near the ' + next,
+    weekly: 'Last week in the garden', streak: 'weeks growing', restWeek: 'A fallow week',
+    rest: n => n + ' weeks growing in a row. Consider a fallow week: same lifts at about 60% of the weight, then plant again.',
+    feed: 'The garden', feedSub: 'the crew’s blooms', feedEmpty: 'Blooms, new growth, harvests, sunflowers and tended gardens from the crew grow here.',
+    icons: { pr: '🌸', club: '🌱', goal: '🧺', session: '🪴', record: '🌻', quest: '🐝', holder: '🌻', questOpen: '🐝', rest: '🌧️', dry: '🍂', stamp: '🌼' },
+    win: { club: 'Grew a leaf: the ', record: 'Tallest sunflower: ', quest: 'Finished a chore: ', goal: 'Brought in a harvest: ', session: 'Tended the garden: ', stamp: 'Pressed a flower: ' },
+    records: 'Tallest sunflowers', holderCol: 'Gardener', recordsBlurb: 'Outgrow the tallest sunflower and the ribbon is yours.', recordToast: '🌻 Tallest sunflower: the crew record on ',
+    quests: 'Garden chores', questsSub: 'this week’s chores, the same for the whole crew', questDone: '🐝 Chore done: ',
+    goals: 'Harvests', goalsKept: 'Harvests in', plan: 'The planting plan', points: 'seeds', pointsEarned: 'seeds sown',
+    dry: 'Wilting: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'The first seed is planted.', five_visits: 'Five waterings. Green shoots.', twenty_visits: 'Twenty gym days. A proper gardener.', first_pr: 'A new best for an exercise and rep count. Your first bloom.' },
+    achTitle: { first_visit: 'Seedling', first_pr: 'First Bloom' },
+    bar: { fill: 'linear-gradient(90deg, #8bbf6a, var(--accent))', end: '🐝', flip: true, goal: '🌻' },
+    // One plant in a pot: each club grows a leaf up the stem, the next unfurls as you near it, and a
+    // flower opens at the top when all twelve are out (then a new seedling).
+    rack: (lit, ratio) => {
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      let s = '<path d="M140 104h40l-5 24h-30z" fill="var(--gold)"/><rect x="136" y="98" width="48" height="8" rx="2" fill="var(--gold)"/>' +
+        '<path d="M160 100 C156 80 166 60 158 40 C152 26 162 14 160 6" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>';
+      for (let i = 0; i < 12; i++) {
+        const y = 94 - i * 7.2, left = i % 2 === 0, x = 160 + (left ? -2 : 2), dir = left ? -1 : 1, len = 15 + (i % 3) * 3;
+        const leaf = 'M' + x + ' ' + y.toFixed(1) + ' q' + (dir * len * 0.6) + ' -' + (len * 0.55).toFixed(1) + ' ' + (dir * len) + ' -2 q' + (-dir * len * 0.4) + ' ' + (len * 0.45).toFixed(1) + ' ' + (-dir * len) + ' 2z';
+        if (i < k) s += '<path d="' + leaf + '" fill="' + (i % 3 === 0 ? 'var(--good)' : 'var(--accent)') + '"/>';
+        else if (!done && i === k) s += '<path d="' + leaf + '" fill="var(--accent)" opacity="' + (0.15 + ratio * 0.45).toFixed(2) + '" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="2 2"/>';
+      }
+      if (done) s += '<g transform="translate(160 8)">' + [0, 72, 144, 216, 288].map(a => '<ellipse rx="5" ry="9" transform="rotate(' + a + ') translate(0 -7)" fill="#f2a7c3"/>').join('') + '<circle r="4" fill="#ffd166"/></g>';
+      if (rounds) s += '<text x="8" y="16" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' plant' : ' plants') + ' grown</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<circle cx="' + cx + '" cy="88" r="14" fill="' + (glow > 0.02 ? 'var(--accent)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#eef5ea', card: '#fbfdf9', ink: '#1f2e1c', muted: '#58704f', line: '#d6e6cc', chip: '#e4efdc', accent: '#3b7d2a', 'accent-ink': '#ffffff', 'accent-soft': '#dcefd2', good: '#2f6e3a', gold: '#b8461c', 'gold-soft': '#fbe3d6', grid: '#e3eedd', axis: '#c3d6b8' },
+      dark: { bg: '#0f1a10', card: '#162417', ink: '#e3f0dc', muted: '#9db897', line: '#25392a', chip: '#1c2e1f', accent: '#7bc96f', 'accent-ink': '#0a1a08', 'accent-soft': '#1f3a22', good: '#a6dc8f', gold: '#f08a5d', 'gold-soft': '#3a2015', grid: '#1c2c1e', axis: '#2f4732' },
+    },
+  }),
+
+  west: theme('west', 'Iron Gulch', 'Dust, leather and sunset orange; a sheriff’s star for your clubs', {
+    seasonWord: 'Frontier', seasonsWord: 'Frontiers', eventWord: 'Rodeo', eventsWord: 'Rodeos',
+    stamp: 'Brand', stamps: 'Brands', stampBook: 'The brand book', stampFrame: '6px', stampToast: 'A new brand: ',
+    tabIcons: { log: '<path d="M4 16c0-6 3-9 8-9s8 3 8 9"/><path d="M2 16h20M9 7V4h6v3"/>', routines: '<path d="M3 20c4-2 5-8 9-8s5 6 9 8"/><circle cx="12" cy="7" r="3"/>', history: '<path d="M5 4h11a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3z"/><path d="M9 9h6M9 13h6"/>', seasons: '<path d="M12 21V3M12 7c-3 0-5 2-5 5M12 10c3 0 5 2 5 5"/>', progress: '<path d="M12 3l2.5 6 6.5.5-5 4.2 1.6 6.3L12 16.5 6.4 20l1.6-6.3-5-4.2 6.5-.5z"/>' },
+    brand: 'Iron Gulch', motto: 'SADDLE UP · LIFT HEAVY', tagline: 'Saddle up. Log the set.',
+    fonts: 'family=Rye&family=Bitter:wght@700', brandFont: 'Rye, Georgia, serif',
+    headFont: 'Bitter, Georgia, serif', brandWeight: 400,
+    // A sheriff's star.
+    logo: svg('<path d="M20 3l4.5 10.5 11.5 1-8.7 7.4 2.7 11.1L20 27l-10 6 2.7-11.1L4 14.5l11.5-1z" fill="var(--gold)"/><circle cx="20" cy="18" r="5" fill="var(--card)"/><circle cx="20" cy="18" r="2.4" fill="var(--accent)"/>'),
+    // A rope border round the hero.
+    css: '.hero { border: 3px dashed color-mix(in srgb, var(--gold) 70%, transparent); }' +
+      '.hero .date::before { content: "✦ "; color: var(--accent); }',
+    titles: { log: 'Today’s Ride', routines: 'Trails', history: 'The Ledger', seasons: 'The Frontier', progress: 'Legend' },
+    tabs: { log: 'Ride', routines: 'Trails', history: 'Ledger', seasons: 'Frontier', progress: 'Legend' },
+    helloBig: 'High noon.', helloSome: 'On the trail.', helloNone: 'Quiet in the saloon.',
+    restUp: 'Back in the saddle!',
+    finish: 'Ride into the sunset · Finish ›', finishFeed: 'Ride into the sunset · tell the saloon', finishPrivate: 'Ride into the sunset · finish', updateFeed: 'Update the saloon',
+    ended: 'Rode off into the sunset.', endedFeed: 'Rode off into the sunset. The saloon heard all about it.', endedClock: '✓ Sunset · ',
+    routineDone: '🎉 Trail ridden end to end.', routineBtn: 'Trail done 🤠',
+    emptyH: 'Quiet in the saloon.', emptyP: 'Log a set and the dust starts flying.',
+    prToast: '💰 Bounty claimed! ', clubToast: '⭐ Deputised: welcome to the ', goalToast: 'Got your man: ',
+    pr: 'bounty', prs: 'bounties',
+    prFlag: (reps, was) => 'Bounty claimed! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'Claimed a bounty on ' + ex + ': ',
+    clubs: 'The sheriff’s star', clubsSub: n => 'one rivet set for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' rivets on the star, one for each club; the next is hammered in as you near the ' + next,
+    weekly: 'Last week’s ledger', streak: 'weeks on the trail', restWeek: 'A week at the ranch',
+    rest: n => n + ' weeks on the trail in a row. Consider a week at the ranch: same lifts at about 60% of the weight, then ride again.',
+    feed: 'The saloon', feedSub: 'tall tales from the crew', feedEmpty: 'Bounties, deputies, wanted posters, sheriffs and rides from the crew get told here.',
+    icons: { pr: '💰', club: '⭐', goal: '🎯', session: '🐎', record: '🤠', quest: '📜', holder: '🤠', questOpen: '📜', rest: '🏕️', dry: '🌵', stamp: '🔥' },
+    win: { club: 'Got deputised: the ', record: 'Became sheriff: ', quest: 'Finished a job: ', goal: 'Got their man: ', session: 'Rode out: ', stamp: 'Earned a brand: ' },
+    records: 'Most wanted', holderCol: 'Sheriff', recordsBlurb: 'Beat the sheriff’s best and the badge is yours.', recordToast: '🤠 New sheriff in town: the crew record on ',
+    quests: 'Jobs', questsSub: 'this week’s jobs, the same for the whole posse', questDone: '📜 Job done: ',
+    goals: 'Wanted posters', goalsKept: 'Posters claimed', plan: 'The trail map', points: 'gold', pointsEarned: 'gold panned',
+    dry: 'Dust bowl: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'New in town.', five_visits: 'Five rides. The bartender knows your order.', twenty_visits: 'Twenty gym days. A local legend.', first_pr: 'A new best for an exercise and rep count. Your first bounty.' },
+    achTitle: { first_visit: 'New in Town', first_pr: 'First Bounty' },
+    bar: { fill: 'repeating-linear-gradient(90deg, var(--gold) 0 10px, color-mix(in srgb, var(--gold) 70%, #000) 10px 12px)', end: '🐎', flip: true, goal: '🌵' },
+    // One sheriff's star: each club hammers in a rivet round it, the next glints as you near it, and
+    // the star turns gold when all twelve are in (then a new star).
+    rack: (lit, ratio) => {
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      const pts = [];
+      for (let i = 0; i < 10; i++) { const a = (i * 36 - 90) * Math.PI / 180, r = i % 2 ? 22 : 50; pts.push((160 + r * Math.cos(a)).toFixed(1) + ' ' + (66 + r * Math.sin(a)).toFixed(1)); }
+      let s = '<path d="M' + pts.join(' L') + ' Z" fill="' + (done ? 'var(--gold)' : 'var(--gold-soft)') + '" stroke="var(--gold)" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<circle cx="160" cy="66" r="14" fill="var(--card)" stroke="var(--gold)" stroke-width="2"/>';
+      for (let i = 0; i < 12; i++) {
+        const a = (i * 30 - 90) * Math.PI / 180, x = (160 + 60 * Math.cos(a)).toFixed(1), y = (66 + 58 * Math.sin(a)).toFixed(1);
+        if (i < k) s += '<circle cx="' + x + '" cy="' + y + '" r="5" fill="var(--accent)"/><circle cx="' + (x - 1.5) + '" cy="' + (y - 1.5) + '" r="1.4" fill="#fff" opacity=".6"/>';
+        else if (!done && i === k) s += '<circle cx="' + x + '" cy="' + y + '" r="5" fill="none" stroke="var(--accent)" stroke-width="1.8" opacity="' + (0.4 + ratio * 0.6).toFixed(2) + '"/>';
+        else s += '<circle cx="' + x + '" cy="' + y + '" r="2" fill="var(--line)"/>';
+      }
+      if (rounds) s += '<text x="8" y="16" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' star' : ' stars') + ' finished</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<circle cx="' + cx + '" cy="88" r="14" fill="' + (glow > 0.02 ? 'var(--gold)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#f6efe2', card: '#fffaf0', ink: '#3b2a18', muted: '#7a6248', line: '#e8d9bf', chip: '#efe3cc', accent: '#993c1d', 'accent-ink': '#ffffff', 'accent-soft': '#f6dccf', good: '#4d7c2a', gold: '#a8650f', 'gold-soft': '#f7e6c4', grid: '#efe4cf', axis: '#d9c5a2' },
+      dark: { bg: '#17110b', card: '#221a12', ink: '#f2e5cf', muted: '#bba585', line: '#3a2c1d', chip: '#2b2116', accent: '#e2733a', 'accent-ink': '#1e0a02', 'accent-soft': '#3b1f12', good: '#9bc46a', gold: '#f0b445', 'gold-soft': '#36270f', grid: '#2a2015', axis: '#4a3a27' },
+    },
+  }),
+
   dungeon: theme('dungeon', 'The Iron Dungeon', 'Parchment, torchlight, loot chests and an XP bar', {
+    seasonWord: 'Campaign', seasonsWord: 'Campaigns', eventWord: 'Raid', eventsWord: 'Raids',
     stamp: 'Trophy', stamps: 'Trophies', stampBook: 'Trophy room', stampFrame: '6px', stampToast: 'Trophy claimed: ',
     tabIcons: { log: '<path d="M20 4 9 15M20 4v4M20 4h-4"/><path d="M6 12l6 6M4 20l4-4"/>', routines: '<path d="M4 20 15 9"/><path d="M17 3v4M15 5h4M20 10v2M19 11h2M10 4v2M9 5h2"/>', history: '<path d="M7 4h11v13a3 3 0 0 1-3 3H6a2 2 0 0 1-2-2v-1h11"/><path d="M7 4a2 2 0 0 0-2 2v1h2M10 8h5M10 12h5"/>', seasons: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>', progress: '<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/><path d="M12 16V9M9 12l3-3 3 3"/>' },
     brand: 'The Iron Dungeon', motto: 'ROLL FOR STRENGTH · LOOT THE GYM', tagline: 'Roll initiative. Log the set.',
@@ -469,6 +666,7 @@ export const THEMES = {
   }),
 
   arcade: theme('arcade', 'Iron Arcade', 'Neon on black, pixel lettering, coins and high scores', {
+    seasonWord: 'World', seasonsWord: 'Worlds', eventWord: 'Tournament', eventsWord: 'Tournaments',
     stamp: 'Sticker', stamps: 'Stickers', stampBook: 'Sticker album', stampFrame: '4px', stampToast: 'STICKER GET: ',
     tabIcons: { log: '<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 10.5v4M5 12.5h4"/><circle cx="16" cy="11.5" r=".9"/><circle cx="18" cy="13.5" r=".9"/>', routines: '<path d="M5 17h14v4H5z"/><path d="M12 17V9"/><circle cx="12" cy="6" r="3"/>', history: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>', seasons: '<circle cx="12" cy="12" r="6.5"/><path d="M2.5 15.5c3 2.5 16 0 19-7"/>', progress: '<path d="M4 20h4v-6H4zM10 20h4V8h-4zM16 20h4V4h-4z"/>' },
     brand: 'IRON ARCADE', motto: 'INSERT COIN · PRESS START', tagline: 'Player 1 ready. Log the set.',
@@ -523,6 +721,7 @@ export const THEMES = {
   }),
 
   viking: theme('viking', 'The Iron Forge', 'Smoke and embers, rune stones and sagas', {
+    seasonWord: 'Voyage', seasonsWord: 'Voyages', eventWord: 'Feast', eventsWord: 'Feasts',
     stamp: 'Mark', stamps: 'Marks', stampBook: 'The saga book', stampFrame: '50%', stampToast: 'A mark in the saga: ',
     tabIcons: { log: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3v6.5M12 14.5V21M3 12h6.5M14.5 12H21"/>', routines: '<path d="M3 6c5 0 14 3 18 11l-3 2C14 12 7 10 3 10z"/><path d="M8 6.4v3.8M14 8.6l-1.6 3.6"/>', history: '<path d="M6 21V8a6 6 0 0 1 12 0v13z"/><path d="M11 8v10M11 10l3-2M11 13l3-2"/>', seasons: '<path d="M2 15h20l-3 4H5z"/><path d="M12 15V3l6 9h-6"/>', progress: '<path d="M4 15a8 8 0 0 1 16 0v4H4z"/><path d="M12 7v12M6 9 3 4M18 9l3-5"/>' },
     brand: 'The Iron Forge', motto: 'FORGED IN FIRE · CARVED IN STONE', tagline: 'Strike while it’s hot. Log the set.',
@@ -570,6 +769,7 @@ export const THEMES = {
   }),
 
   deep: theme('deep', 'The Iron Deep', 'Teal water, bubbles, portholes and glowing creatures', {
+    seasonWord: 'Expedition', seasonsWord: 'Expeditions', eventWord: 'Tide', eventsWord: 'Tides',
     stamp: 'Shell', stamps: 'Shells', stampBook: 'Shell collection', stampFrame: '50%', stampToast: 'A new shell: ',
     tabIcons: { log: '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M8 10h8M4 13a8 8 0 0 0 16 0"/>', routines: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>', history: '<path d="M3 12c3-4 9-5 13-1l5-3v8l-5-3c-4 4-10 3-13-1z"/><circle cx="8" cy="11" r=".9"/>', seasons: '<rect x="3" y="10" width="16" height="7" rx="3.5"/><path d="M9 10V7h4v3M19 13.5h2"/><circle cx="8" cy="13.5" r=".9"/><circle cx="12" cy="13.5" r=".9"/>', progress: '<path d="M2 6c2 2 4 2 6 0s4-2 6 0 4 2 6 0"/><path d="M12 10v11M8 17l4 4 4-4"/>' },
     brand: 'The Iron Deep', motto: 'DIVE DEEP · COME UP STRONGER', tagline: 'Hold your breath. Log the set.',
@@ -620,6 +820,7 @@ export const THEMES = {
   }),
 
   patisserie: theme('patisserie', 'The Iron Patisserie', 'Blush and raspberry, piped frosting and showstoppers', {
+    seasonWord: 'Menu', seasonsWord: 'Menus', eventWord: 'Bake-off', eventsWord: 'Bake-offs',
     stamp: 'Recipe card', stamps: 'Recipe cards', stampBook: 'Recipe box', stampFrame: '10px', stampToast: 'A recipe card for the box: ',
     tabIcons: { log: '<path d="M12 21v-7"/><path d="M12 14c-4 0-6-4-6-7a6 6 0 0 1 12 0c0 3-2 7-6 7z"/><path d="M12 14c-1.5 0-2.5-4-2.5-7s1-5 2.5-5 2.5 2 2.5 5-1 7-2.5 7z"/>', routines: '<path d="M3 3l3.5 3.5M17.5 17.5 21 21"/><path d="M5 9l4-4 10 10-4 4z"/>', history: '<path d="M6 12h12l-2 9H8z"/><path d="M5 12a4 4 0 0 1 3-6 4 4 0 0 1 8 0 4 4 0 0 1 3 6"/>', seasons: '<path d="M3 19h18v-7L3 7z"/><path d="M3 13l18 3"/>', progress: '<path d="M4 21h16v-6H4zM6 15v-5h12v5M8 10V6h8v4M12 6V3"/>' },
     brand: 'The Iron Patisserie', motto: 'KNEAD · PROOF · LIFT', tagline: 'No soggy bottoms. Log the set.',
@@ -697,7 +898,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {

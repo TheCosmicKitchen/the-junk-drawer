@@ -4,7 +4,7 @@ import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as C from './charts.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
-import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, holidayDates } from './seasons.js';
+import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2835,7 +2835,7 @@ async function joinPack(key, btn) {
   if (liveRun(pack)) return;
   btn.disabled = true;
   try {
-    const starts_on = pack.kind === 'holiday' ? holidayDates(pack, today()).from : today();
+    const starts_on = pack.kind === 'event' ? eventDates(pack, today()).from : today();
     const run = await store.addRun({ season_key: key, starts_on });
     S.runs = (S.runs || []).concat(run);
     // Its workouts become your routines (weights follow your last time), so they work with Start and the logger.
@@ -2876,7 +2876,7 @@ function stampHtml(pack, st, small) {
 }
 function packCard(pack) {
   const run = liveRun(pack), n = stampsEarned(pack.key);
-  const when = pack.kind === 'holiday' ? (() => { const d = holidayDates(pack, today()); return fmtDay(d.from, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(d.to, { month: 'short', day: 'numeric' }) + ' · back every year'; })() : pack.weeks + ' weeks · start any time';
+  const when = pack.kind === 'event' ? (() => { const d = eventDates(pack, today()); return fmtDay(d.from, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(d.to, { month: 'short', day: 'numeric' }) + ' · back every year'; })() : pack.weeks + ' weeks · start any time';
   let status = '';
   if (run) { const p = packProgress(pack, run); status = run.starts_on > today() ? 'Joined · starts ' + fmtDay(run.starts_on, { month: 'short', day: 'numeric' }) : 'Joined · ' + p.days + (p.days === 1 ? ' session' : ' sessions') + ' so far'; }
   return '<section class="card pack-card"><div class="date">' + esc(when) + '</div><h2>' + esc(pack.name) + '</h2>' +
@@ -2887,10 +2887,10 @@ function packCard(pack) {
 }
 function renderPackPage(pack) {
   const run = liveRun(pack), p = run ? packProgress(pack, run) : null, live = run && run.starts_on <= today();
-  const holiday = pack.kind === 'holiday' ? holidayDates(pack, today()) : null;
+  const holiday = pack.kind === 'event' ? eventDates(pack, today()) : null;
   const canJoin = !run && (!holiday || L.daysBetween(today(), holiday.from) <= 50);
   let html = '<div class="row page-actions"><button class="btn ghost" data-pack-back>‹ Seasons</button></div>' +
-    '<section class="card pack-hero"><div class="date">' + esc(pack.kind === 'holiday' ? fmtDay(holiday.from, { month: 'long', day: 'numeric' }) + ' – ' + fmtDay(holiday.to, { month: 'long', day: 'numeric' }) + ' · back every year' : pack.weeks + ' weeks · start any time') + '</div>' +
+    '<section class="card pack-hero"><div class="date">' + esc(pack.kind === 'event' ? fmtDay(holiday.from, { month: 'long', day: 'numeric' }) + ' – ' + fmtDay(holiday.to, { month: 'long', day: 'numeric' }) + ' · back every year' : pack.weeks + ' weeks · start any time') + '</div>' +
     '<h1>' + esc(pack.name) + '</h1><p>' + esc(pack.blurb) + '</p>' +
     (THEMES[pack.theme] && T.id !== pack.theme ? '<p class="hint-line">Pairs with the ' + esc(THEMES[pack.theme].name) + ' look; works in any theme. <button class="linkish" data-try-skin="' + esc(pack.theme) + '">Try it</button></p>' : '') +
     '<div class="actions">' + (run ? '<button class="btn ghost" data-pack-leave="' + esc(pack.key) + '">Leave</button>' : canJoin ? '<button class="btn primary" data-pack-join="' + esc(pack.key) + '">Join</button>' : '<p class="muted" style="margin:0">Opens again ' + esc(fmtDay(holiday.from, { month: 'long', day: 'numeric' })) + '.</p>') + '</div></section>';
@@ -2951,7 +2951,12 @@ function renderSeasons() {
   };
   const group = (title, list) => list.length ? '<h3 class="section-title">' + title + '</h3><div class="season-grid">' + list.map(card).join('') + '</div>' : '';
   const got = PACK_ORDER.reduce((n, k) => n + stampsEarned(k), 0), allStamps = PACK_ORDER.reduce((n, k) => n + PACKS[k].stamps.length, 0);
-  const packs = '<h3 class="section-title">Season packs</h3><p class="hint-line" style="margin-top:0">Your ' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + '. Packs are extras: join one for its workouts and ' + esc(T.stamps.toLowerCase()) + ', or skip them all.</p><div class="season-grid">' + PACK_ORDER.map(k => packCard(PACKS[k])).join('') + '</div>';
+  // Events first (they're on fixed dates), then seasons (start any time). Both are extras.
+  const kinds = kind => PACK_ORDER.filter(k => PACKS[k].kind === kind).map(k => packCard(PACKS[k])).join('');
+  const packs = '<p class="hint-line" style="margin-top:0">Your ' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + '. ' +
+      esc(T.eventsWord) + ' and ' + esc(T.seasonsWord.toLowerCase()) + ' are extras: join one for its workouts and ' + esc(T.stamps.toLowerCase()) + ', or skip them all.</p>' +
+    '<h3 class="section-title">' + esc(T.eventsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Same dates every year, for everyone at once.</p><div class="season-grid">' + kinds('event') + '</div>' +
+    '<h3 class="section-title">' + esc(T.seasonsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Start any time, at your own pace.</p><div class="season-grid">' + kinds('season') + '</div>';
   view.innerHTML = packs +
     '<h3 class="section-title">Your seasons</h3>' +
     '<div class="row page-actions"><p class="muted" style="margin:0">A season is a stretch of dates with goals. Every set you log counts toward every season running that day.</p>' +
