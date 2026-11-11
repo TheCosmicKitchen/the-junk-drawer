@@ -92,6 +92,9 @@ const fail = e => toast(e && e.message ? e.message : 'Something went wrong.');
 // A rack of tokens, one lit for each club you've joined (the latest six), and the next one catching as
 // you get closer to it. Each theme draws its own token (themes.js): a candle, a signal lamp, a jar, a building.
 function candlesSVG(lit, ratio, label) {
+  // A theme can draw the whole rack as one thing (a tree being decorated, a circle of runes)
+  // instead of a row of tokens: rack(lit, ratio) returns the inside of the same 320 x 130 box.
+  if (T.rack) return '<svg class="candles" viewBox="0 0 320 130" role="img" aria-label="' + esc(label) + '">' + T.rack(lit, Math.max(0, Math.min(1, ratio))) + '</svg>';
   const shown = Math.min(lit, 6), n = shown + 1, W = 320, H = 130, gap = W / 7, x0 = (W - gap * n) / 2;
   let s = '<svg class="candles" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' +
     '<rect x="8" y="112" width="' + (W - 16) + '" height="8" rx="3" fill="var(--chip)"/><rect x="20" y="120" width="6" height="10" fill="var(--chip)"/><rect x="' + (W - 26) + '" y="120" width="6" height="10" fill="var(--chip)"/>';
@@ -2732,7 +2735,7 @@ function startRest(sec) {
 }
 function tickRest() {
   const el = restEl(), left = Math.ceil((REST.end - Date.now()) / 1000);
-  if (left <= 0) { stopRest(); vibrate([200, 100, 200]); toast('Rest’s up. Next set!'); return; }
+  if (left <= 0) { stopRest(); vibrate([200, 100, 200]); toast(T.restUp); return; }
   el.querySelector('#restTime').textContent = 'Rest ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
 }
 function stopRest() { clearInterval(REST.timer); if (REST.el) REST.el.hidden = true; }

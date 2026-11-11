@@ -10,6 +10,7 @@ const PLAIN = {
   titles: { log: 'Today', routines: 'Routines', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
   tabs: { log: 'Log', routines: 'Routines', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
   helloBig: 'Big day.', helloSome: 'In session.', helloNone: 'Today',
+  restUp: 'Rest’s up. Next set!',
   finish: 'Finish ›', finishFeed: 'Finish · share it', finishPrivate: 'Finish', updateFeed: 'Update it in the feed',
   ended: 'Session done. Nice work.', endedFeed: 'Session done. It’s in the feed.', endedClock: '✓ Done · ',
   routineDone: '🎉 Routine complete.', routineBtn: 'Routine done 🎉',
@@ -35,6 +36,7 @@ const PLAIN = {
   ach: {}, achTitle: {},
   // The club rack: one token per club joined, and the next one coming to life as you near it (glow 0 to 1).
   // Drawn in a 320 × 130 box on a shelf whose top edge is at y = 112; cx is the token's center.
+  // Or rack: (lit, ratio) => the whole rack as one picture in that box (lit clubs, ratio 0 to 1 toward the next).
   token: (cx, glow, next) => '<circle cx="' + cx + '" cy="88" r="21" fill="var(--chip)" stroke="var(--line)" stroke-width="1.5"/>' +
     (glow > 0.02 ? '<circle cx="' + cx + '" cy="88" r="21" fill="var(--accent)" opacity="' + (next ? (0.15 + glow * 0.6).toFixed(2) : 1) + '"/>' : '') +
     '<circle cx="' + cx + '" cy="88" r="5" fill="var(--card)"/>',
@@ -274,6 +276,136 @@ export const THEMES = {
         beast: 'rgba(20, 26, 22, .10)', glow: '0 0 0 transparent' },
       dark: { bg: '#090d0b', card: '#111814', ink: '#e4f1e8', muted: '#8ea395', line: '#1f2c25', chip: '#18221d', accent: '#47e08f', 'accent-ink': '#03140a', 'accent-soft': '#10301f', good: '#7be3a6', gold: '#ff8a3d', 'gold-soft': '#36200f', grid: '#1a241f', axis: '#2f3d35',
         beast: 'rgba(71, 224, 143, .13)', glow: '0 0 18px rgba(71, 224, 143, .35)' },
+    },
+  }),
+
+  coach: theme('coach', 'The Dread Coach', 'Dark violet and green fire, and a menacing coach who secretly cares', {
+    tabIcons: { log: '<circle cx="12" cy="12" r="9"/><path d="M12 3l3 9-3 9-3-9z"/>', routines: '<path d="M5 4h11a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3z"/><path d="M12 9l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 15l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4z"/>', history: '<path d="M7 4h11v13a3 3 0 0 1-3 3H6a2 2 0 0 1-2-2v-1h11"/><path d="M7 4a2 2 0 0 0-2 2v1h2M10 8h5M10 12h5"/>', seasons: '<circle cx="12" cy="12" r="8"/><path d="M15 6a7 7 0 0 1 0 12"/>', progress: '<path d="M6 21L16 6"/><circle cx="17.5" cy="4.5" r="2.5"/><path d="M4 14l3 3"/>' },
+    brand: 'The Dread Coach', motto: 'SUFFER · GROW · HYDRATE', tagline: 'Return, apprentice. Log the set.',
+    fonts: 'family=Grenze+Gotisch:wght@600&family=Cormorant+Garamond:wght@700', brandFont: '"Grenze Gotisch", Georgia, serif',
+    headFont: '"Cormorant Garamond", Georgia, serif', brandWeight: 600,
+    // The coach: a hood with two green eyes, over a violet hem.
+    logo: svg('<path d="M20 3 L32 30 H8 Z" fill="var(--ink)" opacity=".85"/><path d="M20 9 L28 28 H12 Z" fill="var(--bg)"/><circle cx="17" cy="21" r="1.8" fill="var(--gold)"/><circle cx="23" cy="21" r="1.8" fill="var(--gold)"/><path d="M6 30 H34 L31 36 H9 Z" fill="var(--accent)"/>'),
+    // Summoning circles turning behind the hero.
+    css: '.hero { position: relative; overflow: hidden; } .hero > * { position: relative; z-index: 1; }' +
+      '.hero::before { content: ""; position: absolute; right: -50px; top: -50px; width: 190px; height: 190px; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--gold) 40%, transparent); }' +
+      '.hero::after { content: ""; position: absolute; right: -16px; top: -16px; width: 120px; height: 120px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }' +
+      '.hero .date { color: var(--gold); } .hero .date::before { content: "✶ "; }',
+    titles: { log: 'Today’s Ritual', routines: 'The Grimoire', history: 'The Chronicle', seasons: 'Eclipses', progress: 'Your Power' },
+    tabs: { log: 'Ritual', routines: 'Grimoire', history: 'Chronicle', seasons: 'Eclipses', progress: 'Power' },
+    helloBig: 'You honour me today.', helloSome: 'The ritual continues.', helloNone: 'You return, apprentice.',
+    restUp: '“Rise. I have plans for you.”',
+    finish: 'Enough, for now · Finish ›', finishFeed: 'Enough, for now · tell the coven', finishPrivate: 'Enough, for now · finish', updateFeed: 'Update the coven',
+    ended: '“Adequate. Now eat something.”', endedFeed: '“Adequate. The coven has been told.”', endedClock: '✓ Dismissed · ',
+    routineDone: '🎉 “Every rite performed. I am… almost proud.”', routineBtn: 'Rites complete 🔮',
+    emptyH: 'The circle is cold.', emptyP: 'Log a set and the ritual begins.',
+    prToast: '🔮 “Your power grows. As I foresaw.” ', clubToast: '✶ A rune ignites: welcome to the ', goalToast: 'Prophecy fulfilled: ',
+    pr: 'triumph', prs: 'triumphs',
+    prFlag: (reps, was) => '“Yes. YES.” Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'A triumph the coach foresaw: ' + ex + ', ',
+    clubs: 'The circle', clubsSub: n => 'one rune lit for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' runes lit in the circle, one for each club; the next flickers as you near the ' + next,
+    weekly: 'The coach’s report', streak: 'weeks of obedience', restWeek: 'A strategic retreat',
+    rest: n => '“' + n + ' weeks without rest. Even I take holidays.” Consider a light week: same lifts at about 60% of the weight, then return.',
+    feed: 'The coven', feedSub: 'the crew’s triumphs, noted by the coach',
+    feedEmpty: 'Triumphs, runes, prophecies, champions and rituals from the crew are recorded here.',
+    icons: { pr: '🔮', club: '💠', goal: '📜', session: '🌑', record: '👑', quest: '🗝️', holder: '👑', questOpen: '🗝️', rest: '🦇', dry: '🕸️' },
+    win: { club: 'Lit a rune: the ', record: 'Named champion: ', quest: 'Completed a trial: ', goal: 'Fulfilled a prophecy: ', session: 'Performed a ritual: ' },
+    records: 'The champions', holderCol: 'Champion', recordsBlurb: 'Surpass the champion and the coach will speak your name.', recordToast: '👑 The coach names a new champion: the record on ',
+    quests: 'Trials', questsSub: 'this week’s trials, the same for every apprentice', questDone: '🗝️ Trial complete: ',
+    goals: 'Prophecies', goalsKept: 'Prophecies fulfilled', plan: 'The grand design', points: 'favour', pointsEarned: 'favour earned',
+    dry: '“Stagnation.” Three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: '“So. You have come.”', five_visits: 'Five rituals. The coach remembers your name.', twenty_visits: 'Twenty gym days. A true apprentice.', first_pr: 'A new best for an exercise and rep count. The coach foresaw it.' },
+    achTitle: { first_visit: 'Summoned', first_pr: 'First Triumph' },
+    // Dark power flowing up a staff, with the orb at its tip.
+    bar: { height: '8px', fill: 'linear-gradient(90deg, var(--accent), var(--gold))', end: '🔮' },
+    // One summoning circle of twelve runes: each club lights one, the next flickers in as you near
+    // it, and the sigil in the middle ignites when the circle closes (then a new circle begins).
+    rack: (lit, ratio) => {
+      const glyphs = ['M-4 -7V7M-4 -2L4 -7M-4 3L4 -2', 'M-5 7L0 -7L5 7M-3 2H3', 'M0 -7V7M-5 -4L5 4M5 -4L-5 4'];
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      let s = '<circle cx="160" cy="65" r="62" fill="none" stroke="var(--line)" stroke-width="2"/><circle cx="160" cy="65" r="40" fill="none" stroke="var(--line)" stroke-width="2"/>' +
+        '<path d="M160 38 L176 86 L135 56 H185 L144 86 Z" fill="none" stroke="' + (done ? 'var(--gold)' : 'var(--line)') + '" stroke-width="2" stroke-linejoin="round"/>';
+      for (let i = 0; i < 12; i++) {
+        const a = (i * 30 - 90) * Math.PI / 180, x = (160 + 52 * Math.cos(a)).toFixed(1), y = (65 + 52 * Math.sin(a)).toFixed(1);
+        const on = i < k, next = !done && i === k;
+        const col = on ? 'var(--gold)' : next ? 'var(--accent)' : 'var(--line)', op = next ? (0.3 + ratio * 0.7).toFixed(2) : 1;
+        if (next) s += '<circle cx="' + x + '" cy="' + y + '" r="11" fill="var(--accent)" opacity="' + (ratio * 0.3).toFixed(2) + '"/>';
+        s += '<path transform="translate(' + x + ' ' + y + ')" d="' + glyphs[i % 3] + '" fill="none" stroke="' + col + '" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity="' + op + '"/>';
+      }
+      if (rounds) s += '<text x="8" y="16" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' circle' : ' circles') + ' closed</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<path d="M' + cx + ' 58 l12 14 -12 40 -12 -40z" fill="' + (glow > 0.02 ? 'var(--gold)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#f3eff8', card: '#fdfbff', ink: '#1d1426', muted: '#625875', line: '#e2dbec', chip: '#ece6f4', accent: '#6b3fc4', 'accent-ink': '#ffffff', 'accent-soft': '#e6dcf8', good: '#1f8a52', gold: '#1f8a52', 'gold-soft': '#d8f3e2', grid: '#e8e2f0', axis: '#cbc2da' },
+      dark: { bg: '#120d18', card: '#1c1524', ink: '#efe6d8', muted: '#a79cb8', line: '#33284a', chip: '#241b30', accent: '#a36bff', 'accent-ink': '#14081f', 'accent-soft': '#2a1f3d', good: '#8cf5a0', gold: '#8cf5a0', 'gold-soft': '#1d3326', grid: '#211a2c', axis: '#3d3150' },
+    },
+  }),
+
+  claus: theme('claus', 'Iron Claus', 'Santa red and pine, snow, the Nice List and a tree to decorate', {
+    tabIcons: { log: '<path d="M4 14C5 6 15 3 20 9l-2 5z"/><circle cx="20.5" cy="8.5" r="1.8"/><path d="M3 14h16v3H3z"/>', routines: '<path d="M3 21V10l9-6 9 6v11z"/><path d="M9 21v-6h6v6"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M10 14l2-1.5 2 1.5-.8 2.4h-2.4z"/>', seasons: '<path d="M12 2l6 9h-3l4 6H5l4-6H6z"/><path d="M12 17v4"/>', progress: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/>' },
+    brand: 'Iron Claus', motto: 'MAKE A LIST · LIFT IT TWICE', tagline: 'Ho ho hoist. Log the set.',
+    fonts: 'family=Mountains+of+Christmas:wght@700&family=Fredoka:wght@600;700', brandFont: '"Mountains of Christmas", Georgia, serif',
+    headFont: 'Fredoka, system-ui, sans-serif', brandWeight: 700,
+    // A Santa hat on a loaded bar.
+    logo: svg('<path d="M8 24 C10 10 26 6 33 14 L30 24 Z" fill="var(--accent)"/><circle cx="34" cy="13" r="3.5" fill="var(--fur)"/><rect x="5" y="23" width="28" height="6" rx="3" fill="var(--fur)"/><rect x="3" y="31" width="34" height="3" rx="1.5" fill="var(--ink)"/><rect x="2" y="28" width="5" height="9" rx="1.5" fill="var(--good)"/><rect x="33" y="28" width="5" height="9" rx="1.5" fill="var(--good)"/>'),
+    // Fur trim along the top of the hero, and snow falling behind it.
+    css: '.hero { position: relative; overflow: hidden; padding-top: 34px; } .hero > * { position: relative; z-index: 1; }' +
+      '.hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 20px; z-index: 1;' +
+        ' background: radial-gradient(circle at 10px 10px, var(--fur) 7px, var(--line) 8px, transparent 8.5px) 0 0 / 20px 20px repeat-x, linear-gradient(var(--accent), var(--accent)) 0 0 / 100% 10px no-repeat; }' +
+      '.hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--muted) 30%, transparent) 1.2px, transparent 1.8px) 0 0 / 26px 26px; }' +
+      '.hero .date::before { content: "❄ "; color: var(--accent); }',
+    titles: { log: 'Today’s Shift', routines: 'The Workshop', history: 'Advent', seasons: 'Holidays', progress: 'The Gains List' },
+    tabs: { log: 'Lift', routines: 'Workshop', history: 'Advent', seasons: 'Holidays', progress: 'Gains list' },
+    helloBig: 'Christmas Eve energy.', helloSome: 'In the workshop.', helloNone: 'The workshop is quiet.',
+    restUp: 'Break’s over. Back to the workshop!',
+    finish: 'Wrap it up · Finish ›', finishFeed: 'Wrap it up · put it under the tree', finishPrivate: 'Wrap it up · finish', updateFeed: 'Update it under the tree',
+    ended: 'Shift done. Have a cocoa.', endedFeed: 'Shift done. It’s under the tree.', endedClock: '✓ Wrapped · ',
+    routineDone: '🎉 Everything on the list, checked twice.', routineBtn: 'Checked twice 🎁',
+    emptyH: 'The workshop is quiet.', emptyP: 'Log a set and the elves get to work.',
+    prToast: '⭐ Nice List! ', clubToast: '🎄 A new ornament: welcome to the ', goalToast: 'Wish granted: ',
+    pr: 'star', prs: 'stars',
+    prFlag: (reps, was) => 'Nice List! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'Made the Nice List on ' + ex + ': ',
+    clubs: 'The tree', clubsSub: n => 'one ornament hung for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' ornaments on the tree, one for each club; the next one glows as you near the ' + next,
+    weekly: 'Last week’s list', streak: 'weeks of good cheer', restWeek: 'Cocoa week',
+    rest: n => n + ' weeks of good cheer in a row. Consider a cocoa week: same lifts at about 60% of the weight, then back to the workshop.',
+    feed: 'Under the tree', feedSub: 'the crew’s gifts',
+    feedEmpty: 'Nice Lists, ornaments, wishes, Head Elves and finished shifts from the crew show up under the tree.',
+    icons: { pr: '⭐', club: '🎄', goal: '🎁', session: '🛷', record: '🎅', quest: '📜', holder: '🎅', questOpen: '📜', rest: '☕', dry: '🥶' },
+    win: { club: 'Hung an ornament: the ', record: 'Became Head Elf: ', quest: 'Checked off a list: ', goal: 'Got a wish: ', session: 'Worked a shift: ' },
+    records: 'Head Elves', holderCol: 'Head Elf', recordsBlurb: 'Beat the Head Elf’s best and the hat is yours.', recordToast: '🎅 Head Elf now: the crew record on ',
+    quests: 'The lists', questsSub: 'this week’s lists, the same for the whole crew', questDone: '📜 Checked twice: ',
+    goals: 'Wishes', goalsKept: 'Wishes granted', plan: 'The schedule', points: 'candy canes', pointsEarned: 'candy canes earned',
+    dry: 'Snowed in: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Your first shift in the workshop.', five_visits: 'Five shifts. The elves know your name.', twenty_visits: 'Twenty gym days. Santa’s strongest helper.', first_pr: 'A new best for an exercise and rep count. Straight onto the Nice List.' },
+    achTitle: { first_pr: 'First Nice List' },
+    // A candy cane, with the sleigh out in front and the tree waiting at the end.
+    bar: { height: '14px', fill: 'repeating-linear-gradient(135deg, var(--accent) 0 9px, var(--fur) 9px 18px)', end: '🛷', goal: '🎄' },
+    // One tree: each club hangs an ornament, the next glows on its branch as you near it, and the
+    // star lights when all twelve are up (then a fresh tree goes up).
+    rack: (lit, ratio) => {
+      const spots = [[148, 46], [172, 46], [160, 32], [136, 74], [156, 68], [176, 76], [186, 64], [122, 104], [140, 96], [160, 102], [178, 94], [198, 104]];
+      const colors = ['var(--accent)', 'var(--gold)', '#2a5fd3', 'var(--fur)'];
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      let s = '<rect x="152" y="112" width="16" height="14" rx="2" fill="#7a4b2a"/>' +
+        '<path d="M160 62 L100 112 H220 Z" fill="#1f6b45"/><path d="M160 34 L116 84 H204 Z" fill="#26804f"/><path d="M160 14 L130 52 H190 Z" fill="#2e9459"/>' +
+        '<path d="M114 100 q46 18 92 -6 M128 72 q32 12 64 -4" fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-dasharray="2 4" stroke-linecap="round"/>';
+      spots.forEach(([x, y], i) => {
+        if (i < k) s += '<circle cx="' + x + '" cy="' + y + '" r="6" fill="' + colors[i % 4] + '" stroke="#ffffff" stroke-width="1.2"/>';
+        else if (!done && i === k) s += '<circle cx="' + x + '" cy="' + y + '" r="10" fill="var(--gold)" opacity="' + (ratio * 0.35).toFixed(2) + '"/><circle cx="' + x + '" cy="' + y + '" r="6" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="3 2" opacity="' + (0.4 + ratio * 0.6).toFixed(2) + '"/>';
+        else s += '<circle cx="' + x + '" cy="' + y + '" r="1.6" fill="#a8c7b0"/>';
+      });
+      s += '<path d="M160 0 l3.5 7.5 8.3 .9 -6.2 5.6 1.8 8.2 -7.4 -4.3 -7.4 4.3 1.8 -8.2 -6.2 -5.6 8.3 -.9z" transform="translate(0 2) scale(1)" fill="' + (done ? 'var(--gold)' : 'none') + '" stroke="var(--gold)" stroke-width="1.6" stroke-linejoin="round"/>';
+      if (rounds) s += '<text x="8" y="16" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' tree' : ' trees') + ' finished</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<rect x="' + (cx - 14) + '" y="80" width="28" height="30" rx="3" fill="' + (glow > 0.02 ? 'var(--accent)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#f7f1e6', card: '#fffdf8', ink: '#2a1712', muted: '#6e5a4c', line: '#eadfcd', chip: '#f1e8d8', accent: '#b3261e', 'accent-ink': '#ffffff', 'accent-soft': '#f8dcd6', good: '#1f6b45', gold: '#a97a06', 'gold-soft': '#f7ecd0', grid: '#efe6d6', axis: '#d9cbb4', fur: '#ffffff' },
+      dark: { bg: '#140d0b', card: '#1f1512', ink: '#f6ebe0', muted: '#bba795', line: '#352620', chip: '#2a1d18', accent: '#ff6b5e', 'accent-ink': '#2a0705', 'accent-soft': '#3d1a16', good: '#5cc48d', gold: '#ffd36a', 'gold-soft': '#352a12', grid: '#2a1e19', axis: '#4a372e', fur: '#f6ebe0' },
     },
   }),
 
@@ -551,7 +683,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {
