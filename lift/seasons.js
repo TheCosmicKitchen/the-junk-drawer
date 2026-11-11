@@ -4,14 +4,17 @@
 // in every theme (it can suggest one). The database only remembers who joined (a run) and which
 // stamps they earned (supabase/sql/25_season_packs.sql).
 //
+// Three kinds of pack, by who sets the clock:
+//   'program'  workouts on a schedule and nothing else; start any time (no stamps, world or theme)
+//   'season'   a long arc at your own pace: a program plus a world and stamps; start any time
+//   'event'    a short, shared happening on the same dates every year for everyone (from/to as
+//              'MM-DD'); comes back every year, so missing one is never final
 // A pack:
-//   key, name, blurb, theme (suggested look), kind: 'evergreen' (start any time, weeks long) or
-//   'holiday' (the same dates every year: from/to as 'MM-DD'),
+//   key, name, blurb, theme (suggested look), kind, weeks (programs and seasons),
 //   workouts: [{ key, name, unlock (week, optional), steps: [[exercise names (first one found
 //     in your catalogue), sets, reps, flavour name]] }],
 //   stamps: [{ key, name, mark, color, hint, rule }],
 //   plus its own world: stations (pilgrimage), doors (advent), letters (one line a week).
-// A program is the same shape with only workouts: no stamps, no world, no theme.
 //
 // Rules (all counted inside the run's dates, working sets only):
 //   { days: n }                      n different days with at least one set
@@ -35,7 +38,7 @@ const CORE = ['Hanging Leg Raise', 'Ab Wheel Rollout', 'Cable Crunch'];
 
 export const PACKS = {
   pilgrimage: {
-    key: 'pilgrimage', name: 'The Long Pilgrimage', theme: 'church', kind: 'evergreen', weeks: 8,
+    key: 'pilgrimage', name: 'The Long Pilgrimage', theme: 'church', kind: 'season', weeks: 8,
     blurb: 'Eight weeks on the road from the Chapel to the Cathedral. Every two sessions reach the next station, so a missed week only means a longer walk.',
     stations: ['Chapel', 'Well', 'Bridge', 'Abbey', 'Shrine', 'Pass', 'Sabbath', 'Cathedral'],
     workouts: [
@@ -57,7 +60,7 @@ export const PACKS = {
   },
 
   hoist: {
-    key: 'hoist', name: 'Ho Ho Hoist', theme: 'claus', kind: 'holiday', from: '12-01', to: '12-24',
+    key: 'hoist', name: 'Ho Ho Hoist', theme: 'claus', kind: 'event', from: '12-01', to: '12-24',
     blurb: 'An advent calendar of lifting. A door a day from the 1st to the 24th, each a small task. Missed doors stay open until Christmas Eve. Back every December.',
     doors: [
       { name: 'Present Carry', lifts: CARRY, sets: 3 }, { name: 'Chimney Climb', lifts: PULL, sets: 3 }, { name: 'Snow Shovel', lifts: SQUAT, sets: 3 },
@@ -87,7 +90,7 @@ export const PACKS = {
   },
 
   apprenticeship: {
-    key: 'apprenticeship', name: 'The Apprenticeship', theme: 'coach', kind: 'evergreen', weeks: 8,
+    key: 'apprenticeship', name: 'The Apprenticeship', theme: 'coach', kind: 'season', weeks: 8,
     blurb: 'The coach takes you on. Eight weeks, a word from the coach each week, a new trial every fortnight, and a final test: beat your week-one numbers.',
     letters: [
       '“So. You have come. Show me what you can do, and nothing more. I want to see your bad form before I fix it.”',
@@ -118,13 +121,13 @@ export const PACKS = {
 };
 export const PACK_ORDER = ['pilgrimage', 'hoist', 'apprenticeship'];
 
-// The dates a run covers: an evergreen pack from the day you joined; a holiday pack this year's dates.
+// The dates a run covers: a season from the day you joined; an event this year's dates.
 export function runWindow(pack, run, addDays) {
-  if (pack.kind === 'holiday') { const y = run.starts_on.slice(0, 4); return { from: y + '-' + pack.from, to: y + '-' + pack.to }; }
+  if (pack.kind === 'event') { const y = run.starts_on.slice(0, 4); return { from: y + '-' + pack.from, to: y + '-' + pack.to }; }
   return { from: run.starts_on, to: addDays(run.starts_on, pack.weeks * 7 - 1) };
 }
-// This year's (or next year's) dates for a holiday pack, as of a day.
-export function holidayDates(pack, day) {
+// This year's (or next year's) dates for an event, as of a day.
+export function eventDates(pack, day) {
   let y = Number(day.slice(0, 4));
   if (day > y + '-' + pack.to) y++;
   return { from: y + '-' + pack.from, to: y + '-' + pack.to };
