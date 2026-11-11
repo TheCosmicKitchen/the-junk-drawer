@@ -189,7 +189,7 @@ async function afterSignIn() {
     me = who;
     if (me.mfa_required && !me.mfa_ok) { clearSnap(); return showEnroll(); }
     applyData(await fetchAll());
-    checkStamps();
+    checkStamps(); rolloverCore();
     if (snap) { replay(); S.winsAt = 0; S.recordsAt = 0; render(); }
     else { restoreOutbox(); showApp(); }
     writeSnap();
@@ -407,7 +407,7 @@ function exCard(g) {
 // season you're in that's running today. Say so where people log.
 function countsLine() {
   const t = today();
-  const live = (S.seasons || []).filter(x => inSeason(x) && x.starts_on <= t && t <= x.ends_on);
+  const live = (S.seasons || []).filter(x => inSeason(x) && !isCore(x) && x.starts_on <= t && t <= x.ends_on);
   if (!live.length) return '';
   return '<p class="counts">Counts toward ' + live.map(x => '<button class="linkbtn" data-season="' + esc(x.id) + '">' + esc(x.name) + '</button>').join(', ') + '</p>';
 }
@@ -438,6 +438,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.packJoin) joinPack(b.dataset.packJoin, b);
   else if (b.dataset.packLeave) leavePack(b.dataset.packLeave, b);
   else if (b.dataset.trySkin) trySkin(b.dataset.trySkin);
+  else if (b.hasAttribute('data-core-edit')) openCore(b);
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
   else if (b.dataset.seen) { const t = S.templates.find(x => x.id === b.dataset.seen); if (t) { markSeen(t); render(); } }
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
@@ -1360,7 +1361,7 @@ function renderRoutines() {
   };
   view.innerHTML =
     '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.routines) + '</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
-    comingUp() +
+    comingUp() + weekCard() +
     '<h3 class="section-title">Workouts</h3>' +
     (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
       : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
@@ -2010,7 +2011,7 @@ function planCard() {
   if (following()) return '';
   const tp = todaysPlan();
   if (!tp) return '';
-  const head = '<div class="date">' + esc(tp.season.name) + '</div>';
+  const head = '<div class="date">' + esc(isCore(tp.season) ? 'Your week' : tp.season.name) + '</div>';
   if (!tp.entry) return '<section class="card plan-card">' + head + '<p style="margin:6px 0 0">Rest day by the plan. Next up: <b>' + esc(tplById(tp.next.template_id).name) + '</b> on ' + tp.nextDay + '.</p></section>';
   const t = tplById(tp.entry.template_id);
   const others = tp.plan.filter(p => p.template_id !== t.id && !tp.plan.slice(0, tp.plan.indexOf(p)).some(q => q.template_id === p.template_id));
@@ -2119,19 +2120,73 @@ function openMyGoals(id) {
   openSheet();
   drawGoals();
 }
+// ===========================================================================
+// Your goals and your week. These belong to the app, not to any season: everyone has them, and
+// someone who never touches seasons or events still gets the whole thing. They're kept in a private
+// holder for the calendar year (a season row named CORE_NAME, never shown as a season), so goals
+// count from the 1st of January; each new year starts a fresh holder with your week and goals
+// carried over.
+// ===========================================================================
+const CORE_NAME = 'Your goals and week';
+const isCore = s => !!s && s.name === CORE_NAME && !s.is_shared && s.created_by === S.myId;
+const coreFor = year => (S.seasons || []).find(s => isCore(s) && s.starts_on === year + '-01-01');
+const coreNow = () => coreFor(today().slice(0, 4));
+async function ensureCore() {
+  const y = today().slice(0, 4);
+  let c = coreFor(y);
+  if (c) return c;
+  c = await store.addSeason({ name: CORE_NAME, starts_on: y + '-01-01', ends_on: y + '-12-31', is_shared: false, points: null });
+  S.seasons.unshift(c);
+  const prev = coreFor(String(Number(y) - 1));
+  if (prev) {
+    for (const p of planFor(prev.id)) S.plan.push(await store.addPlan({ season_id: c.id, template_id: p.template_id, position: p.position, weekdays: p.weekdays }));
+    for (const g of S.goals.filter(x => x.season_id === prev.id))
+      S.goals.push(await store.addGoal({ season_id: c.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit, exercise_id: g.exercise_id, template_id: g.template_id }));
+  }
+  return c;
+}
+// A new year: carry your week and goals into it, so the Log tab keeps suggesting today's workout.
+async function rolloverCore() {
+  if (coreNow() || !coreFor(String(Number(today().slice(0, 4)) - 1))) return;
+  try { await ensureCore(); render(); } catch (x) { /* next open tries again */ }
+}
+async function openCore(btn) {
+  if (btn) btn.disabled = true;
+  try { openSeasonSheet((await ensureCore()).id); } catch (x) { fail(x); }
+  if (btn) btn.disabled = false;
+}
+function goalsCard() {
+  const c = coreNow(), goals = c ? S.goals.filter(g => g.season_id === c.id) : [];
+  const m = c ? seasonM(c) : null;
+  return '<section class="card"><div class="card-head"><h3 class="card-title">' + esc(T.goals) + ' for ' + today().slice(0, 4) + '</h3>' +
+      '<button class="btn sm" data-core-edit>' + (goals.length ? 'Edit' : '+ Add') + '</button></div>' +
+    (goals.length ? goals.map(g => goalLine(g, m, { season: c })).join('')
+      : '<p class="muted" style="margin:0">Set a goal for the year: show up 150 times, move 2 million lb, or hit a number on a lift.</p>') + '</section>';
+}
+function weekCard() {
+  const c = coreNow(), plan = c ? planFor(c.id).filter(p => tplById(p.template_id)) : [];
+  const days = p => (p.weekdays ? [1, 2, 3, 4, 5, 6, 0].filter(d => p.weekdays & (1 << d)).map(d => DAY_NAMES[d].slice(0, 3)).join(' · ') : 'takes turns');
+  return '<section class="card"><div class="card-head"><h3 class="card-title">Your week</h3>' +
+      '<button class="btn sm" data-core-edit>' + (plan.length ? 'Edit' : '+ Plan it') + '</button></div>' +
+    (plan.length ? '<div class="week-list">' + plan.map(p => '<div class="row"><b>' + esc(tplById(p.template_id).name) + '</b><span class="muted">' + esc(days(p)) + '</span></div>').join('') + '</div>' +
+        '<p class="hint-line">The Log tab suggests today’s.</p>'
+      : '<p class="muted" style="margin:0">Put routines on days (Push on Mondays) or let them take turns, and the Log tab suggests today’s.</p>') + '</section>';
+}
+
 function openSeasonSheet(id) {
   if (id && !isMine(seasonById(id))) return openMyGoals(id);
   LG.mode = 'season';
   SG.id = id; SG.pending = []; SG.planPending = []; SG.personal = false;
   const s = id ? seasonById(id) : { name: '', starts_on: today(), ends_on: L.addDays(today(), 55), is_shared: false };
+  const core = SG.core = isCore(s);
   inner.innerHTML =
-    '<div class="sheet-head"><h2 id="sheetTitle">' + (id ? 'Edit season' : 'New season') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
-    '<div class="sheet-body">' +
+    '<div class="sheet-head"><h2 id="sheetTitle">' + (core ? 'Your goals and week' : id ? 'Edit season' : 'New season') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' + (core ? '<p class="hint-line" style="margin-top:0">Goals count from January 1st. Changes save as you make them.</p>' :
       '<div class="field-label"><span>Name</span></div><input class="plain-input" id="snName" maxlength="60" value="' + esc(s.name) + '" placeholder="e.g. Winter bulk">' +
       '<div class="grid2"><div><div class="field-label"><span>Starts</span></div><input class="plain-input" id="snStart" type="date" value="' + esc(s.starts_on) + '"></div>' +
         '<div><div class="field-label"><span>Ends</span></div><input class="plain-input" id="snEnd" type="date" value="' + esc(s.ends_on) + '"></div></div>' +
       '<div class="toggles" style="margin-top:12px"><button type="button" class="toggle" id="snShare" aria-pressed="' + !!s.is_shared + '">' + shareLabel(s.is_shared) + '</button></div>' +
-      pointsHtml(s.points) +
+      pointsHtml(s.points)) +
       '<div class="field-label"><span>Goals</span><small>optional</small></div><div id="snGoals"></div>' +
       goalAddHtml() +
       '<div class="field-label"><span>Routines</span><small>optional</small></div><div id="snPlan"></div>' +
@@ -2141,8 +2196,8 @@ function openSeasonSheet(id) {
         '</select><button class="btn" id="pAdd" type="button">Add</button></div>'
         : '<p class="hint-line">Make a routine first, then plan the season around it.</p>') +
       '<p class="warn" id="snErr" role="alert"></p>' +
-      '<button class="btn primary block" id="snSave">' + (id ? 'Save season' : 'Start season') + '</button>' +
-      (id ? '<button class="btn block" style="margin-top:10px;color:var(--accent)" id="snDelete">Delete season</button>' : '') +
+      '<button class="btn primary block" id="snSave">' + (core ? 'Done' : id ? 'Save season' : 'Start season') + '</button>' +
+      (id && !core ? '<button class="btn block" style="margin-top:10px;color:var(--accent)" id="snDelete">Delete season</button>' : '') +
     '</div>';
   openSheet();
   drawGoals();
@@ -2158,7 +2213,7 @@ function drawGoals() {
 const shareLabel = on => (on ? '✓ Shared with the crew' : 'Share with the crew');
 function drawPlan() {
   const list = SG.id ? planFor(SG.id) : SG.planPending;
-  const shared = SG.id ? !!(seasonById(SG.id) || {}).is_shared : $('snShare') && $('snShare').getAttribute('aria-pressed') === 'true';
+  const shared = SG.id ? !!(seasonById(SG.id) || {}).is_shared : !!$('snShare') && $('snShare').getAttribute('aria-pressed') === 'true';
   $('snPlan').innerHTML = list.length ? list.map((p, i) => {
     const key = p.id || 'p' + i, t = tplById(p.template_id);
     return '<div class="plan-row"><div class="row"><span><b>' + (i + 1) + '.</b> ' + esc(t ? t.name : 'A routine you can’t see') +
@@ -2226,6 +2281,7 @@ async function seasonClick(b) {
     drawGoals();
     return;
   }
+  if (b.id === 'snSave' && SG.core) { sheet.close(); render(); return; }
   if (b.id === 'snSave') {
     const name = $('snName').value.trim(), starts_on = $('snStart').value, ends_on = $('snEnd').value, is_shared = $('snShare').getAttribute('aria-pressed') === 'true';
     if (!name) { $('snErr').textContent = 'Give your season a name.'; return; }
@@ -2295,7 +2351,7 @@ function calDayDetail() {
   for (const w of sched) html += '<div class="row day-row"><span>📅 ' + esc(tplById(w.template_id).name) + '</span><span>' +
     (d === today() ? '<button class="btn primary sm" data-start="' + esc(w.template_id) + '">Start</button>' : '') +
     '<button class="iconbtn sm" data-unday="' + esc(w.id) + '" aria-label="Take it off this day">✕</button></span></div>';
-  for (const p of plan) html += '<div class="row day-row"><span>🗓 ' + esc(tplById(p.template_id).name) + ' <small class="muted">· ' + esc(p.season.name) + ' plan</small></span>' +
+  for (const p of plan) html += '<div class="row day-row"><span>🗓 ' + esc(tplById(p.template_id).name) + ' <small class="muted">· ' + esc(isCore(p.season) ? 'your week' : p.season.name + ' plan') + '</small></span>' +
     (d === today() ? '<span><button class="btn primary sm" data-start="' + esc(p.template_id) + '">Start</button></span>' : '') + '</div>';
   if (!row && !sched.length && !plan.length) html += '<p class="muted" style="margin:6px 0 0">' + (d < today() ? 'Rest day.' : 'Nothing planned yet.') + '</p>';
   if (d >= L.addDays(today(), -7)) html += '<button class="btn" style="margin-top:12px" data-cal-schedule="' + d + '">📅 Put a workout on this day</button>';
@@ -2430,6 +2486,7 @@ function renderProgress() {
   view.innerHTML =
     '<div class="seg" role="group" aria-label="Period">' +
       [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
+    goalsCard() +
     '<div class="kpis">' +
       kpi('Pounds moved', C.compact(lbEq) + ' lb', lbEq > 0 ? 'about ' + esc(L.fmtNum(cmp.times, cmp.times < 10 ? 1 : 0)) + ' × a ' + esc(cmp.thing) : 'nothing yet', w12.map(w => w.lb)) +
       kpi('Gym days', L.fmtNum(t.visits, 0), streakWeeks() ? T.icons.streak + ' ' + streakWeeks() + ' ' + T.streak : 'no streak going', w12.map(w => w.visits)) +
@@ -2643,7 +2700,7 @@ function openStarters() {
     '<div class="actions"><button class="btn" data-add-sess="' + esc(sid) + '" data-kind="workout">Add as workout</button><button class="btn ghost" data-add-sess="' + esc(sid) + '" data-kind="block">Add as block</button></div></section>';
   inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">Starter library</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><p class="hint-line" style="margin-top:0">Ready-made programs and days from TheLift. Anything you add becomes yours to change.</p>' +
-    '<h3 class="section-title">Programs</h3><p class="hint-line" style="margin-top:-4px">Sets up the workouts and a season with each one on its days. Others can join it.</p>' +
+    '<h3 class="section-title">Programs</h3><p class="hint-line" style="margin-top:-4px">Workouts on a schedule: adds them to your routines and puts each on its days in your week.</p>' +
     PROGRAMS.filter(p => !p.id.startsWith('split-')).map(prog).join('') +
     '<h3 class="section-title">Weekly splits</h3>' + PROGRAMS.filter(p => p.id.startsWith('split-')).map(prog).join('') +
     '<h3 class="section-title">Single days</h3>' + SPLIT_IDS.map(day).join('') + '</div>';
@@ -2661,7 +2718,6 @@ async function starterClick(b) {
   }
 }
 const PG = { id: null };
-function nextMonday() { const t = today(), dow = L.parseDate(t).getDay(); return dow === 1 ? t : L.addDays(t, (8 - dow) % 7 || 7); }
 function openProgramSheet(pid) {
   const p = PROGRAMS.find(x => x.id === pid);
   LG.mode = 'program'; PG.id = pid;
@@ -2671,22 +2727,14 @@ function openProgramSheet(pid) {
     '<div class="sheet-body"><p>' + esc(p.about) + '</p>' + (p.based ? '<p class="hint-line">Based on ' + esc(p.based) + '. A simplified version, not an official copy.</p>' : '') +
       '<div class="field-label"><span>Each week</span></div><div class="week-list">' +
         p.days.slice().sort((a, c) => ((a[0] + 6) % 7) - ((c[0] + 6) % 7)).map(([d, sid]) => '<div class="row"><b>' + DN[d] + '</b><span>' + esc(SESSIONS[sid].name) + '</span></div>').join('') + '</div>' +
-      '<div class="field-label"><span>Season name</span></div><input class="plain-input" id="pgName" maxlength="60" value="' + esc(p.name) + '">' +
-      '<div class="grid2"><div><div class="field-label"><span>Starts</span></div><input class="plain-input" id="pgStart" type="date" value="' + nextMonday() + '"></div>' +
-        '<div><div class="field-label"><span>Weeks</span></div><input class="plain-input" id="pgWeeks" inputmode="numeric" value="' + p.weeks + '"></div></div>' +
-      '<div class="toggles" style="margin-top:12px"><button type="button" class="toggle" id="pgShare" aria-pressed="true">' + shareLabel(true) + '</button></div>' +
-      '<p class="hint-line">Creates ' + new Set(p.days.map(d => d[1])).size + ' workouts and a season with each on its days, plus a goal to show up every session.</p>' +
-      '<p class="warn" id="pgErr" role="alert"></p><button class="btn primary block" id="pgGo">Start program</button></div>';
+      '<p class="hint-line">Adds ' + new Set(p.days.map(d => d[1])).size + ' workouts to your routines and puts each on its days in your week, so the Log tab suggests the right one. Run it for about ' + p.weeks + ' weeks.</p>' +
+      '<p class="warn" id="pgErr" role="alert"></p><button class="btn primary block" id="pgGo">Add to my week</button></div>';
   openSheet();
 }
 async function programClick(b) {
   if (b.hasAttribute('data-back-starters')) return openStarters();
-  if (b.id === 'pgShare') { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = shareLabel(on); return; }
   if (b.id !== 'pgGo') return;
   const p = PROGRAMS.find(x => x.id === PG.id);
-  const name = $('pgName').value.trim() || p.name, start = $('pgStart').value, weeks = parseInt($('pgWeeks').value, 10);
-  if (!start) return void ($('pgErr').textContent = 'Pick a start date.');
-  if (!(weeks >= 1 && weeks <= 52)) return void ($('pgErr').textContent = 'Weeks must be between 1 and 52.');
   b.disabled = true; b.textContent = 'Setting up…';
   try {
     const bySession = new Map();
@@ -2696,15 +2744,21 @@ async function programClick(b) {
       const existing = S.templates.find(t => isMine(t) && !isBlock(t) && t.name === SESSIONS[sid].name && routineItems(t.id).length);
       made.set(sid, existing || await addSession(sid, 'workout'));
     }
-    const sn = await store.addSeason({ name, starts_on: start, ends_on: L.addDays(start, weeks * 7 - 1), is_shared: $('pgShare').getAttribute('aria-pressed') === 'true' });
-    S.seasons.unshift(sn);
-    let pos = 0;
-    for (const [sid, mask] of bySession) S.plan.push(await store.addPlan({ season_id: sn.id, template_id: made.get(sid).id, position: ++pos, weekdays: mask }));
-    S.goals.push(await store.addGoal({ season_id: sn.id, metric: 'visits', unit: null, target: p.days.length * weeks, name: 'Show up ' + p.days.length * weeks + ' times', exercise_id: null, template_id: null }));
+    // Into your week: each workout pinned to its days (days already pinned to something else are freed).
+    const core = await ensureCore();
+    const mine = planFor(core.id);
+    let pos = mine.reduce((m, x) => Math.max(m, x.position || 0), 0);
+    for (const [sid, mask] of bySession) {
+      const tid = made.get(sid).id;
+      for (const other of mine) if (other.template_id !== tid && other.weekdays & mask) Object.assign(other, await store.updatePlan(other.id, { weekdays: other.weekdays & ~mask }));
+      const have = mine.find(x => x.template_id === tid);
+      if (have) Object.assign(have, await store.updatePlan(have.id, { weekdays: have.weekdays | mask }));
+      else S.plan.push(await store.addPlan({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask }));
+    }
     sheet.close();
-    openSeason(sn.id);
-    toast(name + ' is set up. The Log tab shows each day’s workout.');
-  } catch (x) { $('pgErr').textContent = x.message; b.disabled = false; b.textContent = 'Start program'; }
+    location.hash = '#routines'; render();
+    toast(p.name + ' is in your week. The Log tab suggests each day’s workout.');
+  } catch (x) { $('pgErr').textContent = x.message; b.disabled = false; b.textContent = 'Add to my week'; }
 }
 
 // ===========================================================================
@@ -2937,7 +2991,7 @@ function renderSeasons() {
   const sn = S.seasonOpen && seasonById(S.seasonOpen);
   if (sn && inSeason(sn)) return renderSeasonPage(sn);
   if (sn && !inSeason(sn)) S.seasonOpen = null;
-  const all = S.seasons || [];
+  const all = (S.seasons || []).filter(x => !isCore(x));
   const mine = all.filter(inSeason), invites = all.filter(x => !inSeason(x) && phaseOf(x) !== 'done');
   const card = x => {
     const m = seasonM(x), g = goalsDone(x);
@@ -3246,7 +3300,7 @@ function checkGoalWins() {
   const now = goalKeyDone();
   for (const k of now) if (!S.goalsDone.has(k)) {
     const [sid, gid] = k.split('|'), g = S.goals.find(x => x.id === gid), sn = seasonById(sid);
-    if (g && sn) { postWin('goal', g.name + ' · ' + sn.name, {}); toast(T.icons.goal + ' ' + T.goalToast + g.name); }
+    if (g && sn) { postWin('goal', isCore(sn) ? g.name : g.name + ' · ' + sn.name, {}); toast(T.icons.goal + ' ' + T.goalToast + g.name); }
   }
   S.goalsDone = now;
 }
@@ -3355,7 +3409,7 @@ function sessionPost(r) {
   }
   const items = [...by].slice(0, 10).map(([id, g]) => [exName(id).slice(0, 40), g.n, g.top.reps, Number(g.top.weight), g.top.unit,
     g.top.count_bodyweight && !(Number(g.top.weight) > 0) ? 1 : 0, prEx.has(id) ? 1 : 0]);
-  const t = today(), sn = (S.seasons || []).find(x => inSeason(x) && x.starts_on <= t && t <= x.ends_on);
+  const t = today(), sn = (S.seasons || []).find(x => inSeason(x) && !isCore(x) && x.starts_on <= t && t <= x.ends_on);
   const where = sn ? sn.name + ' · week ' + (Math.floor((Date.parse(t) - Date.parse(sn.starts_on)) / 864e5 / 7) + 1) : '';
   const nth = S.days.filter(d => d.performed_on >= weekOf(t) && d.performed_on <= t && d.sets > 0).length;
   return { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length,
@@ -3400,7 +3454,7 @@ function weeklyCard() {
   if (!w1.visits && !w0.visits) return '';
   const prs = S.bestRows.filter(r => r.first_lifted_on >= lastWeek && r.first_lifted_on < thisWeek).length;
   const diff = w0.lb ? Math.round((w1.lb - w0.lb) / w0.lb * 100) : null;
-  const live = (S.seasons || []).filter(x => inSeason(x) && phaseOf(x) === 'live');
+  const live = (S.seasons || []).filter(x => inSeason(x) && !isCore(x) && phaseOf(x) === 'live');
   const sabbath = streakWeeks() >= 6 && w1.visits >= 3;
   return '<section class="card weekly"><div class="card-head"><div><div class="date">' + esc(T.weekly) + ' · ' + esc(fmtDay(lastWeek, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(L.addDays(lastWeek, 6), { month: 'short', day: 'numeric' })) + '</div>' +
       '<h3 class="card-title">' + (w1.visits ? w1.visits + ' gym day' + (w1.visits === 1 ? '' : 's') + ', ' + C.compact(w1.lb) + ' lb' : esc(T.restWeek)) + '</h3></div>' +
