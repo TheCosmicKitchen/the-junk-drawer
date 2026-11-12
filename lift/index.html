@@ -238,6 +238,22 @@
   .tip { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
   .rest-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 60; display: flex; gap: 8px; align-items: center;
     background: var(--ink); color: var(--bg); border-radius: 99px; padding: 8px 8px 8px 18px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+  /* the program designer: one column on a phone, roomier on a desktop */
+  .pd-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .pd-step { display: flex; align-items: center; gap: 6px; }
+  .pd-step button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 22px; font-weight: 700; color: var(--ink); }
+  .pd-step b { min-width: 34px; text-align: center; font-size: 20px; }
+  .pd-workouts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+  .pd-workouts li { display: flex; gap: 10px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 10px 10px 12px; }
+  .pd-letter { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; font-weight: 800; }
+  .pd-w { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .pd-w small { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+  .pd-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .pd-week button { min-height: 58px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: inherit; cursor: pointer; }
+  .pd-week button small { font-size: 11px; font-weight: 700; }
+  .pd-week button b { font-size: 18px; }
+  .pd-week button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .prog-card h3 { font-size: 17px; }
   /* season packs and stamps */
   .pack-mini { display: flex; flex-wrap: wrap; gap: 6px; }
   .stamp { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }

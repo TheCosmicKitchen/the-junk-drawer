@@ -225,7 +225,7 @@ function writeSnap() {
     recent: S.recent.filter(x => x._sync !== 'waiting').map(x => { const { _sync, ...rest } = x; return rest; }), days: days.filter(d => d.sets > 0), bests: S.bestRows,
     routines: { templates: S.templates, items: S.items, subs: S.subs },
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
-    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows,
+    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows, programs: S.programs,
   };
   try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld] })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
@@ -249,11 +249,12 @@ function fetchAll() {
     store.routines(), store.seasons(), store.memberNames(), store.userId(),
     store.workoutDays(today()), store.bodyweights(),
     Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps }));
+    Promise.resolve().then(() => store.programs()).catch(() => []),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs }) {
   S.wdays = wdays;
-  S.runs = runs || []; S.stampRows = stamps || [];
+  S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || [];
   S.bw = bw;
   if (bw.length && prefs.bodyweight == null && bw[0].unit === prefs.unit) prefs.bodyweight = Number(bw[0].weight);
   setRoutines(routines);
@@ -439,6 +440,9 @@ view.addEventListener('click', async e => {
   else if (b.dataset.packLeave) leavePack(b.dataset.packLeave, b);
   else if (b.dataset.trySkin) trySkin(b.dataset.trySkin);
   else if (b.hasAttribute('data-core-edit')) openCore(b);
+  else if (b.dataset.progUse) { const p = progById(b.dataset.progUse); if (p) addProgramToWeek(p, b); }
+  else if (b.dataset.progEdit) openProgramDesigner(b.dataset.progEdit);
+  else if (b.hasAttribute('data-prog-new')) openProgramDesigner(null);
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
   else if (b.dataset.seen) { const t = S.templates.find(x => x.id === b.dataset.seen); if (t) { markSeen(t); render(); } }
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
@@ -868,7 +872,7 @@ const LG = { mode: 'pick', exId: null, editing: null };
 // Sheets with something to type in (search, routine editor, seasons) open full height,
 // so the text box sits at the top instead of down where the phone keyboard pops up.
 function openSheet() {
-  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk', 'wizard'].includes(LG.mode));
+  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk', 'wizard', 'progdesign'].includes(LG.mode));
   if (!sheet.open) sheet.showModal();
 }
 function closeSheet() { flushSaves(); if (sheet.open) sheet.close(); render(); }
@@ -1162,6 +1166,7 @@ inner.addEventListener('click', async e => {
   if (LG.mode === 'wizard') return wizardClick(b);
   if (LG.mode === 'newpick') return newPickClick(b);
   if (LG.mode === 'starters') return starterClick(b);
+  if (LG.mode === 'progdesign') return programDesignerClick(b);
   if (LG.mode === 'program') return programClick(b);
   if (LG.mode === 'pickwk') return pickWkClick(b);
   if (LG.mode === 'sched') return schedClick(b);
@@ -1361,7 +1366,7 @@ function renderRoutines() {
   };
   view.innerHTML =
     '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.routines) + '</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
-    comingUp() + weekCard() +
+    comingUp() + weekCard() + programsSection() +
     '<h3 class="section-title">Workouts</h3>' +
     (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
       : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
@@ -2746,20 +2751,171 @@ async function programClick(b) {
       made.set(sid, existing || await addSession(sid, 'workout'));
     }
     // Into your week: each workout pinned to its days (days already pinned to something else are freed).
-    const core = await ensureCore();
-    const mine = planFor(core.id);
-    let pos = mine.reduce((m, x) => Math.max(m, x.position || 0), 0);
-    for (const [sid, mask] of bySession) {
-      const tid = made.get(sid).id;
-      for (const other of mine) if (other.template_id !== tid && other.weekdays & mask) Object.assign(other, await store.updatePlan(other.id, { weekdays: other.weekdays & ~mask }));
-      const have = mine.find(x => x.template_id === tid);
-      if (have) Object.assign(have, await store.updatePlan(have.id, { weekdays: have.weekdays | mask }));
-      else S.plan.push(await store.addPlan({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask }));
-    }
+    await pinToWeek([...bySession].map(([sid, mask]) => [made.get(sid).id, mask]));
     sheet.close();
     location.hash = '#routines'; render();
     toast(p.name + ' is in your week. The Log tab suggests each day’s workout.');
   } catch (x) { $('pgErr').textContent = x.message; b.disabled = false; b.textContent = 'Add to my week'; }
+}
+
+// ===========================================================================
+// Programs anyone designs. A program is one document (the lift_programs table): its weeks, a short
+// note, its workouts (snapshots of routines: exercise, sets, reps, how the weight is set) and which
+// day each goes on. Yours to edit; share it and the crew can add it to their own week, which
+// copies its workouts into their routines and pins them to their days.
+// ===========================================================================
+const PDAYS = [1, 2, 3, 4, 5, 6, 0];   // Monday first
+const LETTERS = 'ABCDEFG';
+const PD = { id: null, name: '', weeks: 8, about: '', shared: false, workouts: [], days: {}, err: '' };
+const progById = id => (S.programs || []).find(p => p.id === id);
+const progWorkoutText = w => w.steps.map(s => exName(s.exercise_id) + ' ' + s.sets + '×' + s.reps).join(' · ');
+// Snapshot a routine as a program workout.
+function snapRoutine(t) {
+  return { key: 'w' + Math.random().toString(36).slice(2, 8), name: t.name.slice(0, 60),
+    steps: routineItems(t.id).map(it => ({ exercise_id: it.exercise_id, sets: it.sets, reps: it.reps, load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s, note: it.note || null })) };
+}
+// About how long a session takes, and how many working sets: for the "is this sensible?" line.
+function sessionSize(w) {
+  const sets = w.steps.reduce((n, s) => n + s.sets, 0);
+  const min = w.steps.reduce((m, s) => m + s.sets * ((s.rest_s || (s.reps <= 5 ? 150 : 90)) / 60 + 0.75), 0);
+  return { sets, min: Math.round(min / 5) * 5 };
+}
+function openProgramDesigner(id) {
+  const p = id ? progById(id) : null;
+  Object.assign(PD, p ? { id: p.id, name: p.name, weeks: p.doc.weeks || 8, about: p.doc.about || '', shared: !!p.is_shared,
+      workouts: JSON.parse(JSON.stringify(p.doc.workouts || [])), days: Object.fromEntries((p.doc.days || []).map(([d, k]) => [d, k])) }
+    : { id: null, name: '', weeks: 8, about: '', shared: false, workouts: [], days: {} });
+  PD.err = '';
+  LG.mode = 'progdesign';
+  drawProgramDesigner();
+  openSheet();
+  if (!id) setTimeout(() => { const n = $('pdName'); if (n) n.focus(); }, 60);
+}
+function drawProgramDesigner() {
+  const letter = k => LETTERS[PD.workouts.findIndex(w => w.key === k)] || '?';
+  const mine = S.templates.filter(t => !isBlock(t) && routineItems(t.id).length).sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
+  const perWeek = PDAYS.filter(d => PD.days[d] && PD.workouts.some(w => w.key === PD.days[d])).length;
+  const sizes = PD.workouts.map(sessionSize), most = sizes.reduce((m, s) => (s.sets > m.sets ? s : m), { sets: 0, min: 0 });
+  const check = !PD.workouts.length ? '' : most.sets > 26 ? '⚠️ Your biggest day is ' + most.sets + ' working sets (about ' + most.min + ' min). That’s a lot for one session.'
+    : most.sets < 6 ? 'Light: your biggest day is only ' + most.sets + ' working sets.' : 'About ' + most.min + ' min on the biggest day, ' + most.sets + ' working sets. Sensible.';
+  inner.innerHTML =
+    '<div class="sheet-head"><h2 id="sheetTitle">' + (PD.id ? 'Edit program' : 'New program') + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body pd">' +
+      '<div class="field-label"><span>Name</span></div><input class="plain-input" id="pdName" maxlength="60" value="' + esc(PD.name) + '" placeholder="e.g. Big Three Builder">' +
+      '<div class="pd-row"><div><div class="field-label"><span>Weeks</span></div><div class="pd-step"><button type="button" data-pd-weeks="-1" aria-label="Fewer weeks">−</button><b>' + PD.weeks + '</b><button type="button" data-pd-weeks="1" aria-label="More weeks">+</button></div></div>' +
+        '<div style="flex:1"><div class="field-label"><span>About</span><small>optional</small></div><input class="plain-input" id="pdAbout" maxlength="200" value="' + esc(PD.about) + '" placeholder="Who it’s for, how it works"></div></div>' +
+      '<div class="field-label" style="margin-top:18px"><span>Workouts</span><small>' + PD.workouts.length + '</small></div>' +
+      (PD.workouts.length ? '<ol class="pd-workouts">' + PD.workouts.map((w, i) => { const sz = sessionSize(w);
+        return '<li><span class="pd-letter">' + LETTERS[i] + '</span><div class="pd-w"><b>' + esc(w.name) + '</b><small>' + esc(progWorkoutText(w)) + '</small><small class="muted">' + sz.sets + ' working sets · about ' + sz.min + ' min</small></div>' +
+          '<button type="button" class="iconbtn sm" data-pd-del="' + esc(w.key) + '" aria-label="Remove ' + esc(w.name) + '">✕</button></li>'; }).join('') + '</ol>'
+        : '<p class="hint-line" style="margin:0 2px 8px">Add the workouts this program uses, from your routines (or the crew’s).</p>') +
+      (PD.workouts.length < 7 ? (mine.length ? '<div class="goal-add"><select class="plain-input" id="pdRoutine" aria-label="Routine to add">' +
+          mine.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name + (isMine(t) ? '' : ' (by ' + ownerName(t) + ')')) + '</option>').join('') +
+          '</select><button class="btn" type="button" id="pdAdd">Add</button></div>'
+        : '<p class="hint-line">Make a routine first (Routines → + New → A workout), then add it here.</p>') : '') +
+      '<div class="field-label" style="margin-top:18px"><span>The week</span><small>tap a day to choose its workout</small></div>' +
+      '<div class="pd-week" role="group" aria-label="The week">' + PDAYS.map(d => { const k = PD.days[d], has = k && PD.workouts.some(w => w.key === k);
+        return '<button type="button" data-pd-day="' + d + '" class="' + (has ? 'on' : '') + '" aria-label="' + DAY_NAMES[d] + ': ' + (has ? PD.workouts.find(w => w.key === k).name : 'rest') + '"><small>' + DAY_NAMES[d] + '</small><b>' + (has ? letter(k) : '·') + '</b></button>'; }).join('') + '</div>' +
+      '<p class="hint-line">' + (perWeek ? perWeek + (perWeek === 1 ? ' day' : ' days') + ' a week. ' : '') + esc(check) + '</p>' +
+      '<div class="toggles" style="margin-top:12px"><button type="button" class="toggle" id="pdShare" aria-pressed="' + PD.shared + '">' + (PD.shared ? '✓ Shared with the crew' : 'Share with the crew') + '</button></div>' +
+      '<p class="warn" id="pdErr" role="alert">' + esc(PD.err) + '</p>' +
+      '<button class="btn primary block" id="pdSave">' + (PD.id ? 'Save program' : 'Save program') + '</button>' +
+      (PD.id ? '<button class="btn block" style="margin-top:10px" id="pdUse">Add to my week</button><button class="btn block ghost" style="margin-top:10px;color:var(--accent)" id="pdDelete">Delete program</button>' : '') +
+    '</div>';
+}
+function pdReadFields() { const n = $('pdName'), a = $('pdAbout'); if (n) PD.name = n.value; if (a) PD.about = a.value; }
+async function programDesignerClick(b) {
+  pdReadFields();
+  if (b.dataset.pdWeeks) { PD.weeks = Math.max(1, Math.min(52, PD.weeks + Number(b.dataset.pdWeeks))); return drawProgramDesigner(); }
+  if (b.id === 'pdAdd') {
+    const t = tplById($('pdRoutine').value); if (!t) return;
+    const w = snapRoutine(t); PD.workouts.push(w);
+    // The first time, put workouts on a sensible starting week: Mon/Wed/Fri for up to three.
+    const free = [1, 3, 5, 2, 4, 6, 0].find(d => !PD.days[d]); if (free != null && PD.workouts.length <= 3) PD.days[free] = w.key;
+    return drawProgramDesigner();
+  }
+  if (b.dataset.pdDel) { PD.workouts = PD.workouts.filter(w => w.key !== b.dataset.pdDel); for (const d in PD.days) if (PD.days[d] === b.dataset.pdDel) delete PD.days[d]; return drawProgramDesigner(); }
+  if (b.dataset.pdDay != null) {   // rest → A → B → … → rest
+    const d = b.dataset.pdDay, keys = PD.workouts.map(w => w.key), i = keys.indexOf(PD.days[d]);
+    if (i + 1 < keys.length) PD.days[d] = keys[i + 1]; else delete PD.days[d];
+    return drawProgramDesigner();
+  }
+  if (b.id === 'pdShare') { PD.shared = !PD.shared; return drawProgramDesigner(); }
+  if (b.id === 'pdSave') return saveProgram(b);
+  if (b.id === 'pdUse') { const p = progById(PD.id); if (p) return addProgramToWeek(p, b); }
+  if (b.id === 'pdDelete') {
+    if (!confirm('Delete “' + PD.name + '”? Anyone who already added it keeps their copy.')) return;
+    try { await store.removeProgram(PD.id); S.programs = S.programs.filter(p => p.id !== PD.id); sheet.close(); render(); toast('Program deleted'); } catch (x) { fail(x); }
+  }
+}
+async function saveProgram(b) {
+  const name = PD.name.trim().replace(/\s+/g, ' ');
+  PD.err = !name ? 'Give your program a name.' : !PD.workouts.length ? 'Add at least one workout.' : !Object.keys(PD.days).length ? 'Put at least one workout on a day.' : '';
+  if (PD.err) return drawProgramDesigner();
+  const doc = { v: 1, kind: 'program', weeks: PD.weeks, about: PD.about.trim().slice(0, 200), workouts: PD.workouts,
+    days: Object.entries(PD.days).filter(([, k]) => PD.workouts.some(w => w.key === k)).map(([d, k]) => [Number(d), k]) };
+  b.disabled = true;
+  try {
+    const row = PD.id ? await store.updateProgram(PD.id, { name, doc, is_shared: PD.shared }) : await store.addProgram({ name, doc, is_shared: PD.shared });
+    S.programs = [row].concat((S.programs || []).filter(p => p.id !== row.id));
+    PD.id = row.id;
+    toast(PD.shared ? 'Saved and shared with the crew.' : 'Saved. Share it whenever you like.');
+    drawProgramDesigner();
+  } catch (x) { PD.err = x.message; b.disabled = false; drawProgramDesigner(); }
+}
+// Add a program to your week: its workouts become your routines (one you already made from it is
+// reused), each pinned to its days; days already pinned to something else are freed.
+async function addProgramToWeek(p, b) {
+  if (b) b.disabled = true;
+  try {
+    const made = new Map();
+    for (const w of p.doc.workouts || []) {
+      const name = w.name.slice(0, 60);
+      let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name && routineItems(x.id).length);
+      if (!t) {
+        t = await store.addRoutine({ name, kind: 'workout', notes: null });
+        S.templates.push(t);
+        let pos = 0;
+        for (const s of w.steps) {
+          if (!S.byId.get(s.exercise_id)) continue;
+          const it = await store.addItem({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, reps: s.reps,
+            load_mode: s.load_mode || 'last', load_value: s.load_value ?? 0, unit: s.unit || lastLoad(s.exercise_id).unit, rest_s: s.rest_s ?? null, note: s.note || null });
+          S.items.push(it); S.itemsById.set(it.id, it);
+        }
+      }
+      made.set(w.key, t);
+    }
+    const masks = new Map();
+    for (const [d, k] of p.doc.days || []) if (made.has(k)) masks.set(k, (masks.get(k) || 0) | (1 << d));
+    await pinToWeek([...masks].map(([k, mask]) => [made.get(k).id, mask]));
+    if (sheet.open) sheet.close();
+    location.hash = '#routines'; render();
+    toast(p.name + ' is in your week. The Log tab suggests each day’s workout.');
+  } catch (x) { fail(x); if (b) b.disabled = false; }
+}
+async function pinToWeek(pairs) {   // [[template id, weekday mask]]
+  const core = await ensureCore();
+  const mine = planFor(core.id);
+  let pos = mine.reduce((m, x) => Math.max(m, x.position || 0), 0);
+  for (const [tid, mask] of pairs) {
+    for (const other of mine) if (other.template_id !== tid && other.weekdays & mask) Object.assign(other, await store.updatePlan(other.id, { weekdays: other.weekdays & ~mask }));
+    const have = mine.find(x => x.template_id === tid);
+    if (have) Object.assign(have, await store.updatePlan(have.id, { weekdays: have.weekdays | mask }));
+    else S.plan.push(await store.addPlan({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask }));
+  }
+}
+// The Programs section on Routines: yours, then the crew's shared ones.
+function programsSection() {
+  const list = S.programs || [];
+  const days = p => (p.doc.days || []).length;
+  const card = p => '<section class="card prog-card"><div class="row"><div><h3 style="margin:0">' + esc(p.name) + '</h3>' +
+      '<small class="muted">' + esc([p.doc.weeks + ' weeks', days(p) + ' days a week', (p.doc.workouts || []).length + ' workouts', isMine(p) ? (p.is_shared ? 'shared' : 'only you') : 'by ' + ownerName(p)].join(' · ')) + '</small></div></div>' +
+    (p.doc.about ? '<p class="hint-line" style="margin:6px 0 0">' + esc(p.doc.about) + '</p>' : '') +
+    '<div class="actions"><button class="btn primary" data-prog-use="' + esc(p.id) + '">Add to my week</button>' + (isMine(p) ? '<button class="btn" data-prog-edit="' + esc(p.id) + '">Edit</button>' : '') + '</div></section>';
+  const mine = list.filter(isMine), crew = list.filter(p => !isMine(p));
+  return '<h3 class="section-title">Programs</h3>' +
+    (mine.length ? mine.map(card).join('') : '<section class="card empty"><p class="muted" style="margin:0">Design a program: workouts on a weekly schedule, ready to share.</p><div class="actions"><button class="btn primary" data-prog-new>+ New program</button></div></section>') +
+    (crew.length ? '<h3 class="section-title">From the crew</h3>' + crew.map(card).join('') : '');
 }
 
 // ===========================================================================
@@ -3256,7 +3412,7 @@ function openNewChooser() {
     '<div class="sheet-body"><ul class="results new-list">' +
       opt('workout', '🏋️', 'A workout', 'What you do on a day. Type it, tick exercises, or stack blocks.') +
       opt('season', '🏆', 'A season', 'A stretch of dates with goals, alone or with the crew.') +
-      opt('program', '📚', 'A program', 'A ready-made plan: workouts plus a season, set up for you.') +
+      opt('program', '📚', 'A program', 'Workouts on a weekly schedule. Share it, and the crew can add it to their week.') +
       opt('block', '🧩', 'A block', 'A small chunk you reuse in workouts, like “Bench & triceps”.') +
     '</ul></div>';
   openSheet();
@@ -3265,7 +3421,7 @@ async function newPickClick(b) {
   const k = b.dataset.newKind;
   if (!k) return;
   if (k === 'season') return openWizard();
-  if (k === 'program') return openStarters();
+  if (k === 'program') return openProgramDesigner(null);
   return newRoutine(b, k);
 }
 
