@@ -24,6 +24,8 @@
 //   { doors: n }                     n calendar doors (daily tasks) opened
 //   { weeks: n, each: d }            the first n weeks of the run each had d days or more
 //   { beat: [names] }                a better estimated 1-rep max in the run's last week than its first
+//   { record: [names] }              a better estimated 1-rep max during the run than ever before it
+// A stamp can carry art: a small line drawing (24 x 24) drawn in white on its colour; else its mark.
 
 const SQUAT = ['Back Squat', 'Front Squat', 'Goblet Squat', 'Hack Squat', 'Leg Press', 'Safety-Bar Squat'];
 const BENCH = ['Barbell Bench Press', 'Dumbbell Bench Press', 'Incline Barbell Press', 'Machine Chest Press', 'Push-ups'];
@@ -124,29 +126,47 @@ export const PACKS = {
 
   strongman: {
     key: 'strongman', name: 'The Strongman Spectacular', theme: 'circus', kind: 'event', from: '07-01', to: '07-14',
-    blurb: 'Roll up! Two weeks under the big top every July. A new act each day: lift the pony, walk the elephant, press the circus dumbbell. Acts you miss stay open until closing night.',
+    blurb: 'Roll up! Two weeks under the big top every July: strongman acts and carnival games. Lift the pony, walk the elephant, win the ring toss, ring the bell. Acts you miss stay open until closing night.',
     calendar: { title: 'Tonight’s programme', one: 'Act', many: 'Acts' },
     doors: [
-      { name: 'The Pony Lift', lifts: DEAD, sets: 3 }, { name: 'The Circus Dumbbell', lifts: OHP, sets: 3 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 3 },
-      { name: 'The Human Pyramid', lifts: SQUAT, sets: 3 }, { name: 'The Iron Jaw', lifts: CORE, sets: 3 }, { name: 'The Tightrope', lifts: LUNGE, sets: 3 },
-      { name: 'The Flying Trapeze', lifts: PULL, sets: 3 }, { name: 'The Strongman’s Row', lifts: ROW, sets: 3 }, { name: 'The Cannonball', lifts: SWING, sets: 3 },
-      { name: 'The Anvil Press', lifts: BENCH, sets: 3 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 4 }, { name: 'The Pony Lift', lifts: DEAD, sets: 4 },
-      { name: 'The Circus Dumbbell', lifts: OHP, sets: 4 }, { name: 'Closing Night', workout: 'finale' },
+      { name: 'The Pony Lift', lifts: DEAD, sets: 3 }, { name: 'Test Your Strength', lifts: SWING, sets: 3 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 3 },
+      { name: 'Ring Toss', lifts: OHP, sets: 3 }, { name: 'The Human Pyramid', lifts: SQUAT, sets: 3 }, { name: 'Tug of War', lifts: ROW, sets: 3 },
+      { name: 'The Flying Trapeze', lifts: PULL, sets: 3 }, { name: 'Whack-a-Mole', lifts: PUSHUP, sets: 3 }, { name: 'The Iron Jaw', lifts: CORE, sets: 3 },
+      { name: 'The Tightrope', lifts: LUNGE, sets: 3 }, { name: 'Test Your Strength', lifts: SWING, sets: 4 }, { name: 'The Anvil Press', lifts: BENCH, sets: 3 },
+      { name: 'The Pony Lift', lifts: DEAD, sets: 4 }, { name: 'Closing Night', workout: 'finale' },
     ],
     workouts: [
       { key: 'opening', name: 'Opening Night', steps: [[DEAD, 3, 5, 'The Pony Lift'], [OHP, 3, 5, 'The Circus Dumbbell'], [CARRY, 3, 1, 'The Elephant Walk']] },
+      { key: 'midway', name: 'The Midway', steps: [[SWING, 4, 10, 'Test Your Strength'], [OHP, 3, 8, 'Ring Toss'], [ROW, 3, 10, 'Tug of War'], [PUSHUP, 3, 10, 'Whack-a-Mole']] },
       { key: 'ring', name: 'The Main Ring', steps: [[SQUAT, 5, 5, 'The Human Pyramid'], [PULL, 4, 6, 'The Flying Trapeze'], [CORE, 3, 10, 'The Iron Jaw']] },
       { key: 'finale', name: 'Closing Night', steps: [[DEAD, 1, 5, 'The Pony Lift'], [SQUAT, 1, 5, 'The Human Pyramid'], [OHP, 1, 5, 'The Circus Dumbbell'], [BENCH, 1, 5, 'The Anvil Press'], [CARRY, 2, 1, 'The Elephant Walk']] },
     ],
+    // Each stamp's art is a small line drawing (24 x 24), drawn in white on the stamp's colour.
     stamps: [
-      { key: 'first-act', name: 'First act', mark: 'I', color: '#c8102e', hint: 'Perform an act', rule: { doors: 1 } },
-      { key: 'seven-acts', name: 'Seven acts', mark: 'VII', color: '#b8860b', hint: 'Perform 7 acts', rule: { doors: 7 } },
-      { key: 'every-act', name: 'Every act', mark: '★', color: '#c8102e', hint: 'Perform all 14 acts', rule: { doors: 14 } },
-      { key: 'pony', name: 'Lifted the pony', mark: '♞', color: '#1f3a6e', hint: '5 heavy sets of deadlift (3+ reps) in a day', rule: { lift: DEAD, sets: 5, reps: 3 } },
-      { key: 'elephant', name: 'Walked the elephant', mark: '⚖', color: '#1f3a6e', hint: '4 carries in a day', rule: { lift: CARRY, sets: 4, reps: 1 } },
-      { key: 'opening', name: 'Opening night', mark: '🎟', color: '#c8102e', hint: 'Finish Opening Night', rule: { workout: 'opening' } },
-      { key: 'ring', name: 'The main ring', mark: '◎', color: '#b8860b', hint: 'Finish The Main Ring', rule: { workout: 'ring' } },
-      { key: 'finale', name: 'Closing night', mark: '✦', color: '#c8102e', hint: 'Finish the Closing Night workout', rule: { workout: 'finale' } },
+      { key: 'first-act', name: 'Admit one', mark: 'I', color: '#c8102e', hint: 'Perform your first act', rule: { doors: 1 },
+        art: '<path d="M3 8h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M14 8v10" stroke-dasharray="2 2"/>' },
+      { key: 'bell', name: 'Rang the bell', mark: '♪', color: '#a8780a', hint: 'Beat your best estimated max on a big lift during the Spectacular', rule: { record: [...DEAD, ...SQUAT, ...BENCH, ...OHP] },
+        art: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0M12 3v2M3 7l2 1M21 7l-2 1"/>' },
+      { key: 'pony', name: 'Lifted the pony', mark: '♞', color: '#1f3a6e', hint: '5 deadlift sets of 3 or more in a day', rule: { lift: DEAD, sets: 5, reps: 3 },
+        art: '<path d="M7 4v8a5 5 0 0 0 10 0V4"/><path d="M5 4h4M15 4h4"/><circle cx="7" cy="8" r=".6"/><circle cx="17" cy="8" r=".6"/><circle cx="8.6" cy="13.5" r=".6"/><circle cx="15.4" cy="13.5" r=".6"/>' },
+      { key: 'elephant', name: 'Walked the elephant', mark: '⚖', color: '#5a5f6e', hint: '4 carries in a day', rule: { lift: CARRY, sets: 4, reps: 1 },
+        art: '<path d="M4 16c0-5 3-8 8-8s8 3 8 7v5h-3v-3h-3v3h-3v-3H8v3H5v-3"/><path d="M20 15c1.2 1 1.2 3.5 0 4.5"/><circle cx="15.5" cy="11.5" r=".8"/><path d="M11 8c-1 2-1 4 1 5"/>' },
+      { key: 'ring-toss', name: 'Ring toss champ', mark: '◯', color: '#c8102e', hint: '4 overhead press sets of 5 or more in a day', rule: { lift: OHP, sets: 4, reps: 5 },
+        art: '<path d="M10 3h4v3l2 3v12H8V9l2-3z"/><ellipse cx="12" cy="13" rx="7" ry="2.2"/>' },
+      { key: 'tug', name: 'Won the tug of war', mark: '≈', color: '#2f7d4f', hint: '4 rowing sets of 8 or more in a day', rule: { lift: ROW, sets: 4, reps: 8 },
+        art: '<path d="M3 12c2.5-2 4.5 2 7 0s4.5 2 7 0 2.5-1 4 0"/><path d="M5 8l-3 4 3 4M19 8l3 4-3 4"/>' },
+      { key: 'seven-acts', name: 'Half the bill', mark: 'VII', color: '#a8780a', hint: 'Perform 7 acts', rule: { doors: 7 },
+        art: '<path d="M3 20c1-6 4-11 9-15 5 4 8 9 9 15z"/><path d="M12 5v15M7.5 20c0-4 2-8 4.5-11M16.5 20c0-4-2-8-4.5-11M12 5V2l3 1.2L12 4.4"/>' },
+      { key: 'every-act', name: 'Every act', mark: '★', color: '#c8102e', hint: 'Perform all 14 acts', rule: { doors: 14 },
+        art: '<circle cx="12" cy="12" r="9"/><path d="M12 6.5l1.6 3.4 3.7.5-2.7 2.6.7 3.7L12 15l-3.3 1.7.7-3.7-2.7-2.6 3.7-.5z"/>' },
+      { key: 'opening', name: 'Opening night', mark: '🎟', color: '#1f3a6e', hint: 'Finish Opening Night', rule: { workout: 'opening' },
+        art: '<path d="M3 4h18"/><path d="M4 4v16c3.5 0 5.5-6 5.5-16M20 4v16c-3.5 0-5.5-6-5.5-16"/>' },
+      { key: 'midway', name: 'Played the midway', mark: '◎', color: '#2f7d4f', hint: 'Finish The Midway', rule: { workout: 'midway' },
+        art: '<circle cx="12" cy="10" r="7"/><path d="M12 3v14M5 10h14M7 5l10 10M17 5L7 15M8 21l4-4 4 4"/>' },
+      { key: 'ring', name: 'The main ring', mark: '◉', color: '#a8780a', hint: 'Finish The Main Ring', rule: { workout: 'ring' },
+        art: '<ellipse cx="12" cy="15" rx="9" ry="4"/><path d="M12 11V4M9 6l3-2 3 2M7 15h10"/>' },
+      { key: 'finale', name: 'Closing night', mark: '✦', color: '#c8102e', hint: 'Finish the Closing Night workout', rule: { workout: 'finale' },
+        art: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/><circle cx="12" cy="12" r="1.6"/>' },
     ],
   },
 };
@@ -201,6 +221,10 @@ export function progress(pack, run, sets, h) {
       const per = new Map(); for (const d of days) per.set(week(d), (per.get(week(d)) || 0) + 1);
       let ok = true; for (let w = 1; w <= r.weeks; w++) if ((per.get(w) || 0) < r.each) ok = false;
       if (ok) on = days.filter(d => week(d) <= r.weeks).pop() || null;
+    } else if (r.record) {
+      const ids = h.ids(r.record), before = new Map();
+      for (const s of sets) if (s.performed_on < from && s.is_warmup !== true && ids.has(s.exercise_id)) { const e = h.e1rm(Number(s.weight), s.reps) || 0; if (e > (before.get(s.exercise_id) || 0)) before.set(s.exercise_id, e); }
+      on = days.find(d => byDay.get(d).some(s => ids.has(s.exercise_id) && before.has(s.exercise_id) && (h.e1rm(Number(s.weight), s.reps) || 0) > before.get(s.exercise_id))) || null;
     } else if (r.beat) {
       const ids = h.ids(r.beat), best = list => { const m = new Map(); for (const s of list) if (ids.has(s.exercise_id)) { const e = h.e1rm(Number(s.weight), s.reps) || 0; if (e > (m.get(s.exercise_id) || 0)) m.set(s.exercise_id, e); } return m; };
       const lastWeek = pack.weeks, first = best(mine.filter(s => week(s.performed_on) === 1));

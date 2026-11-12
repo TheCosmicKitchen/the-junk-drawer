@@ -614,7 +614,7 @@ export const THEMES = {
     },
   }),
 
-  circus: theme('circus', 'The Iron Big Top', 'Red and cream stripes, gold leaf and an old-time strongman', {
+  circus: theme('circus', 'The Iron Big Top', 'Red and cream stripes, gold leaf, an old-time strongman and a high striker', {
     seasonWord: 'Tour', seasonsWord: 'Tours', eventWord: 'Spectacular', eventsWord: 'Spectaculars',
     stamp: 'Ticket stub', stamps: 'Ticket stubs', stampBook: 'The scrapbook', stampFrame: '4px', stampToast: 'A ticket stub for the scrapbook: ',
     tabIcons: { log: '<circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/>', routines: '<path d="M3 20L12 4l9 16z"/><path d="M12 4v16M7.5 12h9"/>', history: '<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z"/><path d="M15 7v12" stroke-dasharray="2 2"/>', seasons: '<path d="M3 20c0-6 4-11 9-14 5 3 9 8 9 14"/><path d="M12 6V2l3 1.5L12 5M3 20h18M9 20v-4a3 3 0 0 1 6 0v4"/>', progress: '<path d="M12 3l2.4 5 5.6.6-4.2 3.8 1.2 5.5L12 15.2 7 17.9l1.2-5.5L4 8.6 9.6 8z"/>' },
@@ -636,17 +636,17 @@ export const THEMES = {
     ended: 'Take a bow. What a show.', endedFeed: 'Take a bow. It’s on the bill.', endedClock: '✓ Curtain · ',
     routineDone: '🎉 Every act performed.', routineBtn: 'Show complete 🎪',
     emptyH: 'The tent is up.', emptyP: 'Log a set and the show begins.',
-    prToast: '🌟 A marvel of strength! ', clubToast: '🎪 A new pennant: welcome to the ', goalToast: 'Promise kept: ',
+    prToast: '🌟 A marvel of strength! ', clubToast: '🔔 Ding! A new notch: welcome to the ', goalToast: 'Promise kept: ',
     pr: 'marvel', prs: 'marvels',
     prFlag: (reps, was) => 'A marvel of strength! Your best at ' + reps + ' reps was ' + was,
     winPr: ex => 'A marvel of strength on ' + ex + ': ',
-    clubs: 'The bunting', clubsSub: n => 'one pennant raised for each of the ' + n + ' clubs joined',
-    clubsLabel: (n, next) => n + ' pennants on the big top, one for each club; the next one flutters as you near the ' + next,
+    clubs: 'Test your strength', clubsSub: n => 'one notch lit for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => 'A high striker with ' + n + ' notches lit, one for each club; the puck climbs toward the bell as you near the ' + next,
     weekly: 'Last week’s bill', streak: 'weeks on tour', restWeek: 'A week off the road',
     rest: n => n + ' weeks on tour in a row. Consider a week off the road: same lifts at about 60% of the weight, then raise the tent again.',
-    feed: 'The ringmaster’s board', feedSub: 'the crew’s marvels', feedEmpty: 'Marvels, pennants, promises, strongmen and shows from the crew get announced here.',
+    feed: 'The ringmaster’s board', feedSub: 'the crew’s marvels', feedEmpty: 'Marvels, bells rung, promises, strongmen and shows from the crew get announced here.',
     icons: { pr: '🌟', club: '🎪', goal: '🎯', session: '🎭', record: '🦁', quest: '🤹', holder: '🦁', questOpen: '🤹', rest: '🎠', dry: '🤡', stamp: '🎟️' },
-    win: { club: 'Raised a pennant: the ', record: 'Strongest in the world: ', quest: 'Pulled off a stunt: ', goal: 'Kept a promise: ', session: 'Put on a show: ', stamp: 'Kept a ticket stub: ' },
+    win: { club: 'Hit a new notch: the ', record: 'Strongest in the world: ', quest: 'Pulled off a stunt: ', goal: 'Kept a promise: ', session: 'Put on a show: ', stamp: 'Kept a ticket stub: ' },
     records: 'Strongest in the world', holderCol: 'Strongman', recordsBlurb: 'Out-lift the strongman and the leopard-print leotard is yours.', recordToast: '🦁 Strongest in the world: the crew record on ',
     quests: 'Stunts', questsSub: 'this week’s stunts, the same for the whole troupe', questDone: '🤹 Stunt pulled off: ',
     goals: 'Promises', goalsKept: 'Promises kept', plan: 'The running order', points: 'tickets', pointsEarned: 'tickets sold',
@@ -654,22 +654,31 @@ export const THEMES = {
     ach: { first_visit: 'Joined the circus.', five_visits: 'Five shows. The crowd knows your name.', twenty_visits: 'Twenty gym days. Top of the bill.', first_pr: 'A new best for an exercise and rep count. A marvel of strength.' },
     achTitle: { first_visit: 'Ran Away to the Circus', first_pr: 'First Marvel' },
     bar: { fill: 'repeating-linear-gradient(90deg, var(--accent) 0 10px, var(--card) 10px 20px)', end: '🐘', flip: true, goal: '🎪' },
-    // One big top with bunting strung across it: each club raises a pennant, the next one flutters as
-    // you near it, and the lights come on when all twelve are up (then a new tent).
+    // Test Your Strength: the carnival high striker. Each club lights a notch up the tower, the puck
+    // climbs toward the next one as you near it, and the bell rings at twelve (then a fresh tower).
     rack: (lit, ratio) => {
       const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
-      let s = '<path d="M90 126 L104 70 Q160 36 216 70 L230 126 Z" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
-        [0, 1, 2, 3].map(i => '<path d="M' + (104 + i * 28) + ' 70 Q' + (118 + i * 28) + ' 50 ' + (132 + i * 28) + ' 58 L' + (146 + i * 28 - 14) + ' 126 H' + (118 + i * 28 - 14 + 14) + ' Z" fill="var(--accent)" opacity=".85"/>').join('') +
-        '<path d="M150 126v-26a10 10 0 0 1 20 0v26z" fill="var(--ink)" opacity=".8"/><path d="M160 36V14l14 6-14 6" fill="var(--gold)"/>' +
-        '<path d="M18 30 Q160 74 302 30" fill="none" stroke="var(--muted)" stroke-width="1.5"/>';
+      const top = 22, bottom = 116, step = (bottom - top) / 12, y = i => bottom - (i + 0.5) * step;
+      let s = '<rect x="146" y="' + top + '" width="28" height="' + (bottom - top) + '" rx="3" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
+        '<rect x="158" y="' + top + '" width="4" height="' + (bottom - top) + '" fill="var(--line)"/>';
       for (let i = 0; i < 12; i++) {
-        const t = (i + 0.5) / 12, x = (1 - t) * (1 - t) * 18 + 2 * (1 - t) * t * 160 + t * t * 302, y = (1 - t) * (1 - t) * 30 + 2 * (1 - t) * t * 74 + t * t * 30;
-        const tri = 'M' + (x - 8).toFixed(1) + ' ' + y.toFixed(1) + ' L' + (x + 8).toFixed(1) + ' ' + y.toFixed(1) + ' L' + x.toFixed(1) + ' ' + (y + 15).toFixed(1) + ' Z';
-        if (i < k) s += '<path d="' + tri + '" fill="' + (i % 2 ? 'var(--gold)' : 'var(--accent)') + '"/>';
-        else if (!done && i === k) s += '<path d="' + tri + '" fill="var(--gold)" opacity="' + (0.2 + ratio * 0.5).toFixed(2) + '" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="2 2"/>';
+        const on = i < k;
+        s += '<rect x="149" y="' + (y(i) - 2.5).toFixed(1) + '" width="8" height="5" rx="1" fill="' + (on ? (i % 2 ? 'var(--gold)' : 'var(--accent)') : 'var(--chip)') + '"/>' +
+          '<rect x="163" y="' + (y(i) - 2.5).toFixed(1) + '" width="8" height="5" rx="1" fill="' + (on ? (i % 2 ? 'var(--gold)' : 'var(--accent)') : 'var(--chip)') + '"/>';
       }
-      if (done) s += [110, 135, 185, 210].map(x => '<circle cx="' + x + '" cy="' + (x < 160 ? 80 - (x - 110) * 0.2 : 75 + (x - 185) * 0.2) + '" r="3" fill="var(--gold)"/>').join('');
-      if (rounds) s += '<text x="8" y="126" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' tent' : ' tents') + ' raised</text>';
+      // The puck: at the top notch you've reached, plus how far you are toward the next.
+      const py = done ? top + 4 : bottom - (k + ratio) * step;
+      s += '<circle cx="160" cy="' + py.toFixed(1) + '" r="6" fill="var(--ink)"/><circle cx="158" cy="' + (py - 2).toFixed(1) + '" r="1.6" fill="#fff" opacity=".6"/>';
+      // The bell, and the sign.
+      s += '<circle cx="160" cy="14" r="10" fill="' + (done ? 'var(--gold)' : 'var(--card)') + '" stroke="var(--gold)" stroke-width="2.5"/>' +
+        (done ? '<path d="M140 8l-7-4M140 20l-7 4M180 8l7-4M180 20l7 4" stroke="var(--gold)" stroke-width="2" stroke-linecap="round"/>' : '');
+      [['Strongman!', 11], ['Mighty', 8], ['Not bad', 4], ['Weakling', 1]].forEach(([label, i]) => {
+        s += '<text x="180" y="' + (y(i) + 3.5).toFixed(1) + '" font-size="10" font-weight="700" fill="' + (i < k ? 'var(--ink)' : 'var(--muted)') + '">' + label + '</text>';
+      });
+      // The pad and the mallet at the foot.
+      s += '<rect x="138" y="116" width="44" height="8" rx="2" fill="var(--accent)"/>' +
+        '<rect x="96" y="96" width="4" height="30" rx="1.5" fill="#8a5a2b" transform="rotate(-24 98 126)"/><rect x="86" y="88" width="22" height="12" rx="3" fill="var(--ink)" transform="rotate(-24 98 126)"/>';
+      if (rounds) s += '<text x="8" y="16" font-size="11" font-weight="700" fill="var(--muted)">Rang the bell ' + rounds + (rounds === 1 ? ' time' : ' times') + '</text>';
       return s;
     },
     token: (cx, glow, next) => '<path d="M' + (cx - 12) + ' 74 h24 l-12 22z" fill="' + (glow > 0.02 ? 'var(--accent)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',

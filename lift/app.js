@@ -2925,7 +2925,8 @@ function trySkin(id) {
 function stampHtml(pack, st, small) {
   const got = myStamp(pack.key, st.key), size = small ? 44 : 58;
   return '<div class="stamp' + (got ? ' got' : '') + '" title="' + esc(st.name + ': ' + st.hint) + '">' +
-    '<span class="stamp-face" style="width:' + size + 'px;height:' + size + 'px;border-radius:' + esc(T.stampFrame) + ';' + (got ? 'background:' + esc(st.color) + ';box-shadow:0 0 0 2px ' + esc(st.color) : '') + '">' + (got ? esc(st.mark) : '?') + '</span>' +
+    '<span class="stamp-face" style="width:' + size + 'px;height:' + size + 'px;border-radius:' + esc(T.stampFrame) + ';' + (got ? 'background:' + esc(st.color) + ';box-shadow:0 0 0 2px ' + esc(st.color) : '') + '">' +
+      (st.art ? '<svg viewBox="0 0 24 24" width="' + Math.round(size * 0.55) + '" height="' + Math.round(size * 0.55) + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + st.art + '</svg>' : got ? esc(st.mark) : '?') + '</span>' +
     (small ? '' : '<b>' + esc(st.name) + '</b><small>' + esc(got ? fmtDay(got.earned_on, { month: 'short', day: 'numeric' }) : st.hint) + '</small>') + '</div>';
 }
 function packCard(pack) {
