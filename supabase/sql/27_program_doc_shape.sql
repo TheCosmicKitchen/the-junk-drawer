@@ -55,6 +55,7 @@ revoke all on function private.program_doc_problem(jsonb) from public, anon, aut
 create or replace function private.check_program_doc()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare why text;
