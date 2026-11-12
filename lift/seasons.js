@@ -14,13 +14,14 @@
 //   workouts: [{ key, name, unlock (week, optional), steps: [[exercise names (first one found
 //     in your catalogue), sets, reps, flavour name]] }],
 //   stamps: [{ key, name, mark, color, hint, rule }],
-//   plus its own world: stations (pilgrimage), doors (advent), letters (one line a week).
+//   plus its own world: stations (pilgrimage), doors (a calendar of daily tasks, named by
+//   calendar: { title, one, many }), letters (one line a week).
 //
 // Rules (all counted inside the run's dates, working sets only):
 //   { days: n }                      n different days with at least one set
 //   { workout: key }                 every step of that workout done on one day (its sets, any weight)
 //   { lift: [names], sets: n, reps } n sets of any of those lifts in one day (each at least reps)
-//   { doors: n }                     n advent doors opened
+//   { doors: n }                     n calendar doors (daily tasks) opened
 //   { weeks: n, each: d }            the first n weeks of the run each had d days or more
 //   { beat: [names] }                a better estimated 1-rep max in the run's last week than its first
 
@@ -35,6 +36,7 @@ const LUNGE = ['Walking Lunge', 'Reverse Lunge', 'Bulgarian Split Squat', 'Split
 const PUSHUP = ['Push-ups', 'Incline Push-Up'];
 const SWING = ['Kettlebell Swing', 'Cable Pull Through'];
 const CORE = ['Hanging Leg Raise', 'Ab Wheel Rollout', 'Cable Crunch'];
+const OHP = ['Standing Overhead Press', 'Push Press', 'Seated Dumbbell Shoulder Press', 'Arnold Press', 'Machine Shoulder Press'];
 
 export const PACKS = {
   pilgrimage: {
@@ -62,6 +64,7 @@ export const PACKS = {
   hoist: {
     key: 'hoist', name: 'Ho Ho Hoist', theme: 'claus', kind: 'event', from: '12-01', to: '12-24',
     blurb: 'An advent calendar of lifting. A door a day from the 1st to the 24th, each a small task. Missed doors stay open until Christmas Eve. Back every December.',
+    calendar: { title: 'The advent calendar', one: 'Door', many: 'Doors' },
     doors: [
       { name: 'Present Carry', lifts: CARRY, sets: 3 }, { name: 'Chimney Climb', lifts: PULL, sets: 3 }, { name: 'Snow Shovel', lifts: SQUAT, sets: 3 },
       { name: 'Reindeer Lunges', lifts: LUNGE, sets: 3 }, { name: 'The Big Sack', lifts: DEAD, sets: 3 }, { name: 'Present Press', lifts: BENCH, sets: 3 },
@@ -118,8 +121,36 @@ export const PACKS = {
       { key: 'graduated', name: 'Graduated', mark: '⚝', color: '#6b3fc4', hint: 'Beat week one on squat, bench or deadlift in week 8', rule: { beat: [...SQUAT, ...BENCH, ...DEAD] } },
     ],
   },
+
+  strongman: {
+    key: 'strongman', name: 'The Strongman Spectacular', theme: 'circus', kind: 'event', from: '07-01', to: '07-14',
+    blurb: 'Roll up! Two weeks under the big top every July. A new act each day: lift the pony, walk the elephant, press the circus dumbbell. Acts you miss stay open until closing night.',
+    calendar: { title: 'Tonight’s programme', one: 'Act', many: 'Acts' },
+    doors: [
+      { name: 'The Pony Lift', lifts: DEAD, sets: 3 }, { name: 'The Circus Dumbbell', lifts: OHP, sets: 3 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 3 },
+      { name: 'The Human Pyramid', lifts: SQUAT, sets: 3 }, { name: 'The Iron Jaw', lifts: CORE, sets: 3 }, { name: 'The Tightrope', lifts: LUNGE, sets: 3 },
+      { name: 'The Flying Trapeze', lifts: PULL, sets: 3 }, { name: 'The Strongman’s Row', lifts: ROW, sets: 3 }, { name: 'The Cannonball', lifts: SWING, sets: 3 },
+      { name: 'The Anvil Press', lifts: BENCH, sets: 3 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 4 }, { name: 'The Pony Lift', lifts: DEAD, sets: 4 },
+      { name: 'The Circus Dumbbell', lifts: OHP, sets: 4 }, { name: 'Closing Night', workout: 'finale' },
+    ],
+    workouts: [
+      { key: 'opening', name: 'Opening Night', steps: [[DEAD, 3, 5, 'The Pony Lift'], [OHP, 3, 5, 'The Circus Dumbbell'], [CARRY, 3, 1, 'The Elephant Walk']] },
+      { key: 'ring', name: 'The Main Ring', steps: [[SQUAT, 5, 5, 'The Human Pyramid'], [PULL, 4, 6, 'The Flying Trapeze'], [CORE, 3, 10, 'The Iron Jaw']] },
+      { key: 'finale', name: 'Closing Night', steps: [[DEAD, 1, 5, 'The Pony Lift'], [SQUAT, 1, 5, 'The Human Pyramid'], [OHP, 1, 5, 'The Circus Dumbbell'], [BENCH, 1, 5, 'The Anvil Press'], [CARRY, 2, 1, 'The Elephant Walk']] },
+    ],
+    stamps: [
+      { key: 'first-act', name: 'First act', mark: 'I', color: '#c8102e', hint: 'Perform an act', rule: { doors: 1 } },
+      { key: 'seven-acts', name: 'Seven acts', mark: 'VII', color: '#b8860b', hint: 'Perform 7 acts', rule: { doors: 7 } },
+      { key: 'every-act', name: 'Every act', mark: '★', color: '#c8102e', hint: 'Perform all 14 acts', rule: { doors: 14 } },
+      { key: 'pony', name: 'Lifted the pony', mark: '♞', color: '#1f3a6e', hint: '5 heavy sets of deadlift (3+ reps) in a day', rule: { lift: DEAD, sets: 5, reps: 3 } },
+      { key: 'elephant', name: 'Walked the elephant', mark: '⚖', color: '#1f3a6e', hint: '4 carries in a day', rule: { lift: CARRY, sets: 4, reps: 1 } },
+      { key: 'opening', name: 'Opening night', mark: '🎟', color: '#c8102e', hint: 'Finish Opening Night', rule: { workout: 'opening' } },
+      { key: 'ring', name: 'The main ring', mark: '◎', color: '#b8860b', hint: 'Finish The Main Ring', rule: { workout: 'ring' } },
+      { key: 'finale', name: 'Closing night', mark: '✦', color: '#c8102e', hint: 'Finish the Closing Night workout', rule: { workout: 'finale' } },
+    ],
+  },
 };
-export const PACK_ORDER = ['pilgrimage', 'hoist', 'apprenticeship'];
+export const PACK_ORDER = ['pilgrimage', 'hoist', 'strongman', 'apprenticeship'];
 
 // The dates a run covers: a season from the day you joined; an event this year's dates.
 export function runWindow(pack, run, addDays) {

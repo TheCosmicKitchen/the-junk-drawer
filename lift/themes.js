@@ -614,6 +614,71 @@ export const THEMES = {
     },
   }),
 
+  circus: theme('circus', 'The Iron Big Top', 'Red and cream stripes, gold leaf and an old-time strongman', {
+    seasonWord: 'Tour', seasonsWord: 'Tours', eventWord: 'Spectacular', eventsWord: 'Spectaculars',
+    stamp: 'Ticket stub', stamps: 'Ticket stubs', stampBook: 'The scrapbook', stampFrame: '4px', stampToast: 'A ticket stub for the scrapbook: ',
+    tabIcons: { log: '<circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/>', routines: '<path d="M3 20L12 4l9 16z"/><path d="M12 4v16M7.5 12h9"/>', history: '<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z"/><path d="M15 7v12" stroke-dasharray="2 2"/>', seasons: '<path d="M3 20c0-6 4-11 9-14 5 3 9 8 9 14"/><path d="M12 6V2l3 1.5L12 5M3 20h18M9 20v-4a3 3 0 0 1 6 0v4"/>', progress: '<path d="M12 3l2.4 5 5.6.6-4.2 3.8 1.2 5.5L12 15.2 7 17.9l1.2-5.5L4 8.6 9.6 8z"/>' },
+    brand: 'The Iron Big Top', motto: 'ROLL UP · ROLL UP · LIFT', tagline: 'Step right up. Log the set.',
+    fonts: 'family=Ultra&family=Abril+Fatface', brandFont: 'Ultra, Georgia, serif', headFont: '"Abril Fatface", Georgia, serif', brandWeight: 400,
+    // An old-time globe barbell, the kind a circus strongman held overhead.
+    logo: svg('<rect x="9" y="18.6" width="22" height="2.8" rx="1.4" fill="var(--ink)"/><circle cx="8" cy="20" r="7" fill="var(--accent)"/><circle cx="32" cy="20" r="7" fill="var(--accent)"/><path d="M3.5 17a6 6 0 0 1 4-4M28 13a6 6 0 0 1 4 1" stroke="var(--card)" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".7"/><circle cx="8" cy="20" r="2" fill="var(--gold)"/><circle cx="32" cy="20" r="2" fill="var(--gold)"/>'),
+    // A striped big-top valance along the top of the hero.
+    css: '.hero { position: relative; overflow: hidden; padding-top: 34px; } .hero > * { position: relative; z-index: 1; }' +
+      '.hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 22px; z-index: 1;' +
+        ' background: radial-gradient(circle at 12px 12px, var(--accent) 11px, transparent 11.5px) 0 0 / 24px 22px repeat-x, repeating-linear-gradient(90deg, var(--accent) 0 12px, var(--card) 12px 24px) 0 0 / 100% 12px no-repeat; }' +
+      '.hero .date::before { content: "★ "; color: var(--gold); }' +
+      '.top .brand { font-size: clamp(15px, 4.6vw, 22px); }',   // Ultra runs very wide
+    titles: { log: 'Tonight’s Performance', routines: 'The Acts', history: 'The Programme', seasons: 'Tours', progress: 'Feats of Strength' },
+    tabs: { log: 'Perform', routines: 'Acts', history: 'Programme', seasons: 'Tours', progress: 'Feats' },
+    helloBig: 'The crowd goes wild.', helloSome: 'On with the show.', helloNone: 'The tent is up.',
+    restUp: 'Curtain up! Next set.',
+    finish: 'Take a bow · Finish ›', finishFeed: 'Take a bow · tell the crowd', finishPrivate: 'Take a bow · finish', updateFeed: 'Update the bill',
+    ended: 'Take a bow. What a show.', endedFeed: 'Take a bow. It’s on the bill.', endedClock: '✓ Curtain · ',
+    routineDone: '🎉 Every act performed.', routineBtn: 'Show complete 🎪',
+    emptyH: 'The tent is up.', emptyP: 'Log a set and the show begins.',
+    prToast: '🌟 A marvel of strength! ', clubToast: '🎪 A new pennant: welcome to the ', goalToast: 'Promise kept: ',
+    pr: 'marvel', prs: 'marvels',
+    prFlag: (reps, was) => 'A marvel of strength! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'A marvel of strength on ' + ex + ': ',
+    clubs: 'The bunting', clubsSub: n => 'one pennant raised for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => n + ' pennants on the big top, one for each club; the next one flutters as you near the ' + next,
+    weekly: 'Last week’s bill', streak: 'weeks on tour', restWeek: 'A week off the road',
+    rest: n => n + ' weeks on tour in a row. Consider a week off the road: same lifts at about 60% of the weight, then raise the tent again.',
+    feed: 'The ringmaster’s board', feedSub: 'the crew’s marvels', feedEmpty: 'Marvels, pennants, promises, strongmen and shows from the crew get announced here.',
+    icons: { pr: '🌟', club: '🎪', goal: '🎯', session: '🎭', record: '🦁', quest: '🤹', holder: '🦁', questOpen: '🤹', rest: '🎠', dry: '🤡', stamp: '🎟️' },
+    win: { club: 'Raised a pennant: the ', record: 'Strongest in the world: ', quest: 'Pulled off a stunt: ', goal: 'Kept a promise: ', session: 'Put on a show: ', stamp: 'Kept a ticket stub: ' },
+    records: 'Strongest in the world', holderCol: 'Strongman', recordsBlurb: 'Out-lift the strongman and the leopard-print leotard is yours.', recordToast: '🦁 Strongest in the world: the crew record on ',
+    quests: 'Stunts', questsSub: 'this week’s stunts, the same for the whole troupe', questDone: '🤹 Stunt pulled off: ',
+    goals: 'Promises', goalsKept: 'Promises kept', plan: 'The running order', points: 'tickets', pointsEarned: 'tickets sold',
+    dry: 'A tough crowd: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Joined the circus.', five_visits: 'Five shows. The crowd knows your name.', twenty_visits: 'Twenty gym days. Top of the bill.', first_pr: 'A new best for an exercise and rep count. A marvel of strength.' },
+    achTitle: { first_visit: 'Ran Away to the Circus', first_pr: 'First Marvel' },
+    bar: { fill: 'repeating-linear-gradient(90deg, var(--accent) 0 10px, var(--card) 10px 20px)', end: '🐘', flip: true, goal: '🎪' },
+    // One big top with bunting strung across it: each club raises a pennant, the next one flutters as
+    // you near it, and the lights come on when all twelve are up (then a new tent).
+    rack: (lit, ratio) => {
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      let s = '<path d="M90 126 L104 70 Q160 36 216 70 L230 126 Z" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
+        [0, 1, 2, 3].map(i => '<path d="M' + (104 + i * 28) + ' 70 Q' + (118 + i * 28) + ' 50 ' + (132 + i * 28) + ' 58 L' + (146 + i * 28 - 14) + ' 126 H' + (118 + i * 28 - 14 + 14) + ' Z" fill="var(--accent)" opacity=".85"/>').join('') +
+        '<path d="M150 126v-26a10 10 0 0 1 20 0v26z" fill="var(--ink)" opacity=".8"/><path d="M160 36V14l14 6-14 6" fill="var(--gold)"/>' +
+        '<path d="M18 30 Q160 74 302 30" fill="none" stroke="var(--muted)" stroke-width="1.5"/>';
+      for (let i = 0; i < 12; i++) {
+        const t = (i + 0.5) / 12, x = (1 - t) * (1 - t) * 18 + 2 * (1 - t) * t * 160 + t * t * 302, y = (1 - t) * (1 - t) * 30 + 2 * (1 - t) * t * 74 + t * t * 30;
+        const tri = 'M' + (x - 8).toFixed(1) + ' ' + y.toFixed(1) + ' L' + (x + 8).toFixed(1) + ' ' + y.toFixed(1) + ' L' + x.toFixed(1) + ' ' + (y + 15).toFixed(1) + ' Z';
+        if (i < k) s += '<path d="' + tri + '" fill="' + (i % 2 ? 'var(--gold)' : 'var(--accent)') + '"/>';
+        else if (!done && i === k) s += '<path d="' + tri + '" fill="var(--gold)" opacity="' + (0.2 + ratio * 0.5).toFixed(2) + '" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="2 2"/>';
+      }
+      if (done) s += [110, 135, 185, 210].map(x => '<circle cx="' + x + '" cy="' + (x < 160 ? 80 - (x - 110) * 0.2 : 75 + (x - 185) * 0.2) + '" r="3" fill="var(--gold)"/>').join('');
+      if (rounds) s += '<text x="8" y="126" font-size="11" font-weight="700" fill="var(--muted)">' + rounds + (rounds === 1 ? ' tent' : ' tents') + ' raised</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<path d="M' + (cx - 12) + ' 74 h24 l-12 22z" fill="' + (glow > 0.02 ? 'var(--accent)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#fbf3e4', card: '#fffaf0', ink: '#2a1a1f', muted: '#6f5a5f', line: '#ecdcc4', chip: '#f4e7d0', accent: '#c8102e', 'accent-ink': '#ffffff', 'accent-soft': '#f9d9dd', good: '#2f7d4f', gold: '#a8780a', 'gold-soft': '#f7e7bf', grid: '#f1e5cf', axis: '#dcc8a6' },
+      dark: { bg: '#160d12', card: '#21141b', ink: '#f7ead8', muted: '#c4a9a5', line: '#3a2530', chip: '#2c1a23', accent: '#ff4d5e', 'accent-ink': '#2a0006', 'accent-soft': '#3d1520', good: '#7bd39b', gold: '#f2c14e', 'gold-soft': '#36290f', grid: '#2a1a22', axis: '#4a3240' },
+    },
+  }),
+
   dungeon: theme('dungeon', 'The Iron Dungeon', 'Parchment, torchlight, loot chests and an XP bar', {
     seasonWord: 'Campaign', seasonsWord: 'Campaigns', eventWord: 'Raid', eventsWord: 'Raids',
     stamp: 'Trophy', stamps: 'Trophies', stampBook: 'Trophy room', stampFrame: '6px', stampToast: 'Trophy claimed: ',
@@ -898,7 +963,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {

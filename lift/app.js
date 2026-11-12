@@ -2836,7 +2836,7 @@ function bannerHtml(sn, big) {
 }
 // ===========================================================================
 // Season packs and stamps. A pack (seasons.js) is a curated season: its own workouts, a little
-// world (a road of stations, an advent calendar, a coach's trials) and stamps for small
+// world (a road of stations, a calendar of daily acts, a coach's trials) and stamps for small
 // achievements. Joining starts a run and adds its workouts to your routines; stamps are checked
 // from your own sets and kept for good. Packs are extras: nothing else in the app needs them.
 // ===========================================================================
@@ -2958,14 +2958,14 @@ function renderPackPage(pack) {
   }
   if (pack.doors) {
     const t = today(), from = (p ? p.from : holiday.from);
-    const n = live ? Math.min(24, L.daysBetween(from, t) + 1) : 0;
-    const todayDoor = n >= 1 ? pack.doors[n - 1] : null;
-    html += '<section class="card"><h3 class="card-title">The advent calendar</h3><div class="doors">' + pack.doors.map((d, i) => {
+    const cal = pack.calendar, n = live ? Math.min(pack.doors.length, L.daysBetween(from, t) + 1) : 0;
+    const todayDoor = n >= 1 ? pack.doors[n - 1] : null, last = fmtDay(L.addDays(from, pack.doors.length - 1), { month: 'long', day: 'numeric' });
+    html += '<section class="card"><h3 class="card-title">' + esc(cal.title) + '</h3><div class="doors">' + pack.doors.map((d, i) => {
       const done = p && p.doorDone[i] != null, due = i < n;
       return '<span class="door' + (done ? ' got' : due ? ' due' : '') + (i === n - 1 ? ' today' : '') + '" title="' + esc(d.name) + '">' + (i + 1) + '</span>';
     }).join('') + '</div>' +
-      (todayDoor ? '<p class="door-today"><b>Door ' + n + ': ' + esc(todayDoor.name) + '.</b> ' + esc(todayDoor.workout ? 'Finish the Christmas Eve workout.' : todayDoor.sets + ' sets of ' + stepName(todayDoor.lifts) + '.') + '</p>'
-        : '<p class="hint-line">The first door opens ' + esc(fmtDay(from, { month: 'long', day: 'numeric' })) + '. Missed doors stay open until the 24th.</p>') + '</section>';
+      (todayDoor ? '<p class="door-today"><b>' + esc(cal.one) + ' ' + n + ': ' + esc(todayDoor.name) + '.</b> ' + esc(todayDoor.workout ? 'Finish the ' + pack.workouts.find(w => w.key === todayDoor.workout).name + ' workout.' : todayDoor.sets + ' sets of ' + stepName(todayDoor.lifts) + '.') + '</p>'
+        : '<p class="hint-line">The first ' + esc(cal.one.toLowerCase()) + ' opens ' + esc(fmtDay(from, { month: 'long', day: 'numeric' })) + '. ' + esc(cal.many) + ' you miss stay open until ' + esc(last) + '.</p>') + '</section>';
   }
   if (pack.letters) {
     const wk = live ? Math.min(pack.weeks, Math.floor(L.daysBetween(run.starts_on, today()) / 7) + 1) : 1;
