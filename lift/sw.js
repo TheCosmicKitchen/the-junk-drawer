@@ -3,7 +3,7 @@
 // lives in the database, and the app keeps its own snapshot of what you last saw).
 // Stale-while-revalidate: answer from the phone straight away, then fetch a fresh copy in the
 // background, so a new version of the app shows up on the next open.
-const CACHE = 'lift-shell-v2';
+const CACHE = 'lift-shell-v3';
 const SCOPE = new URL('./', self.location).href;
 const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'logic.js', 'charts.js', 'starters.js', 'themes.js', 'seasons.js', 'config.js',
   'icon.svg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'].map(p => new URL(p, SCOPE).href);

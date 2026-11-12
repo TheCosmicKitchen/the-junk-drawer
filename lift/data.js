@@ -162,7 +162,7 @@ class SupaStore {
     const [seasons, goals, subs, plan] = await Promise.all([
       this.all(() => this.sb.from('lift_seasons').select(SEASON).is('deleted_at', null).order('starts_on', { ascending: false })),
       this.all(() => this.sb.from('lift_season_goals').select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by').is('deleted_at', null)),
-      this.all(() => this.sb.from('lift_season_subscriptions').select('id,season_id').is('deleted_at', null)),
+      this.all(() => this.sb.from('lift_season_subscriptions').select('id,season_id,program_id').is('deleted_at', null)),
       this.all(() => this.sb.from('lift_season_plan').select(PLAN).is('deleted_at', null)),
     ]);
     return { seasons, goals, subs, plan };
@@ -173,7 +173,10 @@ class SupaStore {
   async addPlan(f) { return must(await this.sb.from('lift_season_plan').insert(f).select(PLAN).single()); }
   async updatePlan(id, patch) { return must(await this.sb.from('lift_season_plan').update(patch).eq('id', id).select(PLAN).single()); }
   removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
-  async joinSeason(seasonId) { return must(await this.sb.from('lift_season_subscriptions').insert({ season_id: seasonId }).select('id,season_id').single()); }
+  async joinSeason(seasonId, programId) { return must(await this.sb.from('lift_season_subscriptions').insert({ season_id: seasonId, program_id: programId || null }).select('id,season_id,program_id').single()); }
+  async setSeasonProgram(subId, programId) { return must(await this.sb.from('lift_season_subscriptions').update({ program_id: programId || null }).eq('id', subId).select('id,season_id,program_id').single()); }
+  // Who's on which program in a season (someone's private program shows as "their own program").
+  async seasonPrograms(seasonId) { return must(await this.sb.rpc('season_programs', { p_season: seasonId })); }
   async leaveSeason(subId) { must(await this.sb.from('lift_season_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
   // Everyone in a shared season, totals only (the database never hands over the other person's sets).
   async standings(seasonId) { return must(await this.sb.rpc('season_standings', { p_season: seasonId })); }
@@ -187,6 +190,11 @@ class SupaStore {
   async wins() {
     return must(await this.sb.from('lift_posts').select(POST).is('deleted_at', null)
       .gte('performed_on', addDays(localDate(), -21)).order('created_at', { ascending: false }).limit(60));
+  }
+  // A season's feed: every win posted between its dates (the caller keeps the season's people).
+  async seasonWins(sn) {
+    return must(await this.sb.from('lift_posts').select(POST).is('deleted_at', null)
+      .gte('performed_on', sn.starts_on).lte('performed_on', sn.ends_on).order('created_at', { ascending: false }).limit(300));
   }
   // One line per person, kind, day and title: a second PR on the same lift today updates its line.
   async postWin(f) {
@@ -416,14 +424,25 @@ class DemoStore {
   async addPlan(f) { const p = { id: uid(), position: 1, weekdays: 0, ...f }; this.planRows.push(p); return clone(p); }
   async updatePlan(id, patch) { const p = this.planRows.find(x => x.id === id); Object.assign(p, patch); return clone(p); }
   removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
-  async joinSeason(seasonId) { const s = { id: uid(), season_id: seasonId }; this.seasonSubs.push(s); return clone(s); }
+  async joinSeason(seasonId, programId) { const s = { id: uid(), season_id: seasonId, program_id: programId || null }; this.seasonSubs.push(s); return clone(s); }
+  async setSeasonProgram(subId, programId) { const s = this.seasonSubs.find(x => x.id === subId); s.program_id = programId || null; return clone(s); }
+  async seasonPrograms(seasonId) {
+    await this.programs();
+    const out = this.seasonSubs.filter(x => !x.deleted_at && x.season_id === seasonId).map(x => {
+      const p = this.progRows.find(r => r.id === x.program_id && !r.deleted_at);
+      return { user_id: 'me', program_id: p ? p.id : null, program_name: p ? p.name : null, days_a_week: p ? (p.doc.days || []).length : 0 };
+    });
+    if ((await this.standings(seasonId)).some(p => p.user_id === 'alex')) out.push({ user_id: 'alex', program_id: 'p-ppl', program_name: 'Push / Pull / Legs', days_a_week: 3 });
+    return out;
+  }
+  async seasonWins(sn) { return (await this.wins()).filter(w => w.performed_on >= sn.starts_on && w.performed_on <= sn.ends_on); }
   async leaveSeason(subId) { const s = this.seasonSubs.find(x => x.id === subId); if (s) s.deleted_at = new Date().toISOString(); }
   async standings(seasonId) {
     const s = this.seasonRows.find(x => x.id === seasonId);
     const mine = this.sets.filter(x => !x.deleted_at && !x.is_warmup && x.performed_on >= s.starts_on && x.performed_on <= s.ends_on);
     const vol = u => mine.filter(x => x.unit === u).reduce((a, x) => a + (Number(x.weight) + (x.count_bodyweight ? Number(x.bodyweight) || 0 : 0)) * x.reps, 0);
     const people = [{ user_id: 'me', display_name: 'Demo lifter', visits: new Set(mine.map(x => x.performed_on)).size, sets: mine.length, volume_lb: vol('lb'), volume_kg: vol('kg') }];
-    if (s.created_by === 'alex' || this.seasonSubs.some(x => !x.deleted_at && x.season_id === seasonId))
+    if (s.created_by === 'alex')   // the pretend friend is in their own season (and you, once you join)
       people.push({ user_id: 'alex', display_name: 'Alex', visits: 17, sets: 240, volume_lb: 286400, volume_kg: 0 });
     return people;
   }
@@ -507,7 +526,16 @@ class DemoStore {
   }
   async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
   async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
-  async programs() { this.progRows = this.progRows || []; return this.progRows.filter(r => !r.deleted_at).map(clone); }
+  async programs() {
+    if (!this.progRows) {
+      // One shared program from the demo crew, built from the demo routines.
+      this.seedRoutines();
+      const w = (key, tid) => ({ key, name: (this.templates.find(t => t.id === tid) || {}).name || key,
+        steps: this.items.filter(i => i.template_id === tid && !i.deleted_at).map(i => ({ exercise_id: i.exercise_id, sets: i.sets, reps: i.reps, load_mode: 'last', load_value: 0, unit: 'lb', rest_s: null, note: null })) });
+      this.progRows = [{ id: 'p-ppl', name: 'Push / Pull / Legs', is_shared: true, created_by: 'alex', updated_at: new Date().toISOString(),
+        doc: { v: 1, kind: 'program', weeks: 8, about: 'Three days a week.', workouts: [w('wpush', 't-push'), w('wpull', 't-pull'), w('wlegs', 't-legs')], days: [[1, 'wpush'], [3, 'wpull'], [5, 'wlegs']] } }];
+    }
+    return this.progRows.filter(r => !r.deleted_at).map(clone); }
   async addProgram(f) { await this.programs(); const r = { id: uid(), created_by: 'me', is_shared: false, updated_at: new Date().toISOString(), ...f }; this.progRows.unshift(r); return clone(r); }
   async updateProgram(id, patch) { const r = (this.progRows || []).find(x => x.id === id); Object.assign(r, patch, { updated_at: new Date().toISOString() }); return clone(r); }
   async removeProgram(id) { const r = (this.progRows || []).find(x => x.id === id); if (r) r.deleted_at = new Date().toISOString(); }
