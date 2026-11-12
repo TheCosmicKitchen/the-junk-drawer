@@ -14,7 +14,8 @@
 //   workouts: [{ key, name, unlock (week, optional), steps: [[exercise names (first one found
 //     in your catalogue), sets, reps, flavour name]] }],
 //   stamps: [{ key, name, mark, color, hint, rule }],
-//   plus its own world: stations (pilgrimage), doors (a calendar of daily tasks, named by
+//   plus its own world: stations (pilgrimage), doors (a calendar of daily tasks: sets of reps of a
+//   lift, or a workout; named by
 //   calendar: { title, one, many }), letters (one line a week).
 //
 // Rules (all counted inside the run's dates, working sets only):
@@ -47,7 +48,7 @@ export const PACKS = {
     stations: ['Chapel', 'Well', 'Bridge', 'Abbey', 'Shrine', 'Pass', 'Sabbath', 'Cathedral'],
     workouts: [
       { key: 'road', name: 'Pilgrim’s Road', steps: [[SQUAT, 3, 5, 'The road'], [BENCH, 3, 5, ''], [ROW, 3, 8, ''], [CARRY, 3, 1, 'Carry your pack']] },
-      { key: 'climb', name: 'The Long Climb', steps: [[DEAD, 3, 5, 'The climb'], [PRESS, 3, 5, ''], [PULL, 3, 8, ''], [LUNGE, 3, 10, 'Steps uphill']] },
+      { key: 'climb', name: 'The Long Climb', steps: [[DEAD, 3, 5, 'The climb'], [PRESS, 3, 5, ''], [PULL, 3, 6, 'Or pulldowns'], [LUNGE, 3, 10, 'Steps uphill']] },
     ],
     stamps: [
       { key: 'chapel', name: 'Chapel', mark: 'I', color: '#2a5fd3', hint: '2 sessions', rule: { days: 2 },
@@ -78,19 +79,19 @@ export const PACKS = {
     blurb: 'An advent calendar of lifting. A door a day from the 1st to the 24th, each a small task. Missed doors stay open until Christmas Eve. Back every December.',
     calendar: { title: 'The advent calendar', one: 'Door', many: 'Doors' },
     doors: [
-      { name: 'Present Carry', lifts: CARRY, sets: 3 }, { name: 'Chimney Climb', lifts: PULL, sets: 3 }, { name: 'Snow Shovel', lifts: SQUAT, sets: 3 },
-      { name: 'Reindeer Lunges', lifts: LUNGE, sets: 3 }, { name: 'The Big Sack', lifts: DEAD, sets: 3 }, { name: 'Present Press', lifts: BENCH, sets: 3 },
-      { name: 'Star on Top', lifts: PRESS, sets: 3 }, { name: 'Bell Ringer', lifts: SWING, sets: 3 }, { name: 'Stocking Hang', lifts: CORE, sets: 3 },
-      { name: 'Sleigh Rows', lifts: ROW, sets: 3 }, { name: 'Gingerbread Push-ups', lifts: PUSHUP, sets: 3 }, { name: 'Chimney Climb', lifts: PULL, sets: 4 },
-      { name: 'Snow Shovel', lifts: SQUAT, sets: 4 }, { name: 'Present Carry', lifts: CARRY, sets: 4 }, { name: 'The Big Sack', lifts: DEAD, sets: 4 },
-      { name: 'Reindeer Lunges', lifts: LUNGE, sets: 4 }, { name: 'Present Press', lifts: BENCH, sets: 4 }, { name: 'Bell Ringer', lifts: SWING, sets: 4 },
-      { name: 'Star on Top', lifts: PRESS, sets: 4 }, { name: 'Sleigh Rows', lifts: ROW, sets: 4 }, { name: 'Stocking Hang', lifts: CORE, sets: 4 },
-      { name: 'Gingerbread Push-ups', lifts: PUSHUP, sets: 4 }, { name: 'Snow Shovel', lifts: SQUAT, sets: 5 }, { name: 'Christmas Eve', workout: 'eve' },
+      { name: 'Present Carry', lifts: CARRY, sets: 3, reps: 1 }, { name: 'Chimney Climb', lifts: PULL, sets: 3, reps: 5 }, { name: 'Snow Shovel', lifts: SQUAT, sets: 3, reps: 5 },
+      { name: 'Reindeer Lunges', lifts: LUNGE, sets: 3, reps: 8 }, { name: 'The Big Sack', lifts: DEAD, sets: 3, reps: 5 }, { name: 'Present Press', lifts: BENCH, sets: 3, reps: 5 },
+      { name: 'Star on Top', lifts: PRESS, sets: 3, reps: 5 }, { name: 'Bell Ringer', lifts: SWING, sets: 3, reps: 10 }, { name: 'Stocking Hang', lifts: CORE, sets: 3, reps: 8 },
+      { name: 'Sleigh Rows', lifts: ROW, sets: 3, reps: 8 }, { name: 'Gingerbread Push-ups', lifts: PUSHUP, sets: 3, reps: 10 }, { name: 'Chimney Climb', lifts: PULL, sets: 4, reps: 5 },
+      { name: 'Snow Shovel', lifts: SQUAT, sets: 4, reps: 5 }, { name: 'Present Carry', lifts: CARRY, sets: 4, reps: 1 }, { name: 'The Big Sack', lifts: DEAD, sets: 4, reps: 5 },
+      { name: 'Reindeer Lunges', lifts: LUNGE, sets: 4, reps: 8 }, { name: 'Present Press', lifts: BENCH, sets: 4, reps: 5 }, { name: 'Bell Ringer', lifts: SWING, sets: 4, reps: 10 },
+      { name: 'Star on Top', lifts: PRESS, sets: 4, reps: 5 }, { name: 'Sleigh Rows', lifts: ROW, sets: 4, reps: 8 }, { name: 'Stocking Hang', lifts: CORE, sets: 4, reps: 8 },
+      { name: 'Gingerbread Push-ups', lifts: PUSHUP, sets: 4, reps: 10 }, { name: 'Snow Shovel', lifts: SQUAT, sets: 5, reps: 5 }, { name: 'Christmas Eve', workout: 'eve' },
     ],
     workouts: [
-      { key: 'loading', name: 'Loading Day', steps: [[DEAD, 5, 5, 'The Big Sack'], [CARRY, 4, 1, 'Present Carry'], [BENCH, 3, 8, 'Present Press']] },
-      { key: 'rooftop', name: 'Rooftop Run', steps: [[PULL, 4, 5, 'Chimney Climb'], [LUNGE, 3, 20, 'Reindeer Lunges'], [SQUAT, 3, 8, 'Snow Shovel']] },
-      { key: 'eve', name: 'Christmas Eve', steps: [[SQUAT, 1, 12, 'Twelve days'], [BENCH, 1, 12, 'Twelve days'], [DEAD, 1, 12, 'Twelve days'], [PULL, 1, 12, 'Twelve days']] },
+      { key: 'loading', name: 'Loading Day', steps: [[DEAD, 3, 5, 'The Big Sack'], [BENCH, 3, 8, 'Present Press'], [CARRY, 3, 1, 'Present Carry · 40 m']] },
+      { key: 'rooftop', name: 'Rooftop Run', steps: [[SQUAT, 3, 8, 'Snow Shovel'], [PULL, 4, 5, 'Chimney Climb · or pulldowns'], [LUNGE, 3, 10, 'Reindeer Lunges · each leg']] },
+      { key: 'eve', name: 'Christmas Eve', steps: [[['Goblet Squat', 'Leg Press', 'Back Squat'], 3, 12, 'Twelve days'], [PUSHUP, 3, 12, 'Twelve days'], [ROW, 3, 12, 'Twelve days'], [['Romanian Deadlift', 'Kettlebell Romanian Deadlift', 'Good Morning'], 3, 10, 'Light, all reps clean']] },
     ],
     stamps: [
       { key: 'first-door', name: 'First door', mark: '1', color: '#b3261e', hint: 'Open a door', rule: { doors: 1 },
@@ -99,7 +100,7 @@ export const PACKS = {
         art: '<rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 10h18M3 15.5h18M9 4.5V21M15 4.5V21"/><path d="M7 2.5v3.5M17 2.5v3.5"/><path d="M10.8 12.8l.9.9 1.6-1.8"/>' },
       { key: 'all-doors', name: 'All 24 doors', mark: '24', color: '#a97a06', hint: 'Open every door', rule: { doors: 24 },
         art: '<circle cx="12" cy="11" r="7.5"/><circle cx="12" cy="11" r="3.8"/><path d="M5.5 7.5l1.5.6M18.5 7.5L17 8.1M5 13l1.6-.4M19 13l-1.6-.4M8.5 4.6l.6 1.4M15.5 4.6l-.6 1.4"/><path d="M12 17.5l-2.6 4.5M12 17.5l2.6 4.5M9.8 18.5h4.4"/>' },
-      { key: 'chimney', name: 'Chimney sweep', mark: '⌂', color: '#1f6b45', hint: '4 sets of pull-ups in a day', rule: { lift: PULL, sets: 4, reps: 1 },
+      { key: 'chimney', name: 'Chimney sweep', mark: '⌂', color: '#1f6b45', hint: '4 sets of pull-ups (or pulldowns) of 5 or more in a day', rule: { lift: PULL, sets: 4, reps: 5 },
         art: '<path d="M6 21V11h12v10"/><path d="M4.5 8h15v3h-15z"/><path d="M6 14.5h12M6 18h12M12 11v3.5M9 14.5V18M15 14.5V18M12 18v3"/><path d="M14 6c0-1.6 2-1.8 2-3.4M10.5 6c0-1 1-1.2 1-2.2"/>' },
       { key: 'carry', name: 'Present carry', mark: '▣', color: '#b3261e', hint: '3 carries in a day', rule: { lift: CARRY, sets: 3, reps: 1 },
         art: '<rect x="4" y="10" width="16" height="11" rx="1"/><path d="M3 10h18v3H3z"/><path d="M12 10v11"/><path d="M12 10c-1.8-3.6-6-4-5.2-1.2.4 1.2 3.2 1.2 5.2 1.2zM12 10c1.8-3.6 6-4 5.2-1.2-.4 1.2-3.2 1.2-5.2 1.2z"/>' },
@@ -126,10 +127,10 @@ export const PACKS = {
       '“The Final Test. Beat the apprentice who walked in eight weeks ago.”',
     ],
     workouts: [
-      { key: 'gauntlet', name: 'I · The Gauntlet', unlock: 1, steps: [[['Goblet Squat', 'Bodyweight Squat', 'Back Squat'], 12, 5, 'Every minute'], [PUSHUP, 12, 5, 'Every minute']] },
-      { key: 'ages', name: 'II · The Weight of Ages', unlock: 3, steps: [[SQUAT, 3, 3, 'Heavy'], [DEAD, 3, 3, 'Heavy']] },
-      { key: 'damned', name: 'III · Endurance of the Damned', unlock: 5, steps: [[['Leg Press', 'Goblet Squat', 'Back Squat'], 3, 20, 'Twenty'], [['Lat Pulldown', 'Seated Cable Row', 'Inverted Row'], 3, 20, 'Twenty'], [PUSHUP, 3, 20, 'Twenty']] },
-      { key: 'final', name: 'IV · The Final Test', unlock: 8, steps: [[SQUAT, 3, 5, 'Beat week one'], [BENCH, 3, 5, 'Beat week one'], [DEAD, 3, 5, 'Beat week one']] },
+      { key: 'gauntlet', name: 'I · The Gauntlet', unlock: 1, steps: [[['Goblet Squat', 'Bodyweight Squat', 'Back Squat'], 4, 10, 'Short rests'], [PUSHUP, 4, 10, 'Short rests']] },
+      { key: 'ages', name: 'II · The Weight of Ages', unlock: 3, steps: [[SQUAT, 4, 3, 'Heavy, rest 3 min'], [['Romanian Deadlift', 'Kettlebell Romanian Deadlift', 'Good Morning'], 3, 8, 'Moderate']] },
+      { key: 'damned', name: 'III · Endurance of the Damned', unlock: 5, steps: [[['Leg Press', 'Goblet Squat', 'Back Squat'], 3, 20, 'Twenty'], [['Lat Pulldown', 'Seated Cable Row', 'Inverted Row'], 3, 20, 'Twenty'], [PUSHUP, 3, 15, 'As many as you can, up to 15']] },
+      { key: 'final', name: 'IV · The Final Test', unlock: 8, steps: [[SQUAT, 2, 5, 'Top set, then a back-off'], [BENCH, 2, 5, 'Top set, then a back-off'], [DEAD, 2, 5, 'Top set, then a back-off']] },
     ],
     stamps: [
       { key: 'taken-on', name: 'Taken on', mark: '▲', color: '#6b3fc4', hint: 'Your first session', rule: { days: 1 },
@@ -154,17 +155,17 @@ export const PACKS = {
     blurb: 'Roll up! Two weeks under the big top every July: strongman acts and carnival games. Lift the pony, walk the elephant, win the ring toss, ring the bell. Acts you miss stay open until closing night.',
     calendar: { title: 'Tonight’s programme', one: 'Act', many: 'Acts' },
     doors: [
-      { name: 'The Pony Lift', lifts: DEAD, sets: 3 }, { name: 'Test Your Strength', lifts: SWING, sets: 3 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 3 },
-      { name: 'Ring Toss', lifts: OHP, sets: 3 }, { name: 'The Human Pyramid', lifts: SQUAT, sets: 3 }, { name: 'Tug of War', lifts: ROW, sets: 3 },
-      { name: 'The Flying Trapeze', lifts: PULL, sets: 3 }, { name: 'Whack-a-Mole', lifts: PUSHUP, sets: 3 }, { name: 'The Iron Jaw', lifts: CORE, sets: 3 },
-      { name: 'The Tightrope', lifts: LUNGE, sets: 3 }, { name: 'Test Your Strength', lifts: SWING, sets: 4 }, { name: 'The Anvil Press', lifts: BENCH, sets: 3 },
-      { name: 'The Pony Lift', lifts: DEAD, sets: 4 }, { name: 'Closing Night', workout: 'finale' },
+      { name: 'The Pony Lift', lifts: DEAD, sets: 3, reps: 5 }, { name: 'Test Your Strength', lifts: SWING, sets: 3, reps: 10 }, { name: 'The Elephant Walk', lifts: CARRY, sets: 3, reps: 1 },
+      { name: 'Ring Toss', lifts: OHP, sets: 3, reps: 5 }, { name: 'The Human Pyramid', lifts: SQUAT, sets: 3, reps: 5 }, { name: 'Tug of War', lifts: ROW, sets: 3, reps: 8 },
+      { name: 'The Flying Trapeze', lifts: PULL, sets: 3, reps: 5 }, { name: 'Whack-a-Mole', lifts: PUSHUP, sets: 3, reps: 10 }, { name: 'The Iron Jaw', lifts: CORE, sets: 3, reps: 8 },
+      { name: 'The Tightrope', lifts: LUNGE, sets: 3, reps: 8 }, { name: 'Test Your Strength', lifts: SWING, sets: 4, reps: 10 }, { name: 'The Anvil Press', lifts: BENCH, sets: 3, reps: 5 },
+      { name: 'The Pony Lift', lifts: DEAD, sets: 4, reps: 5 }, { name: 'Closing Night', workout: 'finale' },
     ],
     workouts: [
       { key: 'opening', name: 'Opening Night', steps: [[DEAD, 3, 5, 'The Pony Lift'], [OHP, 3, 5, 'The Circus Dumbbell'], [CARRY, 3, 1, 'The Elephant Walk']] },
-      { key: 'midway', name: 'The Midway', steps: [[SWING, 4, 10, 'Test Your Strength'], [OHP, 3, 8, 'Ring Toss'], [ROW, 3, 10, 'Tug of War'], [PUSHUP, 3, 10, 'Whack-a-Mole']] },
-      { key: 'ring', name: 'The Main Ring', steps: [[SQUAT, 5, 5, 'The Human Pyramid'], [PULL, 4, 6, 'The Flying Trapeze'], [CORE, 3, 10, 'The Iron Jaw']] },
-      { key: 'finale', name: 'Closing Night', steps: [[DEAD, 1, 5, 'The Pony Lift'], [SQUAT, 1, 5, 'The Human Pyramid'], [OHP, 1, 5, 'The Circus Dumbbell'], [BENCH, 1, 5, 'The Anvil Press'], [CARRY, 2, 1, 'The Elephant Walk']] },
+      { key: 'midway', name: 'The Midway', steps: [[SWING, 3, 12, 'Test Your Strength'], [OHP, 3, 8, 'Ring Toss'], [ROW, 3, 10, 'Tug of War'], [PUSHUP, 3, 10, 'Whack-a-Mole']] },
+      { key: 'ring', name: 'The Main Ring', steps: [[SQUAT, 4, 5, 'The Human Pyramid'], [PULL, 3, 6, 'The Flying Trapeze · or pulldowns'], [CORE, 3, 10, 'The Iron Jaw']] },
+      { key: 'finale', name: 'Closing Night', steps: [[DEAD, 2, 3, 'Work up to a heavy triple'], [SQUAT, 2, 3, 'Work up to a heavy triple'], [OHP, 2, 3, 'Work up to a heavy triple'], [CARRY, 3, 1, 'The Elephant Walk · 40 m']] },
     ],
     // Each stamp's art is a small line drawing (24 x 24), drawn in white on the stamp's colour.
     stamps: [
@@ -172,13 +173,13 @@ export const PACKS = {
         art: '<path d="M3 8h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M14 8v10" stroke-dasharray="2 2"/>' },
       { key: 'bell', name: 'Rang the bell', mark: '♪', color: '#a8780a', hint: 'Beat your best estimated max on a big lift during the Spectacular', rule: { record: [...DEAD, ...SQUAT, ...BENCH, ...OHP] },
         art: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0M12 3v2M3 7l2 1M21 7l-2 1"/>' },
-      { key: 'pony', name: 'Lifted the pony', mark: '♞', color: '#1f3a6e', hint: '5 deadlift sets of 3 or more in a day', rule: { lift: DEAD, sets: 5, reps: 3 },
+      { key: 'pony', name: 'Lifted the pony', mark: '♞', color: '#1f3a6e', hint: '3 deadlift sets of 5 or more in a day', rule: { lift: DEAD, sets: 3, reps: 5 },
         art: '<path d="M7 4v8a5 5 0 0 0 10 0V4"/><path d="M5 4h4M15 4h4"/><circle cx="7" cy="8" r=".6"/><circle cx="17" cy="8" r=".6"/><circle cx="8.6" cy="13.5" r=".6"/><circle cx="15.4" cy="13.5" r=".6"/>' },
-      { key: 'elephant', name: 'Walked the elephant', mark: '⚖', color: '#5a5f6e', hint: '4 carries in a day', rule: { lift: CARRY, sets: 4, reps: 1 },
+      { key: 'elephant', name: 'Walked the elephant', mark: '⚖', color: '#5a5f6e', hint: '3 carries in a day', rule: { lift: CARRY, sets: 3, reps: 1 },
         art: '<path d="M4 16c0-5 3-8 8-8s8 3 8 7v5h-3v-3h-3v3h-3v-3H8v3H5v-3"/><path d="M20 15c1.2 1 1.2 3.5 0 4.5"/><circle cx="15.5" cy="11.5" r=".8"/><path d="M11 8c-1 2-1 4 1 5"/>' },
-      { key: 'ring-toss', name: 'Ring toss champ', mark: '◯', color: '#c8102e', hint: '4 overhead press sets of 5 or more in a day', rule: { lift: OHP, sets: 4, reps: 5 },
+      { key: 'ring-toss', name: 'Ring toss champ', mark: '◯', color: '#c8102e', hint: '3 overhead press sets of 8 or more in a day', rule: { lift: OHP, sets: 3, reps: 8 },
         art: '<path d="M10 3h4v3l2 3v12H8V9l2-3z"/><ellipse cx="12" cy="13" rx="7" ry="2.2"/>' },
-      { key: 'tug', name: 'Won the tug of war', mark: '≈', color: '#2f7d4f', hint: '4 rowing sets of 8 or more in a day', rule: { lift: ROW, sets: 4, reps: 8 },
+      { key: 'tug', name: 'Won the tug of war', mark: '≈', color: '#2f7d4f', hint: '3 rowing sets of 10 or more in a day', rule: { lift: ROW, sets: 3, reps: 10 },
         art: '<path d="M3 12c2.5-2 4.5 2 7 0s4.5 2 7 0 2.5-1 4 0"/><path d="M5 8l-3 4 3 4M19 8l3 4-3 4"/>' },
       { key: 'seven-acts', name: 'Half the bill', mark: 'VII', color: '#a8780a', hint: 'Perform 7 acts', rule: { doors: 7 },
         art: '<path d="M3 20c1-6 4-11 9-15 5 4 8 9 9 15z"/><path d="M12 5v15M7.5 20c0-4 2-8 4.5-11M16.5 20c0-4-2-8-4.5-11M12 5V2l3 1.2L12 4.4"/>' },
@@ -230,7 +231,7 @@ export function progress(pack, run, sets, h) {
   if (pack.doors) for (const d of days) pack.doors.forEach((door, i) => {
     const due = from.slice(0, 8) + String(i + 1).padStart(2, '0');
     if (doorDone[i] || d < due) return;
-    if (door.workout ? workoutDone[door.workout] && workoutDone[door.workout] <= d : count(byDay.get(d), door.lifts) >= door.sets) doorDone[i] = d;
+    if (door.workout ? workoutDone[door.workout] && workoutDone[door.workout] <= d : count(byDay.get(d), door.lifts, door.reps) >= door.sets) doorDone[i] = d;
   });
   const doorDays = Object.values(doorDone).sort();
   const week = d => Math.floor(h.daysBetween(from, d) / 7) + 1;

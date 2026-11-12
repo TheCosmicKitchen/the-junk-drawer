@@ -2966,7 +2966,7 @@ function renderPackPage(pack) {
       const done = p && p.doorDone[i] != null, due = i < n;
       return '<span class="door' + (done ? ' got' : due ? ' due' : '') + (i === n - 1 ? ' today' : '') + '" title="' + esc(d.name) + '">' + (i + 1) + '</span>';
     }).join('') + '</div>' +
-      (todayDoor ? '<p class="door-today"><b>' + esc(cal.one) + ' ' + n + ': ' + esc(todayDoor.name) + '.</b> ' + esc(todayDoor.workout ? 'Finish the ' + pack.workouts.find(w => w.key === todayDoor.workout).name + ' workout.' : todayDoor.sets + ' sets of ' + stepName(todayDoor.lifts) + '.') + '</p>'
+      (todayDoor ? '<p class="door-today"><b>' + esc(cal.one) + ' ' + n + ': ' + esc(todayDoor.name) + '.</b> ' + esc(todayDoor.workout ? 'Finish the ' + pack.workouts.find(w => w.key === todayDoor.workout).name + ' workout.' : todayDoor.sets + ' sets of ' + (todayDoor.reps > 1 ? todayDoor.reps + '+ ' : '') + stepName(todayDoor.lifts) + '.') + '</p>'
         : '<p class="hint-line">The first ' + esc(cal.one.toLowerCase()) + ' opens ' + esc(fmtDay(from, { month: 'long', day: 'numeric' })) + '. ' + esc(cal.many) + ' you miss stay open until ' + esc(last) + '.</p>') + '</section>';
   }
   if (pack.letters) {
