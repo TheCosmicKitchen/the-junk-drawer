@@ -242,6 +242,7 @@
   .stamp { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
   .stamp-face { display: flex; align-items: center; justify-content: center; border: 2px dashed var(--line); color: var(--muted); font: 700 18px/1 var(--headfont, var(--display)); box-sizing: border-box; }
   .stamp.got .stamp-face { border: 3px dashed rgba(255, 255, 255, .85); color: #fff; }
+  .stamp:not(.got) .stamp-face svg { opacity: .45; }
   .stamp b { font-size: 12.5px; line-height: 1.25; } .stamp small { font-size: 11.5px; color: var(--muted); line-height: 1.25; }
   .stamp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 14px 8px; }
   .stations { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }

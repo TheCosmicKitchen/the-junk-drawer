@@ -614,6 +614,80 @@ export const THEMES = {
     },
   }),
 
+  circus: theme('circus', 'The Iron Big Top', 'Red and cream stripes, gold leaf, an old-time strongman and a high striker', {
+    seasonWord: 'Tour', seasonsWord: 'Tours', eventWord: 'Spectacular', eventsWord: 'Spectaculars',
+    stamp: 'Ticket stub', stamps: 'Ticket stubs', stampBook: 'The scrapbook', stampFrame: '4px', stampToast: 'A ticket stub for the scrapbook: ',
+    tabIcons: { log: '<circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/>', routines: '<path d="M3 20L12 4l9 16z"/><path d="M12 4v16M7.5 12h9"/>', history: '<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z"/><path d="M15 7v12" stroke-dasharray="2 2"/>', seasons: '<path d="M3 20c0-6 4-11 9-14 5 3 9 8 9 14"/><path d="M12 6V2l3 1.5L12 5M3 20h18M9 20v-4a3 3 0 0 1 6 0v4"/>', progress: '<path d="M12 3l2.4 5 5.6.6-4.2 3.8 1.2 5.5L12 15.2 7 17.9l1.2-5.5L4 8.6 9.6 8z"/>' },
+    brand: 'The Iron Big Top', motto: 'ROLL UP · ROLL UP · LIFT', tagline: 'Step right up. Log the set.',
+    fonts: 'family=Ultra&family=Abril+Fatface', brandFont: 'Ultra, Georgia, serif', headFont: '"Abril Fatface", Georgia, serif', brandWeight: 400,
+    // An old-time globe barbell, the kind a circus strongman held overhead.
+    logo: svg('<rect x="9" y="18.6" width="22" height="2.8" rx="1.4" fill="var(--ink)"/><circle cx="8" cy="20" r="7" fill="var(--accent)"/><circle cx="32" cy="20" r="7" fill="var(--accent)"/><path d="M3.5 17a6 6 0 0 1 4-4M28 13a6 6 0 0 1 4 1" stroke="var(--card)" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".7"/><circle cx="8" cy="20" r="2" fill="var(--gold)"/><circle cx="32" cy="20" r="2" fill="var(--gold)"/>'),
+    // A striped big-top valance along the top of the hero.
+    css: '.hero { position: relative; overflow: hidden; padding-top: 34px; } .hero > * { position: relative; z-index: 1; }' +
+      '.hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 22px; z-index: 1;' +
+        ' background: radial-gradient(circle at 12px 12px, var(--accent) 11px, transparent 11.5px) 0 0 / 24px 22px repeat-x, repeating-linear-gradient(90deg, var(--accent) 0 12px, var(--card) 12px 24px) 0 0 / 100% 12px no-repeat; }' +
+      '.hero .date::before { content: "★ "; color: var(--gold); }' +
+      '.top .brand { font-size: clamp(15px, 4.6vw, 22px); }',   // Ultra runs very wide
+    titles: { log: 'Tonight’s Performance', routines: 'The Acts', history: 'The Programme', seasons: 'Tours', progress: 'Feats of Strength' },
+    tabs: { log: 'Perform', routines: 'Acts', history: 'Programme', seasons: 'Tours', progress: 'Feats' },
+    helloBig: 'The crowd goes wild.', helloSome: 'On with the show.', helloNone: 'The tent is up.',
+    restUp: 'Curtain up! Next set.',
+    finish: 'Take a bow · Finish ›', finishFeed: 'Take a bow · tell the crowd', finishPrivate: 'Take a bow · finish', updateFeed: 'Update the bill',
+    ended: 'Take a bow. What a show.', endedFeed: 'Take a bow. It’s on the bill.', endedClock: '✓ Curtain · ',
+    routineDone: '🎉 Every act performed.', routineBtn: 'Show complete 🎪',
+    emptyH: 'The tent is up.', emptyP: 'Log a set and the show begins.',
+    prToast: '🌟 A marvel of strength! ', clubToast: '🔔 Ding! A new notch: welcome to the ', goalToast: 'Promise kept: ',
+    pr: 'marvel', prs: 'marvels',
+    prFlag: (reps, was) => 'A marvel of strength! Your best at ' + reps + ' reps was ' + was,
+    winPr: ex => 'A marvel of strength on ' + ex + ': ',
+    clubs: 'Test your strength', clubsSub: n => 'one notch lit for each of the ' + n + ' clubs joined',
+    clubsLabel: (n, next) => 'A high striker with ' + n + ' notches lit, one for each club; the puck climbs toward the bell as you near the ' + next,
+    weekly: 'Last week’s bill', streak: 'weeks on tour', restWeek: 'A week off the road',
+    rest: n => n + ' weeks on tour in a row. Consider a week off the road: same lifts at about 60% of the weight, then raise the tent again.',
+    feed: 'The ringmaster’s board', feedSub: 'the crew’s marvels', feedEmpty: 'Marvels, bells rung, promises, strongmen and shows from the crew get announced here.',
+    icons: { pr: '🌟', club: '🎪', goal: '🎯', session: '🎭', record: '🦁', quest: '🤹', holder: '🦁', questOpen: '🤹', rest: '🎠', dry: '🤡', stamp: '🎟️' },
+    win: { club: 'Hit a new notch: the ', record: 'Strongest in the world: ', quest: 'Pulled off a stunt: ', goal: 'Kept a promise: ', session: 'Put on a show: ', stamp: 'Kept a ticket stub: ' },
+    records: 'Strongest in the world', holderCol: 'Strongman', recordsBlurb: 'Out-lift the strongman and the leopard-print leotard is yours.', recordToast: '🦁 Strongest in the world: the crew record on ',
+    quests: 'Stunts', questsSub: 'this week’s stunts, the same for the whole troupe', questDone: '🤹 Stunt pulled off: ',
+    goals: 'Promises', goalsKept: 'Promises kept', plan: 'The running order', points: 'tickets', pointsEarned: 'tickets sold',
+    dry: 'A tough crowd: three sessions without a new best on this lift. Try a lighter week (about 10% off) or a different rep range, then come back to it.',
+    ach: { first_visit: 'Joined the circus.', five_visits: 'Five shows. The crowd knows your name.', twenty_visits: 'Twenty gym days. Top of the bill.', first_pr: 'A new best for an exercise and rep count. A marvel of strength.' },
+    achTitle: { first_visit: 'Ran Away to the Circus', first_pr: 'First Marvel' },
+    bar: { fill: 'repeating-linear-gradient(90deg, var(--accent) 0 10px, var(--card) 10px 20px)', end: '🐘', flip: true, goal: '🎪' },
+    // Test Your Strength: the carnival high striker. Each club lights a notch up the tower, the puck
+    // climbs toward the next one as you near it, and the bell rings at twelve (then a fresh tower).
+    rack: (lit, ratio) => {
+      const done = lit > 0 && lit % 12 === 0, k = lit === 0 ? 0 : done ? 12 : lit % 12, rounds = lit > 0 ? Math.floor((lit - 1) / 12) : 0;
+      const top = 22, bottom = 116, step = (bottom - top) / 12, y = i => bottom - (i + 0.5) * step;
+      let s = '<rect x="146" y="' + top + '" width="28" height="' + (bottom - top) + '" rx="3" fill="var(--card)" stroke="var(--line)" stroke-width="1.5"/>' +
+        '<rect x="158" y="' + top + '" width="4" height="' + (bottom - top) + '" fill="var(--line)"/>';
+      for (let i = 0; i < 12; i++) {
+        const on = i < k;
+        s += '<rect x="149" y="' + (y(i) - 2.5).toFixed(1) + '" width="8" height="5" rx="1" fill="' + (on ? (i % 2 ? 'var(--gold)' : 'var(--accent)') : 'var(--chip)') + '"/>' +
+          '<rect x="163" y="' + (y(i) - 2.5).toFixed(1) + '" width="8" height="5" rx="1" fill="' + (on ? (i % 2 ? 'var(--gold)' : 'var(--accent)') : 'var(--chip)') + '"/>';
+      }
+      // The puck: at the top notch you've reached, plus how far you are toward the next.
+      const py = done ? top + 4 : bottom - (k + ratio) * step;
+      s += '<circle cx="160" cy="' + py.toFixed(1) + '" r="6" fill="var(--ink)"/><circle cx="158" cy="' + (py - 2).toFixed(1) + '" r="1.6" fill="#fff" opacity=".6"/>';
+      // The bell, and the sign.
+      s += '<circle cx="160" cy="14" r="10" fill="' + (done ? 'var(--gold)' : 'var(--card)') + '" stroke="var(--gold)" stroke-width="2.5"/>' +
+        (done ? '<path d="M140 8l-7-4M140 20l-7 4M180 8l7-4M180 20l7 4" stroke="var(--gold)" stroke-width="2" stroke-linecap="round"/>' : '');
+      [['Strongman!', 11], ['Mighty', 8], ['Not bad', 4], ['Weakling', 1]].forEach(([label, i]) => {
+        s += '<text x="180" y="' + (y(i) + 3.5).toFixed(1) + '" font-size="10" font-weight="700" fill="' + (i < k ? 'var(--ink)' : 'var(--muted)') + '">' + label + '</text>';
+      });
+      // The pad and the mallet at the foot.
+      s += '<rect x="138" y="116" width="44" height="8" rx="2" fill="var(--accent)"/>' +
+        '<rect x="96" y="96" width="4" height="30" rx="1.5" fill="#8a5a2b" transform="rotate(-24 98 126)"/><rect x="86" y="88" width="22" height="12" rx="3" fill="var(--ink)" transform="rotate(-24 98 126)"/>';
+      if (rounds) s += '<text x="8" y="16" font-size="11" font-weight="700" fill="var(--muted)">Rang the bell ' + rounds + (rounds === 1 ? ' time' : ' times') + '</text>';
+      return s;
+    },
+    token: (cx, glow, next) => '<path d="M' + (cx - 12) + ' 74 h24 l-12 22z" fill="' + (glow > 0.02 ? 'var(--accent)' : 'var(--chip)') + '" opacity="' + glowOp(glow, next) + '"/>',
+    colors: {
+      light: { bg: '#fbf3e4', card: '#fffaf0', ink: '#2a1a1f', muted: '#6f5a5f', line: '#ecdcc4', chip: '#f4e7d0', accent: '#c8102e', 'accent-ink': '#ffffff', 'accent-soft': '#f9d9dd', good: '#2f7d4f', gold: '#a8780a', 'gold-soft': '#f7e7bf', grid: '#f1e5cf', axis: '#dcc8a6' },
+      dark: { bg: '#160d12', card: '#21141b', ink: '#f7ead8', muted: '#c4a9a5', line: '#3a2530', chip: '#2c1a23', accent: '#ff4d5e', 'accent-ink': '#2a0006', 'accent-soft': '#3d1520', good: '#7bd39b', gold: '#f2c14e', 'gold-soft': '#36290f', grid: '#2a1a22', axis: '#4a3240' },
+    },
+  }),
+
   dungeon: theme('dungeon', 'The Iron Dungeon', 'Parchment, torchlight, loot chests and an XP bar', {
     seasonWord: 'Campaign', seasonsWord: 'Campaigns', eventWord: 'Raid', eventsWord: 'Raids',
     stamp: 'Trophy', stamps: 'Trophies', stampBook: 'Trophy room', stampFrame: '6px', stampToast: 'Trophy claimed: ',
@@ -898,7 +972,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {
