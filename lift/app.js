@@ -2482,7 +2482,8 @@ function renderProgress() {
   const ms = L.milestoneProgress(L.lbEquivalent(totals().volume));
   const ach = L.achievements({ volume: totals().volume, visits: totals().visits, prs: S.bests.size });
   const earned = ach.filter(a => a.earned), nextClub = ach.find(a => a.milestone && !a.earned);
-  const medal = a => a.milestone ? (a.need === 10000 ? T.icons.elephant : T.icons.club) : a.id === 'first_pr' ? T.icons.pr : '⭐';
+  const mark = lb => { const m = (T.clubMarks || []).find(([upTo]) => lb <= upTo); return m ? '<svg class="medal-art" viewBox="0 0 24 24" aria-hidden="true">' + m[1] + '</svg>' : null; };
+  const medal = a => a.milestone ? (mark(a.need) || (a.need === 10000 ? T.icons.elephant : T.icons.club)) : a.id === 'first_pr' ? T.icons.pr : '⭐';
   view.innerHTML =
     '<div class="seg" role="group" aria-label="Period">' +
       [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +

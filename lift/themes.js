@@ -41,6 +41,8 @@ const PLAIN = {
   ach: {}, achTitle: {},
   // The club rack: one token per club joined, and the next one coming to life as you near it (glow 0 to 1).
   // Drawn in a 320 × 130 box on a shelf whose top edge is at y = 112; cx is the token's center.
+  // clubMarks: optional [[up to lb, picture]] for club badges, in order (a picture is the inside of a
+  // 24 x 24 SVG); clubs beyond the last use icons.club.
   // Or rack: (lit, ratio) => the whole rack as one picture in that box (lit clubs, ratio 0 to 1 toward the next).
   token: (cx, glow, next) => '<circle cx="' + cx + '" cy="88" r="21" fill="var(--chip)" stroke="var(--line)" stroke-width="1.5"/>' +
     (glow > 0.02 ? '<circle cx="' + cx + '" cy="88" r="21" fill="var(--accent)" opacity="' + (next ? (0.15 + glow * 0.6).toFixed(2) : 1) + '"/>' : '') +
@@ -654,6 +656,15 @@ export const THEMES = {
     ach: { first_visit: 'Joined the circus.', five_visits: 'Five shows. The crowd knows your name.', twenty_visits: 'Twenty gym days. Top of the bill.', first_pr: 'A new best for an exercise and rep count. A marvel of strength.' },
     achTitle: { first_visit: 'Ran Away to the Circus', first_pr: 'First Marvel' },
     bar: { fill: 'repeating-linear-gradient(90deg, var(--accent) 0 10px, var(--card) 10px 20px)', end: '🐘', flip: true, goal: '🎪' },
+    // The club badges tell a story over the whole climb: the strongman's singlet (up to 100K lb), his
+    // mallet (to 300K), then a moustache that keeps growing (to 600K, 1M, 2M); beyond that, the big top.
+    clubMarks: [
+      [100000, '<path d="M8.5 2.5l2.2 4.5h2.6l2.2-4.5 2.2 1.6-1.6 5.2V21.5H7.9V9.3L6.3 4.1z" fill="#c8102e"/><path d="M7.9 12.5h8.2M7.9 16h8.2" stroke="#fff3df" stroke-width="1.6"/><path d="M7.9 19.4h8.2" stroke="#fff3df" stroke-width="1.6"/>'],
+      [300000, '<rect x="11" y="9" width="2.6" height="13.5" rx="1" fill="#a0642d" transform="rotate(28 12.3 15.7)"/><rect x="4.5" y="3.5" width="13" height="7" rx="2" fill="#5b3a29" transform="rotate(28 11 7)"/><rect x="5.5" y="5.2" width="11" height="1.4" rx=".7" fill="#c8102e" transform="rotate(28 11 7)"/>'],
+      [600000, '<g transform="translate(12 12.5) scale(.8 1.5) translate(-12 -12.5)"><path d="M12 11.2c-1.4-1.5-3.8-1.9-5.7-.6-1.5 1-2.5 2.7-4.1 2.3 1.4 2.7 4.9 3.3 7.4 1.8L12 13.2l2.4 1.5c2.5 1.5 6 .9 7.4-1.8-1.6.4-2.6-1.3-4.1-2.3-1.9-1.3-4.3-.9-5.7.6z" fill="#3b2418"/></g>'],
+      [1000000, '<g transform="translate(12 12.5) scale(.95 1.9) translate(-12 -12.5)"><path d="M12 11.2c-1.4-1.5-3.8-1.9-5.7-.6-1.5 1-2.5 2.7-4.1 2.3 1.4 2.7 4.9 3.3 7.4 1.8L12 13.2l2.4 1.5c2.5 1.5 6 .9 7.4-1.8-1.6.4-2.6-1.3-4.1-2.3-1.9-1.3-4.3-.9-5.7.6z" fill="#3b2418"/></g>'],
+      [2000000, '<g transform="translate(12 12.5) scale(.9 2) translate(-12 -12.5)"><path d="M12 11.2c-1.4-1.5-3.8-1.9-5.7-.6-1.5 1-2.5 2.7-4.1 2.3 1.4 2.7 4.9 3.3 7.4 1.8L12 13.2l2.4 1.5c2.5 1.5 6 .9 7.4-1.8-1.6.4-2.6-1.3-4.1-2.3-1.9-1.3-4.3-.9-5.7.6z" fill="#3b2418"/><path d="M2.4 13c-1.8-.2-2.1-2.4-.4-2.6M21.6 13c1.8-.2 2.1-2.4.4-2.6" fill="none" stroke="#3b2418" stroke-width="1" stroke-linecap="round"/></g>'],
+    ],
     // Test Your Strength: the carnival high striker. Each club lights a notch up the tower, the puck
     // climbs toward the next one as you near it, and the bell rings at twelve (then a fresh tower).
     rack: (lit, ratio) => {
