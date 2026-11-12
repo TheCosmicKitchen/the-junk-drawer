@@ -217,6 +217,12 @@ class SupaStore {
   async addBodyweight(f) { return must(await this.sb.from('lift_bodyweight').insert(f).select('id,measured_on,weight,unit,created_at').single()); }
   async removeBodyweight(id) { must(await this.sb.from('lift_bodyweight').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 
+  // ----- programs people design: one document each; yours, plus the crew's shared ones -----
+  async programs() { return must(await this.sb.from('lift_programs').select('id,name,doc,is_shared,created_by,updated_at').is('deleted_at', null).order('updated_at', { ascending: false })); }
+  async addProgram(f) { return must(await this.sb.from('lift_programs').insert(f).select('id,name,doc,is_shared,created_by,updated_at').single()); }
+  async updateProgram(id, patch) { return must(await this.sb.from('lift_programs').update(patch).eq('id', id).select('id,name,doc,is_shared,created_by,updated_at').single()); }
+  async removeProgram(id) { must(await this.sb.from('lift_programs').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
+
   // ----- season packs: who joined which pack (a run), and the stamps earned (everyone's, for the crew) -----
   async seasonRuns() { return must(await this.sb.from('lift_season_runs').select('id,season_key,starts_on,created_by').is('deleted_at', null).order('starts_on')); }
   async addRun(f) { return must(await this.sb.from('lift_season_runs').insert(f).select('id,season_key,starts_on,created_by').single()); }
@@ -501,6 +507,10 @@ class DemoStore {
   }
   async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
   async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
+  async programs() { this.progRows = this.progRows || []; return this.progRows.filter(r => !r.deleted_at).map(clone); }
+  async addProgram(f) { await this.programs(); const r = { id: uid(), created_by: 'me', is_shared: false, updated_at: new Date().toISOString(), ...f }; this.progRows.unshift(r); return clone(r); }
+  async updateProgram(id, patch) { const r = (this.progRows || []).find(x => x.id === id); Object.assign(r, patch, { updated_at: new Date().toISOString() }); return clone(r); }
+  async removeProgram(id) { const r = (this.progRows || []).find(x => x.id === id); if (r) r.deleted_at = new Date().toISOString(); }
   async seasonRuns() { this.runRows = this.runRows || []; return this.runRows.filter(r => !r.deleted_at).map(clone); }
   async addRun(f) { await this.seasonRuns(); const r = { id: uid(), created_by: 'me', ...f }; this.runRows.push(r); return clone(r); }
   async endRun(id) { const r = (this.runRows || []).find(x => x.id === id); if (r) r.deleted_at = new Date().toISOString(); }
