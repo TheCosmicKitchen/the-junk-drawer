@@ -221,11 +221,11 @@ function writeSnap() {
     if (d && x.is_warmup !== true) { d.sets = Number(d.sets) - 1; d['volume_' + x.unit] = Number(d['volume_' + x.unit]) - L.setVolume(x); }
   }
   const data = {
-    cat: { exercises: S.exercises, aliases: [...S.aliases].flatMap(([exercise_id, list]) => list.map(alias => ({ exercise_id, alias }))) },
+    cat: { exercises: S.exercises.concat(S.activities || []), aliases: [...S.aliases].flatMap(([exercise_id, list]) => list.map(alias => ({ exercise_id, alias }))) },
     recent: S.recent.filter(x => x._sync !== 'waiting').map(x => { const { _sync, ...rest } = x; return rest; }), days: days.filter(d => d.sets > 0), bests: S.bestRows,
     routines: { templates: S.templates, items: S.items, subs: S.subs },
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
-    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows, programs: S.programs,
+    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows, programs: S.programs, cardio: S.cardio,
   };
   try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld] })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
@@ -249,12 +249,12 @@ function fetchAll() {
     store.routines(), store.seasons(), store.memberNames(), store.userId(),
     store.workoutDays(today()), store.bodyweights(),
     Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
-    Promise.resolve().then(() => store.programs()).catch(() => []),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs }));
+    Promise.resolve().then(() => store.programs()).catch(() => []), Promise.resolve().then(() => store.cardio()).catch(() => []),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio }) {
   S.wdays = wdays;
-  S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || [];
+  S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || []; S.cardio = cardio || [];
   S.bw = bw;
   if (bw.length && prefs.bodyweight == null && bw[0].unit === prefs.unit) prefs.bodyweight = Number(bw[0].weight);
   setRoutines(routines);
@@ -265,8 +265,10 @@ function applyData({ cat, recent, days, bests, routines, seasons, names, myId, w
   S.standings = {};
   S.names = new Map(names.map(n => [n.user_id, n.display_name]));
   S.myId = myId;
-  S.exercises = cat.exercises;
-  S.byId = new Map(cat.exercises.map(e => [e.id, e]));
+  S.exercises = cat.exercises.filter(e => e.kind !== 'cardio');
+  S.activities = cat.exercises.filter(e => e.kind === 'cardio' && !e.deleted_at);
+  S.actById = new Map(S.activities.map(e => [e.id, e]));
+  S.byId = new Map(S.exercises.map(e => [e.id, e]));
   S.aliases = new Map();
   for (const a of cat.aliases) {
     if (!S.aliases.has(a.exercise_id)) S.aliases.set(a.exercise_id, []);
@@ -369,7 +371,8 @@ function renderLog() {
     weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
-    (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
+    cardioCard() +
+    (groups.length ? groups.map(exCard).join('') : (following() || cardioCard() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
     questsCard() +
     winsCard();
@@ -463,6 +466,8 @@ view.addEventListener('click', async e => {
   else if (b.dataset.season) openSeason(b.dataset.season);
   else if (b.hasAttribute('data-season-back')) { S.seasonOpen = null; S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.dataset.seasonProg) openSeasonProgram(b.dataset.seasonProg);
+  else if (b.dataset.cdEdit) { const r = (S.cardio || []).find(x => x.id === b.dataset.cdEdit); if (r) openCardio(r.exercise_id, r); }
+  else if (b.dataset.cdNew) openCardio(b.dataset.cdNew);
   else if (b.dataset.feedDay) { const k = b.dataset.feedDay; if (feedOpen.has(k)) feedOpen.delete(k); else feedOpen.add(k); render(); }
   else if (b.dataset.wrapped) { S.wrappedOpen = b.dataset.wrapped; openSeason(b.dataset.wrapped); }
   else if (b.hasAttribute('data-wrapped-back')) { S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
@@ -887,6 +892,7 @@ function openPicker(title, onPick, multi) {
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
     (multi ? '<p class="hint-line">Tap to tick as many as you like, in the order you’ll do them.</p>' : '') +
+    (!onPick && !multi && (S.activities || []).length ? '<div class="section-title">Cardio</div><div class="chips cardio-pick">' + S.activities.map(a => '<button type="button" class="chip" data-cardio-new="' + esc(a.id) + '">' + esc(a.name) + '</button>').join('') + '</div>' : '') +
     '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul>' +
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
@@ -918,6 +924,8 @@ function drawResults(q) {
     html += '<li><button data-add="' + esc(typed) + '"><span>+ Add “' + esc(typed) + '” to the catalogue</span><small>admin</small></button>' +
       (near ? '<p class="warn" style="margin:-2px 4px 10px">Did you mean <b>' + esc(near) + '</b>? It’s already there.</p>' : '') + '</li>';
   }
+  if (typed && !LG.pickFor && !LG.multi) html = (S.activities || []).filter(a => L.norm(a.name).includes(L.norm(typed)))
+    .map(a => '<li><button data-cardio-new="' + esc(a.id) + '"><span>' + esc(a.name) + '</span><small>cardio</small></button></li>').join('') + html;
   $('exResults').innerHTML = html;
   syncPickFoot();
 }
@@ -1154,6 +1162,8 @@ inner.addEventListener('click', async e => {
   if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
+  if (b.dataset.cardioNew) return openCardio(b.dataset.cardioNew);
+  if (LG.mode === 'cardio') return cardioClick(b);
   if (LG.mode === 'chunk') return chunkClick(b);
   if (LG.mode === 'recap') return recapClick(b);
   if (LG.mode === 'wizard') return wizardClick(b);
@@ -2923,6 +2933,104 @@ function programsSection() {
 }
 
 // ===========================================================================
+// Cardio: one entry per session (an activity, minutes, and a distance if you have one). The
+// activities are the catalogue's cardio rows and never show up among lifts, bests or programs.
+// ===========================================================================
+const CD = {};
+const actName = id => (S.actById.get(id) || {}).name || 'Cardio';
+const distUnit = () => prefs.distUnit || (prefs.unit === 'kg' ? 'km' : 'mi');
+const trimNum = (v, d) => String(Number(Number(v).toFixed(d)));
+const fmtMin = m => trimNum(m, 1) + ' min';
+// "28 min · 5.2 km · 5:23 /km": pace only when there's a distance.
+function cardioText(r) {
+  const min = Number(r.minutes), dist = r.distance != null ? Number(r.distance) : null, unit = r.distance_unit || r.unit;
+  if (!dist) return fmtMin(min);
+  const pace = min / dist, pm = Math.floor(pace), ps = Math.round((pace - pm) * 60);
+  return fmtMin(min) + ' · ' + trimNum(dist, 2) + ' ' + unit + ' · ' + (ps === 60 ? pm + 1 + ':00' : pm + ':' + String(ps).padStart(2, '0')) + ' /' + unit;
+}
+function openCardio(exId, editing) {
+  LG.mode = 'cardio';
+  const last = editing || (S.cardio || []).find(r => r.exercise_id === exId);
+  Object.assign(CD, { exId, editing: editing || null, minutes: last ? Number(last.minutes) : 30,
+    distance: last && last.distance != null ? Number(last.distance) : '', unit: (last && last.distance_unit) || distUnit(), day: editing ? editing.performed_on : today() });
+  drawCardio();
+  openSheet();
+}
+function drawCardio() {
+  const last = !CD.editing && (S.cardio || []).find(r => r.exercise_id === CD.exId);
+  inner.innerHTML = '<div class="sheet-head"><div class="lg-title"><h2 id="sheetTitle">' + esc(actName(CD.exId)) + '</h2>' +
+      (CD.editing ? '' : '<button class="linkbtn" data-change>Change</button>') + '</div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      (last ? '<p class="hint-line" style="margin-top:0">Last time: ' + esc(cardioText(last)) + ' · ' + esc(fmtDay(last.performed_on, { month: 'short', day: 'numeric' })) + '</p>' : '') +
+      '<div class="cd-grid"><div><div class="field-label"><label for="cdMin">Minutes</label></div>' +
+        '<input class="plain-input cd-big" id="cdMin" type="number" inputmode="decimal" min="1" max="600" step="any" value="' + esc(CD.minutes) + '"></div>' +
+      '<div><div class="field-label"><label for="cdDist">Distance</label><small class="muted">optional</small></div><div class="cd-dist">' +
+        '<input class="plain-input cd-big" id="cdDist" type="number" inputmode="decimal" min="0" max="500" step="any" value="' + esc(CD.distance) + '">' +
+        '<span class="seg" role="group" aria-label="Distance in">' + ['km', 'mi'].map(u => '<button type="button" data-cd-unit="' + u + '" aria-pressed="' + (CD.unit === u) + '">' + u + '</button>').join('') + '</span></div></div></div>' +
+      '<div class="chips" role="group" aria-label="Quick minutes">' + [10, 20, 30, 45, 60].map(m => '<button type="button" class="chip" data-cd-min="' + m + '">' + m + ' min</button>').join('') + '</div>' +
+      (CD.editing ? '' : '<div class="field-label"><label for="cdDay">Day</label></div><input class="plain-input" id="cdDay" type="date" min="' + L.addDays(today(), -7) + '" max="' + today() + '" value="' + CD.day + '">') +
+      '<p class="warn" id="cdErr" role="alert"></p></div>' +
+    '<div class="design-foot wz-foot">' + (CD.editing ? '<button class="btn ghost" data-cd-del>Delete</button>' : '<span></span>') +
+      '<button class="btn primary" data-cd-save>' + (CD.editing ? 'Save changes' : 'Save') + '</button></div>';
+}
+const refreshFeed = () => { const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard(); };
+// Each activity's day as one line in the feed: today's total time (and distance) for it.
+function postCardioWin(exId, day) {
+  const rows = (S.cardio || []).filter(r => r.exercise_id === exId && r.performed_on === day);
+  if (!rows.length) return unpostWin('cardio', actName(exId), day);   // a promise: callers wait so the feed is current
+  const units = new Set(rows.filter(r => r.distance != null).map(r => r.distance_unit));
+  const minutes = rows.reduce((a, r) => a + Number(r.minutes), 0);
+  const distance = units.size === 1 ? rows.reduce((a, r) => a + Number(r.distance || 0), 0) : null;
+  return postWin('cardio', actName(exId), { minutes: Math.round(minutes * 10) / 10, distance: distance ? Math.round(distance * 100) / 100 : null, unit: distance ? [...units][0] : null }, day);
+}
+async function cardioClick(b) {
+  if (b.dataset.cdMin) { $('cdMin').value = b.dataset.cdMin; return; }
+  if (b.dataset.cdUnit) {
+    CD.minutes = $('cdMin').value; CD.distance = $('cdDist').value; if ($('cdDay')) CD.day = $('cdDay').value || today();
+    CD.unit = prefs.distUnit = b.dataset.cdUnit; savePrefs();
+    return drawCardio();
+  }
+  const err = msg => { $('cdErr').textContent = msg; };
+  if (b.hasAttribute('data-cd-del')) {
+    b.disabled = true;
+    try {
+      const row = CD.editing;
+      await store.updateCardio(row.id, { deleted_at: new Date().toISOString() });
+      S.cardio = S.cardio.filter(r => r.id !== row.id);
+      closeSheet(); toast(actName(row.exercise_id) + ' deleted');
+      postCardioWin(row.exercise_id, row.performed_on).then(refreshFeed);
+    } catch (x) { b.disabled = false; err(x.message); }
+    return;
+  }
+  if (!b.hasAttribute('data-cd-save')) return;
+  const minutes = Number($('cdMin').value), raw = $('cdDist').value.trim(), distance = raw === '' ? null : Number(raw);
+  const day = CD.editing ? CD.editing.performed_on : ($('cdDay').value || today());
+  if (!(minutes > 0 && minutes <= 600)) return err('Minutes: anything from 1 to 600.');
+  if (distance != null && !(distance > 0 && distance <= 500)) return err('Distance: up to 500, or leave it empty.');
+  if (day > today() || day < L.addDays(today(), -7)) return err('Pick a day in the last week.');
+  const f = { exercise_id: CD.exId, minutes: Math.round(minutes * 10) / 10, distance: distance == null ? null : Math.round(distance * 100) / 100, distance_unit: distance == null ? null : CD.unit };
+  b.disabled = true;
+  try {
+    if (CD.editing) { const row = await store.updateCardio(CD.editing.id, f); S.cardio = S.cardio.map(r => (r.id === row.id ? row : r)); }
+    else S.cardio.unshift(await store.addCardio({ ...f, performed_on: day }));
+    vibrate(12);
+    closeSheet();
+    toast((CD.editing ? 'Saved: ' : 'Logged: ') + actName(CD.exId) + ', ' + cardioText(f));
+    postCardioWin(f.exercise_id, day).then(refreshFeed);   // the sheet closes at once; the feed line follows
+  } catch (x) { b.disabled = false; err(x.message); }
+}
+// The Log tab: today's cardio, each entry tappable to change, with a duplicate button.
+function cardioCard() {
+  const rows = (S.cardio || []).filter(r => r.performed_on === today());
+  if (!rows.length) return '';
+  const total = rows.reduce((a, r) => a + Number(r.minutes), 0);
+  const dup = r => '<button class="chip dup" data-cd-new="' + esc(r.exercise_id) + '" aria-label="Log more ' + esc(actName(r.exercise_id)) + ', filled in from this one">' +
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="3"/><path d="M16 8V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h2"/><path d="M14.5 12v6M11.5 15h6"/></svg></button>';
+  return '<section class="card ex-card"><div class="row"><h3>Cardio</h3><span class="muted num">' + esc(fmtMin(total)) + '</span></div>' +
+    '<div class="chips">' + rows.slice().reverse().map(r => '<button class="chip" data-cd-edit="' + esc(r.id) + '" aria-label="Change ' + esc(actName(r.exercise_id)) + ', ' + esc(cardioText(r)) + '"><b>' + esc(actName(r.exercise_id)) + '</b>&nbsp;' + esc(cardioText(r)) + '</button>' + dup(r)).join('') + '</div></section>';
+}
+
+// ===========================================================================
 // Rest timer: starts after you log, counts down, buzzes when it's time.
 // ===========================================================================
 const REST = { end: 0, timer: null, el: null };
@@ -3672,7 +3780,12 @@ async function postWin(kind, title, summary, day) {
 }
 async function unpostWin(kind, title, day) {
   const w = (S.wins || []).find(x => x.created_by === S.myId && x.kind === kind && x.title === title && x.performed_on === day);
-  if (w) { try { await store.removeWin(w.id); S.wins = S.wins.filter(x => x !== w); } catch (x) { /* fine */ } }
+  if (w) {
+    try {
+      await store.removeWin(w.id); S.wins = S.wins.filter(x => x !== w);
+      for (const k in S.standings) if (S.standings[k] && S.standings[k].feed) S.standings[k].feed = S.standings[k].feed.filter(x => x.id !== w.id);
+    } catch (x) { /* fine */ }
+  }
 }
 async function removeWin(id) {
   try {
@@ -3716,6 +3829,7 @@ function winText(w) {
   if (w.kind === 'quest') return T.win.quest + w.title;
   if (w.kind === 'stamp') return T.win.stamp + w.title;
   if (w.kind === 'goal') return T.win.goal + w.title;
+  if (w.kind === 'cardio') return w.title + ': ' + cardioText({ minutes: m.minutes, distance: m.distance, distance_unit: m.unit });
   return T.win.session + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
 }
 // The daily card: the day's lifts with their top sets, the totals, and badges for what it earned.
@@ -3755,15 +3869,15 @@ function winList(wins, color, who, max) {
   const folded = new Map();
   for (const w of wins) {
     const k = w.created_by + '|' + w.performed_on;
-    if (w.kind !== 'session' && sessions.has(k)) { if (!folded.has(k)) folded.set(k, []); folded.get(k).push(w); }
+    if (w.kind !== 'session' && w.kind !== 'cardio' && sessions.has(k)) { if (!folded.has(k)) folded.set(k, []); folded.get(k).push(w); }
   }
-  const list = wins.filter(w => w.kind === 'session' || !sessions.has(w.created_by + '|' + w.performed_on)).slice(0, max || 25);
+  const list = wins.filter(w => w.kind === 'session' || w.kind === 'cardio' || !sessions.has(w.created_by + '|' + w.performed_on)).slice(0, max || 25);
   const when = d => (dayLabel(d) === 'Today' ? 'Today' : d === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(d, { weekday: 'short', month: 'short', day: 'numeric' }));
   const del = w => (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the feed">✕</button>' : '');
   const whoTag = w => '<b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b>';
   return '<ol class="win-list">' + list.map(w => (w.kind === 'session'
     ? '<li class="win-session"><div class="ws-head">' + whoTag(w) + '<small>' + esc(when(w.performed_on)) + '</small>' + del(w) + '</div>' + sessionCardHtml(w, folded.get(w.created_by + '|' + w.performed_on) || []) + '</li>'
-    : '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body">' + whoTag(w) + ' ' + esc(winText(w)) +
+    : '<li><span class="win-icon">' + (w.kind === 'cardio' ? '🏃' : WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body">' + whoTag(w) + ' ' + esc(winText(w)) +
       '<small>' + esc(when(w.performed_on)) + '</small></span>' + del(w) + '</li>')).join('') + '</ol>';
 }
 // On the Log tab: the feed of a season you're in that's running today (none, no card).
