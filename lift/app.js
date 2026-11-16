@@ -2642,6 +2642,14 @@ inner.addEventListener('click', async e => {
 // address, so changes show up while working on the app.
 if ('serviceWorker' in navigator && (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || new URLSearchParams(location.search).has('sw'))) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // A newer version of the app arrived in the background: offer it once, never reload on its own
+  // (you might be halfway through logging a set).
+  let offered = false;
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (offered || !e.data || e.data.type !== 'lift-updated') return;
+    offered = true;
+    setTimeout(() => toast('A new version of the app is ready.', { label: 'Reload', run: () => location.reload() }), 1500);
+  });
 }
 (async function boot() {
   try {
