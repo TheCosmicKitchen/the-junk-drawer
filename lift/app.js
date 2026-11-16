@@ -401,8 +401,11 @@ async function saveDayAsRoutine(day, btn) {
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
   return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + '</h3><span class="muted num">' + esc(volText(v)) + '</span></div>' +
-    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') + '</div>' +
-    '<div class="actions"><button class="btn primary" data-again="' + esc(g.exercise_id) + '">+ Same again</button><button class="btn" data-more="' + esc(g.exercise_id) + '">Change it up</button></div></section>';
+    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') +
+      // One small button: log another set, the logger opening with your last one filled in.
+      '<button class="chip dup" data-more="' + esc(g.exercise_id) + '" aria-label="Log another set of ' + esc(exName(g.exercise_id)) + ', filled in from your last">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="3"/><path d="M16 8V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h2"/><path d="M14.5 12v6M11.5 15h6"/></svg></button>' +
+    '</div></section>';
 }
 // Sets aren't logged "to" a season: a season is a date range, so today's sets count toward every
 // season you're in that's running today. Say so where people log.
@@ -426,7 +429,6 @@ view.addEventListener('click', async e => {
   if (!b) return;
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
   else if (b.dataset.more) openLogger(b.dataset.more);
-  else if (b.dataset.again) sameAgain(b.dataset.again, b);
   else if (b.dataset.day) toggleDay(b.dataset.day);
   else if (b.dataset.period) { S.period = b.dataset.period; renderProgress(); }
   else if (b.id === 'moreDays') { S.historyLimit += 40; renderHistory(); }
@@ -561,20 +563,6 @@ async function quickStep(itemId, btn) {
     render();
   } catch (x) { fail(x); btn.disabled = false; render(); }
 }
-async function sameAgain(exId, btn) {
-  const last = todaySets().filter(s => s.exercise_id === exId).pop();
-  if (!last) return openLogger(exId);
-  btn.disabled = true;
-  try {
-    const { saved } = await logSet({
-      exercise_id: exId, weight: last.weight, reps: last.reps, unit: last.unit, count_bodyweight: last.count_bodyweight,
-      bodyweight: last.bodyweight, is_warmup: last.is_warmup,
-    });
-    afterLogToast(saved);
-    render();
-  } catch (x) { fail(x); btn.disabled = false; }
-}
-
 // ===========================================================================
 // Writing sets (shared by the logger, same-again, edit and undo)
 // ===========================================================================
