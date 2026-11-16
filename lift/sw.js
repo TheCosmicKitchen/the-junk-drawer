@@ -2,7 +2,9 @@
 // Only the page, its scripts, icons and fonts are cached; nothing from Supabase ever is (your data
 // lives in the database, and the app keeps its own snapshot of what you last saw).
 // Stale-while-revalidate: answer from the phone straight away, then fetch a fresh copy in the
-// background, so a new version of the app shows up on the next open.
+// background, so a new version of the app shows up on the next open. The background fetch asks the
+// server whether the file changed (not the browser's own 10-minute copy), and when one of the app's
+// files did change, the open page is told so it can offer a reload right away.
 const CACHE = 'lift-shell-v4';
 const SCOPE = new URL('./', self.location).href;
 const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'logic.js', 'charts.js', 'starters.js', 'themes.js', 'seasons.js', 'config.js',
@@ -16,6 +18,10 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('lift-shell-') && k !== CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
+// Same file or a new one? The server's fingerprint for it (ETag, or failing that its date).
+const stamp = r => r.headers.get('etag') || r.headers.get('last-modified') || '';
+const changed = (a, b) => stamp(a) !== '' && stamp(b) !== '' && stamp(a) !== stamp(b);
+const tellPages = () => self.clients.matchAll({ type: 'window' }).then(cs => cs.forEach(c => c.postMessage({ type: 'lift-updated' })));
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -26,8 +32,11 @@ self.addEventListener('fetch', e => {
   const key = req.mode === 'navigate' ? new URL('index.html', SCOPE).href : req;
   e.respondWith(caches.open(CACHE).then(async c => {
     const hit = await c.match(key, { ignoreSearch: req.mode === 'navigate' });
-    const fresh = fetch(req).then(res => {
-      if (res.ok || res.type === 'opaque') c.put(key, res.clone());
+    const fresh = (ours ? fetch(req.mode === 'navigate' ? key : req.url, { cache: 'no-cache' }) : fetch(req)).then(res => {
+      if (res.ok || res.type === 'opaque') {
+        c.put(key, res.clone());
+        if (ours && hit && res.ok && changed(hit, res)) tellPages();
+      }
       return res;
     }).catch(() => hit || Response.error());
     if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }
