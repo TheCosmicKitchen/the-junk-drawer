@@ -126,6 +126,11 @@
   .bar > i, .gt-bar > i, .elapsed > i { display: block; width: min(var(--p, 0%), 100%); height: 100%; background: var(--bar-texture), var(--bar-fill); border-radius: 99px; transition: width .6s; position: relative; }
   .bar > i::after, .gt-bar > i::after, .elapsed > i::after { content: var(--bar-end); position: absolute; left: max(0px, calc(100% - .9em)); top: 50%; transform: translateY(-50%) scaleX(var(--bar-flip)); font-size: calc(var(--bar-h) + 6px); line-height: 1; font-style: normal; pointer-events: none; z-index: 2; }
   .bar::after, .gt-bar::after, .elapsed::after { content: var(--bar-goal); position: absolute; right: -2px; top: 50%; transform: translateY(-50%); font-size: calc(var(--bar-h) + 6px); line-height: 1; pointer-events: none; z-index: 1; }
+  .chip[data-gen-type][aria-pressed="true"] { background: var(--accent); color: var(--accent-ink, #fff); }
+  .gen-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+  .gen-list li { display: flex; align-items: center; gap: 10px; background: var(--chip); border-radius: 12px; padding: 8px 8px 8px 14px; }
+  .gen-list .what { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .gen-list small { color: var(--muted); }
   .seg { display: inline-flex; background: var(--chip); border-radius: 12px; padding: 3px; gap: 2px; }
   .seg button { border: 0; background: transparent; border-radius: 9px; padding: 7px 12px; font-weight: 600; font-size: 14px; color: var(--muted); }
   .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }

@@ -2,6 +2,7 @@
 import * as L from './logic.js';
 import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
+import * as G from './generate.js';
 import * as C from './charts.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
@@ -422,6 +423,7 @@ function emptyToday() {
     '<h2>' + esc(T.emptyH) + '</h2><p class="muted">' + esc(T.emptyP) + '</p>' +
     (recents.length ? '<div class="section-title" style="margin-top:14px">Pick up where you left off</div><div class="chips" style="justify-content:center">' +
       recents.map(id => '<button class="chip" data-more="' + esc(id) + '">' + esc(exName(id)) + '</button>').join('') + '</div>' : '') +
+    '<button class="btn" style="margin-top:14px" data-generate>🎲 Generate a workout</button>' +
     '</section>';
 }
 view.addEventListener('click', async e => {
@@ -480,6 +482,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.trend) { S.trendEx = b.dataset.trend; S.hist = S.hist || new Map(); location.hash = '#progress'; setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200); }
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
+  else if (b.hasAttribute('data-generate')) openGenerator();
   else if (b.dataset.calMove) { const [y, mo] = S.cal.month.split('-').map(Number); const d = new Date(y, mo - 1 + Number(b.dataset.calMove), 1); S.cal.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderHistory(); }
   else if (b.dataset.calDay) selectCalDay(b.dataset.calDay);
   else if (b.dataset.calSchedule) openWorkoutPicker(b.dataset.calSchedule);
@@ -1157,6 +1160,7 @@ inner.addEventListener('click', async e => {
   if (LG.mode === 'recap') return recapClick(b);
   if (LG.mode === 'wizard') return wizardClick(b);
   if (LG.mode === 'newpick') return newPickClick(b);
+  if (LG.mode === 'gen') return genClick(b);
   if (LG.mode === 'starters') return starterClick(b);
   if (LG.mode === 'progdesign') return programDesignerClick(b);
   if (LG.mode === 'seasonstart') return seasonStartClick(b);
@@ -3557,6 +3561,7 @@ function openNewChooser() {
   inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">What are you making?</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><ul class="results new-list">' +
       opt('workout', '🏋️', 'A workout', 'What you do on a day. Type it, tick exercises, or stack blocks.') +
+      opt('generate', '🎲', 'Generate a workout', 'Pick push, pull, legs, upper, lower or full body; it builds one from your lifts.') +
       opt('season', '🏆', 'A season', 'Some dates and some people. Everyone picks their own program, or none.') +
       opt('program', '📚', 'A program', 'Workouts on a weekly schedule. Share it, and the crew can add it to their week.') +
       opt('block', '🧩', 'A block', 'A small chunk you reuse in workouts, like “Bench & triceps”.') +
@@ -3567,8 +3572,80 @@ async function newPickClick(b) {
   const k = b.dataset.newKind;
   if (!k) return;
   if (k === 'season') return openSeasonStart();
+  if (k === 'generate') return openGenerator();
   if (k === 'program') return openProgramDesigner(null);
   return newRoutine(b, k);
+}
+
+// ===========================================================================
+// Generate a workout: pick a kind of day and it fills one from the catalogue (generate.js), favouring
+// lifts you've done. Swap any step, shuffle the lot, then start it. It's kept as one routine per kind
+// ("Generated: Push day"), rewritten each time, so generating doesn't pile up routines.
+// ===========================================================================
+const GN = { type: 'push', short: false, steps: [] };
+function genUsage() {
+  const n = new Map();
+  for (const r of S.bestRows || []) n.set(r.exercise_id, (n.get(r.exercise_id) || 0) + 1);
+  for (const x of S.recent || []) if (x.is_warmup !== true) n.set(x.exercise_id, (n.get(x.exercise_id) || 0) + 1);
+  return n;
+}
+const genPool = () => S.exercises.filter(e => !e.deleted_at);
+function openGenerator() {
+  LG.mode = 'gen';
+  GN.type = prefs.genType || 'push';
+  GN.short = !!prefs.genShort;
+  GN.steps = G.generate(GN.type, GN.short, genPool(), genUsage());
+  drawGenerator();
+  openSheet();
+}
+const genLast = exId => (lastSession(exId) || (S.bestRows || []).some(r => r.exercise_id === exId) ? 'done before' : 'new to you');
+function drawGenerator() {
+  const dt = G.dayType(GN.type);
+  inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">Generate a workout</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      '<div class="chips" role="group" aria-label="Kind of day">' + G.DAY_TYPES.map(d => '<button type="button" class="chip" data-gen-type="' + d.id + '" aria-pressed="' + (d.id === GN.type) + '">' + esc(d.name) + '</button>').join('') + '</div>' +
+      '<div class="row" style="margin-top:12px"><span class="muted">How long</span><span class="seg" role="group" aria-label="How long">' +
+        [[true, 'Short · 4'], [false, 'Full · ' + dt.steps.length]].map(([v, l]) => '<button type="button" data-gen-short="' + v + '" aria-pressed="' + (GN.short === v) + '">' + l + '</button>').join('') + '</span></div>' +
+      (GN.steps.length ? '<ol class="gen-list">' + GN.steps.map((x, i) => '<li><span class="what"><b>' + esc(exName(x.exercise_id)) + '</b><small>' + x.sets + ' × ' + x.reps + ' · ' + esc(genLast(x.exercise_id)) + '</small></span>' +
+          '<button type="button" class="iconbtn" data-gen-swap="' + i + '" aria-label="Swap ' + esc(exName(x.exercise_id)) + ' for something else">↻</button></li>').join('') + '</ol>'
+        : '<p class="muted">Nothing in the catalogue fits this kind of day yet.</p>') +
+      '<p class="hint-line">Built from the exercise list, mostly lifts you’ve done. ↻ swaps one. Weights come from your last time.</p>' +
+      '<p class="warn" id="genErr" role="alert"></p></div>' +
+    '<div class="design-foot wz-foot"><button class="btn ghost" data-gen-shuffle>🎲 Shuffle</button>' +
+      '<button class="btn primary" data-gen-go' + (GN.steps.length ? '' : ' disabled') + '>Start it</button></div>';
+}
+async function genClick(b) {
+  if (b.dataset.genType || b.dataset.genShort) {
+    if (b.dataset.genType) GN.type = prefs.genType = b.dataset.genType;
+    if (b.dataset.genShort) GN.short = prefs.genShort = b.dataset.genShort === 'true';
+    savePrefs();
+    GN.steps = G.generate(GN.type, GN.short, genPool(), genUsage());
+    return drawGenerator();
+  }
+  if (b.hasAttribute('data-gen-shuffle')) { GN.steps = G.generate(GN.type, GN.short, genPool(), genUsage()); return drawGenerator(); }
+  if (b.dataset.genSwap) {
+    const i = Number(b.dataset.genSwap), cur = GN.steps[i];
+    const e = G.pickFor(cur.slots, genPool(), genUsage(), new Set(GN.steps.map(x => x.exercise_id)));
+    if (!e) return toast('Nothing else fits that spot');
+    const slot = G.slotOf(e.name);
+    GN.steps[i] = { ...cur, exercise_id: e.id, slot, ...G.prescribe(slot, i) };
+    return drawGenerator();
+  }
+  if (!b.hasAttribute('data-gen-go')) return;
+  const name = 'Generated: ' + G.dayType(GN.type).title;
+  b.disabled = true; b.textContent = 'Setting up…';
+  try {
+    let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name);
+    if (t) for (const it of routineItems(t.id)) { await store.removeItem(it.id); S.items = S.items.filter(x => x.id !== it.id); S.itemsById.delete(it.id); }
+    else { t = await store.addRoutine({ name, kind: 'workout', notes: null }); S.templates.push(t); }
+    let pos = 0;
+    for (const x of GN.steps) {
+      const it = await store.addItem({ template_id: t.id, exercise_id: x.exercise_id, position: ++pos, sets: x.sets, reps: x.reps,
+        load_mode: 'last', load_value: 0, unit: lastLoad(x.exercise_id).unit, rest_s: x.rest_s, note: null });
+      S.items.push(it); S.itemsById.set(it.id, it);
+    }
+    startFollowing(t.id);
+  } catch (x) { $('genErr').textContent = x.message; b.disabled = false; b.textContent = 'Start it'; }
 }
 
 // ===========================================================================
