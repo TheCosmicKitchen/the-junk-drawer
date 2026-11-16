@@ -463,6 +463,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.season) openSeason(b.dataset.season);
   else if (b.hasAttribute('data-season-back')) { S.seasonOpen = null; S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.dataset.seasonProg) openSeasonProgram(b.dataset.seasonProg);
+  else if (b.dataset.feedDay) { const k = b.dataset.feedDay; if (feedOpen.has(k)) feedOpen.delete(k); else feedOpen.add(k); render(); }
   else if (b.dataset.wrapped) { S.wrappedOpen = b.dataset.wrapped; openSeason(b.dataset.wrapped); }
   else if (b.hasAttribute('data-wrapped-back')) { S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.dataset.szAgain) openSeasonStart(seasonById(b.dataset.szAgain));
@@ -3267,16 +3268,101 @@ function renderSeasonPage(sn) {
     shared.map(sideBySide).join('') + (hint ? '<p class="sz-hint">' + esc(hint) + '</p>' : '') +
     seasonFeedCard(sn, st, people) + (ph !== 'done' ? wrap : '');
 }
-// The season's feed: everyone in it, between its dates. Wins only: no reactions, no comments.
+// The season's feed, a day at a time: this week's pulse, then today in full (with the moments the
+// season posts itself), then earlier days folded to one line each, tap to open. Wins only: no
+// reactions, no comments. Moments come from what's already logged and posted, nothing more.
+const feedOpen = new Set();
+const dayShort = d => fmtDay(d, { weekday: 'short' }) + ' ' + fmtDay(d, { day: 'numeric' });
+function seasonDays(sn, st, by) {
+  const days = new Map();
+  const day = d => { if (!days.has(d)) days.set(d, { lifted: new Map(), wins: [], moments: [] }); return days.get(d); };
+  for (const r of st.d) if (by.has(r.user_id)) { const x = day(String(r.performed_on).slice(0, 10)); x.lifted.set(r.user_id, (x.lifted.get(r.user_id) || 0) + lbOf(r)); }
+  for (const w of st.feed) if (by.has(w.created_by)) day(w.performed_on).wins.push(w);
+  return { days, day };
+}
+function seasonMoments(sn, people, days, last) {
+  const out = [], many = people.length > 1, t = today();
+  const nameOf = new Map(people.map(p => [p.user_id, p.name]));
+  const whose = id => (nameOf.get(id) === 'You' ? 'Your' : nameOf.get(id) + '’s');
+  const dates = [...days.keys()].filter(d => d >= sn.starts_on && d <= last).sort();
+  out.push([sn.starts_on, { icon: '🏁', text: 'The season started' + (many ? ': ' + people.map(p => p.name).join(', ').replace(/, ([^,]*)$/, ' and $1') + '.' : '.') }]);
+  const seen = new Set();
+  for (const d of dates) {
+    const lifted = days.get(d).lifted;
+    for (const id of lifted.keys()) if (!seen.has(id)) { seen.add(id); if (many) out.push([d, { icon: '👟', text: whose(id) + ' first session of the season.' }]); }
+    if (many && lifted.size >= 2) {
+      const all = lifted.size === people.length;
+      out.push([d, { icon: '🤝', text: all ? (people.length === 2 ? 'You both lifted' : 'All ' + people.length + ' of you lifted') + (d === t ? ' today.' : '.') : lifted.size + ' of you lifted' + (d === t ? ' today.' : '.') }]);
+    }
+  }
+  const total = L.daysBetween(sn.starts_on, sn.ends_on) + 1, half = L.addDays(sn.starts_on, Math.floor(total / 2));
+  if (total >= 4 && half <= last) {
+    let lb = 0;
+    for (const d of dates) if (d <= half) for (const v of days.get(d).lifted.values()) lb += v;
+    out.push([half, { icon: '⏳', text: 'Halfway there. ' + C.compact(lb) + ' lb ' + (many ? 'between you' : 'moved') + ' so far.' }]);
+  }
+  if (sn.ends_on <= t) out.push([sn.ends_on, { icon: '🔔', text: sn.ends_on === t ? 'Last day. Wrapped opens tomorrow.' : 'The last day.' }]);
+  return out;
+}
 function seasonFeedCard(sn, st, people, opts) {
   const o = opts || {};
   const by = new Map(people.map(p => [p.user_id, p]));
-  const list = st.feed.filter(w => by.has(w.created_by));
+  const color = id => (by.get(id) || {}).color || 'var(--muted)';
+  const name = id => (by.get(id) || {}).name || S.names.get(id) || 'Someone';
+  const t = today(), ph = phaseOf(sn), last = t < sn.ends_on ? t : sn.ends_on;
   const head = '<div class="card-head"><div><h3 class="card-title">' + esc(o.title || 'In this season') + '</h3><small class="muted">' + esc(o.sub || 'everyone’s wins between the dates') + '</small></div>' +
     (o.open ? '<button class="linkbtn" data-season="' + esc(sn.id) + '">Open ›</button>' : '<button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button>') + '</div>';
-  return '<section class="card wins"' + (o.id ? ' id="' + o.id + '"' : '') + '>' + head +
-    (list.length ? winList(list, id => (by.get(id) || {}).color || 'var(--muted)', id => (by.get(id) || {}).name || S.names.get(id) || 'Someone', o.max || 60)
-      : '<p class="muted" style="margin:0">' + (phaseOf(sn) === 'upcoming' ? 'Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'short', day: 'numeric' })) + '. ' : '') + 'Bests, finished sessions and stamps from everyone in the season show up here.</p>') + '</section>';
+  const shell = body => '<section class="card wins"' + (o.id ? ' id="' + o.id + '"' : '') + '>' + head + body + '</section>';
+  if (ph === 'upcoming') return shell('<p class="muted" style="margin:0">Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'short', day: 'numeric' })) + '. Bests, finished sessions and the season’s moments show up here, a day at a time.</p>');
+  const { days, day } = seasonDays(sn, st, by);
+  for (const [d, m] of seasonMoments(sn, people, days, last)) day(d).moments.push(m);
+
+  // This week's pulse: each person's days done (against their program, if they're on one) and pounds.
+  let pulse = '';
+  if (ph === 'live') {
+    const from = weekOf(t) > sn.starts_on ? weekOf(t) : sn.starts_on, to = L.addDays(weekOf(t), 6) < sn.ends_on ? L.addDays(weekOf(t), 6) : sn.ends_on;
+    pulse = '<div class="sf-pulse"><div class="sf-pulse-head"><b>This week</b><small>' + esc(dayShort(from) + ' – ' + dayShort(to)) + '</small></div>' +
+      people.map(p => {
+        let done = 0, lb = 0;
+        for (const [d, x] of days) if (d >= from && d <= to && x.lifted.has(p.user_id)) { done++; lb += x.lifted.get(p.user_id); }
+        const planned = p.prog ? p.prog.days_a_week || 0 : 0, segs = Math.max(planned, done);
+        const label = planned ? done + ' of ' + planned + ' ' + p.prog.program_name + ' days' : done + ' day' + (done === 1 ? '' : 's') + ' lifted';
+        return '<div class="sf-row"><i class="sf-av" style="background:' + p.color + '">' + esc(initials(p.display_name)) + '</i><div class="sf-mid"><span><b>' + esc(p.name) + '</b> · ' + esc(label) + '</span>' +
+          (segs ? '<span class="sf-segs" role="img" aria-label="' + esc(label) + '">' + Array.from({ length: segs }, (_, i) => '<i' + (i < done ? ' style="background:' + p.color + '"' : '') + '></i>').join('') + '</span>' : '') + '</div>' +
+          '<span class="sf-lb"><b>' + C.compact(lb) + '</b><small>lb</small></span></div>';
+      }).join('') + '</div>';
+  }
+
+  const summary = d => {
+    const x = days.get(d) || { lifted: new Map(), wins: [] }, n = x.lifted.size;
+    const who = !n ? '' : n === people.length && n > 1 ? (n === 2 ? 'Both lifted' : 'Everyone lifted') : [...x.lifted.keys()].map(name).join(' and ') + ' lifted';
+    let lb = 0; for (const v of x.lifted.values()) lb += v;
+    const bests = x.wins.filter(w => w.kind === 'pr').length;
+    return [who, lb ? L.fmtNum(Math.round(lb), 0) + ' lb' : '', bests ? bests + (bests === 1 ? ' best' : ' bests') : ''].filter(Boolean).join(' · ');
+  };
+  const moments = x => x.moments.map(m => '<div class="sf-moment"><span aria-hidden="true">' + m.icon + '</span><span>' + esc(m.text) + '</span></div>').join('');
+  const body = (d, x) => moments(x) + (x.wins.length ? winList(x.wins, color, name, 40) : d === t ? '<p class="muted sf-none">Nothing logged yet today.</p>' : '');
+  // Today in full; every earlier day as one line that opens.
+  let html = '';
+  if (ph === 'live') {
+    const x = day(t), s = summary(t);
+    html += '<div class="sf-day"><h4>Today <small>· ' + esc(dayShort(t)) + '</small></h4>' + (s ? '<small>' + esc(s) + '</small>' : '') + '</div>' + body(t, x);
+  }
+  if (!o.open) {
+    const all = [...days.keys()].filter(d => d >= sn.starts_on && d <= last && !(ph === 'live' && d === t)).sort().reverse();
+    const showAll = feedOpen.has(sn.id + '|all'), earlier = showAll ? all : all.slice(0, 14);   // a long season shows its latest two weeks first
+    if (earlier.length) html += (ph === 'live' ? '<h4 class="sf-earlier">Earlier</h4>' : '');
+    for (const d of earlier) {
+      const x = days.get(d), key = sn.id + '|' + d, open = feedOpen.has(key), mo = x.moments.map(m => m.text).join(' ');
+      html += '<button class="sf-fold" data-feed-day="' + esc(key) + '" aria-expanded="' + open + '">' +
+        '<span class="sf-date"><small>' + esc(fmtDay(d, { weekday: 'short' })) + '</small><b>' + esc(fmtDay(d, { day: 'numeric' })) + '</b></span>' +
+        '<span class="sf-fold-mid"><span class="sf-avs">' + [...x.lifted.keys()].map(id => '<i class="sf-av sm" style="background:' + color(id) + '">' + esc(initials((by.get(id) || {}).display_name)) + '</i>').join('') + '</span>' +
+          '<span>' + esc(summary(d) || 'No lifting') + '</span>' + (mo && !open ? '<small>' + esc(mo) + '</small>' : '') + '</span>' +
+        '<span class="sf-chev" aria-hidden="true">›</span></button>' + (open ? '<div class="sf-open">' + body(d, x) + '</div>' : '');
+    }
+    if (earlier.length < all.length) html += '<button class="btn block" style="margin-top:8px" data-feed-day="' + esc(sn.id) + '|all">Show ' + (all.length - earlier.length) + ' older days</button>';
+  }
+  return shell(pulse + (html || '<p class="muted" style="margin:0">Bests, finished sessions and the season’s moments show up here, a day at a time.</p>'));
 }
 // Pick (or change) your program for a season. Yours only: everyone picks their own.
 function openSeasonProgram(sid) {
