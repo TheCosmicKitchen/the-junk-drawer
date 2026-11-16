@@ -92,7 +92,7 @@ class SupaStore {
   }
   async catalog() {
     const [exercises, aliases] = await Promise.all([
-      this.all(() => this.sb.from('lift_exercises').select('id,name,supports_bodyweight,deleted_at').order('name')),
+      this.all(() => this.sb.from('lift_exercises').select('id,name,supports_bodyweight,kind,deleted_at').order('name')),
       this.all(() => this.sb.from('lift_exercise_aliases').select('exercise_id,alias')),
     ]);
     return { exercises, aliases };
@@ -226,6 +226,13 @@ class SupaStore {
   async removeBodyweight(id) { must(await this.sb.from('lift_bodyweight').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 
   // ----- programs people design: one document each; yours, plus the crew's shared ones -----
+  // ----- cardio: one row per session (activity, day, minutes, optional distance); your own only -----
+  async cardio() {
+    return this.all(() => this.sb.from('lift_cardio').select(CARDIO).is('deleted_at', null)
+      .gte('performed_on', addDays(localDate(), -120)).order('performed_on', { ascending: false }).order('created_at', { ascending: false }));
+  }
+  async addCardio(f) { return must(await this.sb.from('lift_cardio').insert(f).select(CARDIO).single()); }
+  async updateCardio(id, patch) { return must(await this.sb.from('lift_cardio').update(patch).eq('id', id).select(CARDIO).single()); }
   async programs() { return must(await this.sb.from('lift_programs').select('id,name,doc,is_shared,created_by,updated_at').is('deleted_at', null).order('updated_at', { ascending: false })); }
   async addProgram(f) { return must(await this.sb.from('lift_programs').insert(f).select('id,name,doc,is_shared,created_by,updated_at').single()); }
   async updateProgram(id, patch) { return must(await this.sb.from('lift_programs').update(patch).eq('id', id).select('id,name,doc,is_shared,created_by,updated_at').single()); }
@@ -257,10 +264,15 @@ const DEMO_EXERCISES = [
 ];
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
 
+const CARDIO = 'id,exercise_id,performed_on,minutes,distance,distance_unit,created_at';
+const DEMO_CARDIO = ['Walk', 'Run', 'Rowing machine', 'Bike', 'Elliptical', 'Stair climber', 'Swim'];
+
 class DemoStore {
   constructor() {
     this.demo = true;
-    this.exercises = DEMO_EXERCISES.map(([name], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up/.test(name), deleted_at: null }));
+    this.exercises = DEMO_EXERCISES.map(([name], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up/.test(name), kind: 'strength', deleted_at: null }))
+      .concat(DEMO_CARDIO.map((name, i) => ({ id: 'cx' + i, name, supports_bodyweight: false, kind: 'cardio', deleted_at: null })));
+    this.cardioRows = [{ id: uid(), exercise_id: 'cx1', performed_on: addDays(localDate(), -2), minutes: 28, distance: 5.2, distance_unit: 'km', created_at: new Date().toISOString() }];
     this.aliases = DEMO_EXERCISES.flatMap(([, al], i) => al.map(alias => ({ exercise_id: 'ex' + i, alias })));
     this.sets = [];
     // Push / pull / legs, three or four days a week, slowly getting stronger.
@@ -526,6 +538,9 @@ class DemoStore {
   }
   async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
   async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
+  async cardio() { return this.cardioRows.filter(r => !r.deleted_at).sort((a, b) => b.performed_on.localeCompare(a.performed_on) || b.created_at.localeCompare(a.created_at)).map(clone); }
+  async addCardio(f) { const r = { id: uid(), performed_on: localDate(), distance: null, distance_unit: null, created_at: new Date().toISOString(), ...f }; this.cardioRows.push(r); return clone(r); }
+  async updateCardio(id, patch) { const r = this.cardioRows.find(x => x.id === id); Object.assign(r, patch); return clone(r); }
   async programs() {
     if (!this.progRows) {
       // One shared program from the demo crew, built from the demo routines.

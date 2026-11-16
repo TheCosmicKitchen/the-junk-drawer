@@ -85,6 +85,12 @@
   .stat small { color: var(--muted); font-size: 12.5px; font-weight: 600; letter-spacing: .02em; }
   .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--chip); border-radius: 10px; padding: 5px 10px; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; border: 0; }
   .chip.pr { background: var(--gold-soft); color: var(--gold); }
+  .cd-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; }
+  .cd-dist { display: flex; gap: 8px; align-items: center; }
+  .cd-dist .plain-input { min-width: 0; flex: 1; }
+  .cd-big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cardio-pick { margin: 8px 0 4px; }
+  .cardio-pick .chip { min-height: 38px; padding: 6px 12px; cursor: pointer; }
   .chip.dup { background: var(--accent); color: var(--accent-ink); min-width: 44px; justify-content: center; cursor: pointer; }
   .chip.warm { opacity: .6; }
   .chip small { font-weight: 500; color: var(--muted); }
