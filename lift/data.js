@@ -92,7 +92,7 @@ class SupaStore {
   }
   async catalog() {
     const [exercises, aliases] = await Promise.all([
-      this.all(() => this.sb.from('lift_exercises').select('id,name,supports_bodyweight,deleted_at').order('name')),
+      this.all(() => this.sb.from('lift_exercises').select('id,name,supports_bodyweight,kind,deleted_at').order('name')),
       this.all(() => this.sb.from('lift_exercise_aliases').select('exercise_id,alias')),
     ]);
     return { exercises, aliases };
@@ -154,6 +154,9 @@ class SupaStore {
   async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').single()); }
   async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').single()); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
+  // Several steps in one request (a whole workout at once), returned in position order.
+  async addItems(rows) { if (!rows.length) return []; return must(await this.sb.from('lift_template_items').insert(rows).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note')).sort((a, b) => a.template_id.localeCompare(b.template_id) || a.position - b.position); }
+  async removeItems(ids) { if (ids.length) must(await this.sb.from('lift_template_items').update({ deleted_at: new Date().toISOString() }).in('id', ids)); }
   async subscribe(templateId) { return must(await this.sb.from('lift_routine_subscriptions').insert({ template_id: templateId }).select('id,template_id').single()); }
   async unsubscribe(subId) { must(await this.sb.from('lift_routine_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
 
@@ -173,6 +176,7 @@ class SupaStore {
   async addPlan(f) { return must(await this.sb.from('lift_season_plan').insert(f).select(PLAN).single()); }
   async updatePlan(id, patch) { return must(await this.sb.from('lift_season_plan').update(patch).eq('id', id).select(PLAN).single()); }
   removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
+  async addPlans(rows) { if (!rows.length) return []; return must(await this.sb.from('lift_season_plan').insert(rows).select(PLAN)).sort((a, b) => a.position - b.position); }
   async joinSeason(seasonId, programId) { return must(await this.sb.from('lift_season_subscriptions').insert({ season_id: seasonId, program_id: programId || null }).select('id,season_id,program_id').single()); }
   async setSeasonProgram(subId, programId) { return must(await this.sb.from('lift_season_subscriptions').update({ program_id: programId || null }).eq('id', subId).select('id,season_id,program_id').single()); }
   // Who's on which program in a season (someone's private program shows as "their own program").
@@ -226,6 +230,13 @@ class SupaStore {
   async removeBodyweight(id) { must(await this.sb.from('lift_bodyweight').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 
   // ----- programs people design: one document each; yours, plus the crew's shared ones -----
+  // ----- cardio: one row per session (activity, day, minutes, optional distance); your own only -----
+  async cardio() {
+    return this.all(() => this.sb.from('lift_cardio').select(CARDIO).is('deleted_at', null)
+      .gte('performed_on', addDays(localDate(), -120)).order('performed_on', { ascending: false }).order('created_at', { ascending: false }));
+  }
+  async addCardio(f) { return must(await this.sb.from('lift_cardio').insert(f).select(CARDIO).single()); }
+  async updateCardio(id, patch) { return must(await this.sb.from('lift_cardio').update(patch).eq('id', id).select(CARDIO).single()); }
   async programs() { return must(await this.sb.from('lift_programs').select('id,name,doc,is_shared,created_by,updated_at').is('deleted_at', null).order('updated_at', { ascending: false })); }
   async addProgram(f) { return must(await this.sb.from('lift_programs').insert(f).select('id,name,doc,is_shared,created_by,updated_at').single()); }
   async updateProgram(id, patch) { return must(await this.sb.from('lift_programs').update(patch).eq('id', id).select('id,name,doc,is_shared,created_by,updated_at').single()); }
@@ -238,6 +249,7 @@ class SupaStore {
   async stamps() { return must(await this.sb.from('lift_stamps').select('id,season_key,stamp_key,earned_on,created_by').is('deleted_at', null).order('earned_on')); }
   async addStamp(f) { return must(await this.sb.from('lift_stamps').insert(f).select('id,season_key,stamp_key,earned_on,created_by').single()); }
   async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by').single()); }
+  async addGoals(rows) { if (!rows.length) return []; return must(await this.sb.from('lift_season_goals').insert(rows).select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by')); }
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
 
@@ -256,11 +268,19 @@ const DEMO_EXERCISES = [
   ['Pull Up', ['pullups', 'pull-ups']], ['Goblet Squat', []], ['Lateral Raise', []], ['RDL', ['romanian deadlift']],
 ];
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+// ?demo&big=3: a stress test with years of heavy history, 90 extra routines, a full season feed and
+// years of weigh-ins. Demo only; nothing leaves the browser.
+const BIG = (() => { try { return Math.min(10, Math.max(0, Number(new URLSearchParams(location.search).get('big')) || 0)); } catch (e) { return 0; } })();
+
+const CARDIO = 'id,exercise_id,performed_on,minutes,distance,distance_unit,created_at';
+const DEMO_CARDIO = ['Walk', 'Run', 'Rowing machine', 'Bike', 'Elliptical', 'Stair climber', 'Swim'];
 
 class DemoStore {
   constructor() {
     this.demo = true;
-    this.exercises = DEMO_EXERCISES.map(([name], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up/.test(name), deleted_at: null }));
+    this.exercises = DEMO_EXERCISES.map(([name], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up/.test(name), kind: 'strength', deleted_at: null }))
+      .concat(DEMO_CARDIO.map((name, i) => ({ id: 'cx' + i, name, supports_bodyweight: false, kind: 'cardio', deleted_at: null })));
+    this.cardioRows = [{ id: uid(), exercise_id: 'cx1', performed_on: addDays(localDate(), -2), minutes: 28, distance: 5.2, distance_unit: 'km', created_at: new Date().toISOString() }];
     this.aliases = DEMO_EXERCISES.flatMap(([, al], i) => al.map(alias => ({ exercise_id: 'ex' + i, alias })));
     this.sets = [];
     // Push / pull / legs, three or four days a week, slowly getting stronger.
@@ -281,6 +301,21 @@ class DemoStore {
           weight: w ? w + grow * (w >= 100 ? 10 : 5) : 0, reps: Math.max(3, r - (s === sets - 1 ? 1 : 0)), unit: 'lb',
           count_bodyweight: ex === 'ex6', bodyweight: ex === 'ex6' ? 180 : null });
       });
+    }
+    if (BIG) this.bigHistory(today);
+  }
+  // Stress test (?demo&big=3): N years, five days a week, eight lifts of four sets each (about 32 sets a
+  // day), over every demo exercise, before the usual last 52 days. Plus big routines, feed and weigh-ins below.
+  bigHistory(today) {
+    const ids = this.exercises.filter(e => e.kind === 'strength').map(e => e.id);
+    for (let back = 53; back <= 53 + BIG * 365; back++) {
+      if (back % 7 === 0 || back % 7 === 3) continue;
+      const day = addDays(today, -back), t0 = new Date(day + 'T07:00:00').getTime();
+      for (let k = 0; k < 8; k++) {
+        const ex = ids[(back * 3 + k * 5) % ids.length], w = 45 + ((back * 7 + k * 13) % 40) * 5;
+        for (let s = 0; s < 4; s++) this.push({ exercise_id: ex, performed_on: day, logged_at: new Date(t0 + (k * 4 + s) * 120000).toISOString(),
+          weight: w, reps: 5 + ((back + s) % 8), unit: 'lb' });
+      }
     }
   }
   push(r) {
@@ -370,6 +405,14 @@ class DemoStore {
       it('b-calves', 'ex9', 1, 3, 10, 'last', 0), it('b-calves', 'ex7', 2, 3, 12, 'last', 0),
     ];
     this.subs = [{ id: uid(), template_id: 't-legs' }];
+    if (BIG) {   // stress test: up to the 100-routine cap, 12 steps each
+      const ids = this.exercises.filter(e => e.kind === 'strength').map(e => e.id);
+      for (let n = 1; n <= 90; n++) {
+        const id = 't-big' + n;
+        this.templates.push({ id, name: 'Stress routine ' + n, notes: '', is_shared: n % 3 === 0, kind: n % 5 === 0 ? 'block' : 'workout', created_by: n % 4 === 0 ? 'alex' : 'me', updated_at: now });
+        for (let p = 1; p <= 12; p++) this.items.push(it(id, ids[(n + p * 7) % ids.length], p, 4, 8, 'last', 0));
+      }
+    }
   }
   async routines() {
     this.seedRoutines();
@@ -392,6 +435,8 @@ class DemoStore {
   async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'last', load_value: 0, unit: 'lb', rest_s: null, note: null, ...f }; this.items.push(i); return clone(i); }
   async updateItem(id, patch) { const i = this.items.find(x => x.id === id); Object.assign(i, patch); return clone(i); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
+  async addItems(rows) { const out = []; for (const r of rows) out.push(await this.addItem(r)); return out; }
+  async removeItems(ids) { for (const id of ids) await this.removeItem(id); }
   async subscribe(templateId) { const s = { id: uid(), template_id: templateId }; this.subs.push(s); return clone(s); }
   async unsubscribe(subId) { const s = this.subs.find(x => x.id === subId); if (s) s.deleted_at = new Date().toISOString(); }
 
@@ -424,6 +469,7 @@ class DemoStore {
   async addPlan(f) { const p = { id: uid(), position: 1, weekdays: 0, ...f }; this.planRows.push(p); return clone(p); }
   async updatePlan(id, patch) { const p = this.planRows.find(x => x.id === id); Object.assign(p, patch); return clone(p); }
   removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
+  async addPlans(rows) { const out = []; for (const r of rows) out.push(await this.addPlan(r)); return out; }
   async joinSeason(seasonId, programId) { const s = { id: uid(), season_id: seasonId, program_id: programId || null }; this.seasonSubs.push(s); return clone(s); }
   async setSeasonProgram(subId, programId) { const s = this.seasonSubs.find(x => x.id === subId); s.program_id = programId || null; return clone(s); }
   async seasonPrograms(seasonId) {
@@ -502,6 +548,16 @@ class DemoStore {
         { id: uid(), kind: 'club', performed_on: addDays(t, -3), title: '250K Club', summary: {}, created_by: 'alex', created_at: at(addDays(t, -3)) },
       ];
     }
+    if (BIG && !this.bigWins) {   // stress test: the 300 posts a season's feed loads at most, over its last 60 days
+      this.bigWins = true;
+      const t = localDate(), kinds = ['pr', 'session', 'pr', 'quest', 'pr'];
+      for (let i = 0; i < 300; i++) {
+        const d = addDays(t, -1 - Math.floor(i / 5)), who = i % 2 ? 'alex' : 'me', kind = kinds[i % 5];
+        this.winRows.push({ id: uid(), kind, performed_on: d, created_by: who, created_at: new Date(new Date(d + 'T18:00:00').getTime() + i * 1000).toISOString(),
+          title: kind === 'pr' ? 'Bench Press PR' : kind === 'session' ? 'Push day' : 'Show up three times',
+          summary: kind === 'pr' ? { weight: 200 + i, reps: 5, unit: 'lb' } : kind === 'session' ? { lb: 12000 + i * 10, sets: 24, minutes: 60, lifts: 6, prs: 1, items: [['Bench Press', 4, 5, 200, 'lb', 0, 1]] } : {} });
+      }
+    }
     return this.winRows.filter(w => !w.deleted_at).sort((a, b) => b.created_at.localeCompare(a.created_at)).map(clone);
   }
   async postWin(f) {
@@ -520,12 +576,15 @@ class DemoStore {
   async bodyweights() {
     if (!this.bwRows) {
       const t = localDate();
-      this.bwRows = Array.from({ length: 14 }, (_, i) => ({ id: uid(), measured_on: addDays(t, -i * 5 - 1), weight: Math.round((181 + i * 0.35 + Math.sin(i) * 0.8) * 10) / 10, unit: 'lb', created_at: new Date().toISOString() }));
+      this.bwRows = Array.from({ length: BIG ? 1000 : 14 }, (_, i) => ({ id: uid(), measured_on: addDays(t, -i * 5 - 1), weight: Math.round((181 + i * 0.35 + Math.sin(i) * 0.8) * 10) / 10, unit: 'lb', created_at: new Date().toISOString() }));
     }
     return this.bwRows.filter(b => !b.deleted_at).sort((a, b) => b.measured_on.localeCompare(a.measured_on) || b.created_at.localeCompare(a.created_at)).map(clone);
   }
   async addBodyweight(f) { await this.bodyweights(); const b = { id: uid(), created_at: new Date().toISOString(), ...f }; this.bwRows.push(b); return clone(b); }
   async removeBodyweight(id) { const b = this.bwRows.find(x => x.id === id); if (b) b.deleted_at = new Date().toISOString(); }
+  async cardio() { return this.cardioRows.filter(r => !r.deleted_at).sort((a, b) => b.performed_on.localeCompare(a.performed_on) || b.created_at.localeCompare(a.created_at)).map(clone); }
+  async addCardio(f) { const r = { id: uid(), performed_on: localDate(), distance: null, distance_unit: null, created_at: new Date().toISOString(), ...f }; this.cardioRows.push(r); return clone(r); }
+  async updateCardio(id, patch) { const r = this.cardioRows.find(x => x.id === id); Object.assign(r, patch); return clone(r); }
   async programs() {
     if (!this.progRows) {
       // One shared program from the demo crew, built from the demo routines.
@@ -549,6 +608,7 @@ class DemoStore {
     const s = { id: uid(), created_by: 'me', ...f }; this.stampRows.push(s); return clone(s);
   }
   async addGoal(f) { const g = { id: uid(), unit: null, exercise_id: null, template_id: null, created_by: 'me', ...f }; this.goalRows.push(g); return clone(g); }
+  async addGoals(rows) { const out = []; for (const r of rows) out.push(await this.addGoal(r)); return out; }
   async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }
 const clone = o => ({ ...o });

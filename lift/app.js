@@ -2,6 +2,7 @@
 import * as L from './logic.js';
 import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
+import * as G from './generate.js';
 import * as C from './charts.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
@@ -175,6 +176,7 @@ async function afterSignIn() {
     applyData(snap.data);
     S.wins = snap.wins || null; S.records = snap.records || null;
     S.lastOld = new Map(snap.lastOld || []);
+    S.standings = snap.standings || {};
     restoreOutbox();
     showApp();
   } else gate('<p class="muted" style="margin-top:30px">Loading your log…</p>');
@@ -221,13 +223,13 @@ function writeSnap() {
     if (d && x.is_warmup !== true) { d.sets = Number(d.sets) - 1; d['volume_' + x.unit] = Number(d['volume_' + x.unit]) - L.setVolume(x); }
   }
   const data = {
-    cat: { exercises: S.exercises, aliases: [...S.aliases].flatMap(([exercise_id, list]) => list.map(alias => ({ exercise_id, alias }))) },
+    cat: { exercises: S.exercises.concat(S.activities || []), aliases: [...S.aliases].flatMap(([exercise_id, list]) => list.map(alias => ({ exercise_id, alias }))) },
     recent: S.recent.filter(x => x._sync !== 'waiting').map(x => { const { _sync, ...rest } = x; return rest; }), days: days.filter(d => d.sets > 0), bests: S.bestRows,
     routines: { templates: S.templates, items: S.items, subs: S.subs },
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
-    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows, programs: S.programs,
+    names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows, programs: S.programs, cardio: S.cardio,
   };
-  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld] })); }
+  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld], standings: S.standings })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
 }
 // Coming back to the app after a real break (15 minutes; not the phone sleeping between sets, since
@@ -249,12 +251,12 @@ function fetchAll() {
     store.routines(), store.seasons(), store.memberNames(), store.userId(),
     store.workoutDays(today()), store.bodyweights(),
     Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
-    Promise.resolve().then(() => store.programs()).catch(() => []),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs }));
+    Promise.resolve().then(() => store.programs()).catch(() => []), Promise.resolve().then(() => store.cardio()).catch(() => []),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio }) {
   S.wdays = wdays;
-  S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || [];
+  S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || []; S.cardio = cardio || [];
   S.bw = bw;
   if (bw.length && prefs.bodyweight == null && bw[0].unit === prefs.unit) prefs.bodyweight = Number(bw[0].weight);
   setRoutines(routines);
@@ -262,11 +264,14 @@ function applyData({ cat, recent, days, bests, routines, seasons, names, myId, w
   S.goals = seasons.goals;
   S.seasonSubs = seasons.subs || [];
   S.plan = seasons.plan || [];
-  S.standings = {};
+  S.standings = S.standings || {};   // kept across refreshes: a season shows what you last saw while it refreshes
+  S.seasonAt = {};
   S.names = new Map(names.map(n => [n.user_id, n.display_name]));
   S.myId = myId;
-  S.exercises = cat.exercises;
-  S.byId = new Map(cat.exercises.map(e => [e.id, e]));
+  S.exercises = cat.exercises.filter(e => e.kind !== 'cardio');
+  S.activities = cat.exercises.filter(e => e.kind === 'cardio' && !e.deleted_at);
+  S.actById = new Map(S.activities.map(e => [e.id, e]));
+  S.byId = new Map(S.exercises.map(e => [e.id, e]));
   S.aliases = new Map();
   for (const a of cat.aliases) {
     if (!S.aliases.has(a.exercise_id)) S.aliases.set(a.exercise_id, []);
@@ -366,16 +371,23 @@ function renderLog() {
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
     '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') + '</section>' +
-    weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
-    (groups.length ? groups.map(exCard).join('') : (following() ? '' : emptyToday())) +
+    cardioCard() +
+    (groups.length ? groups.map(exCard).join('') : (following() || cardioCard() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
+    weeklyCard() +   // the week's bulletin and quests come after today's logging
     questsCard() +
     winsCard();
   loadWins();
   loadRecords();
   tickClock();
+}
+// Save several routine steps in one request (not one per step) and keep them in memory.
+async function putItems(rows) {
+  const made = await store.addItems(rows);
+  for (const it of made) { S.items.push(it); S.itemsById.set(it.id, it); }
+  return made;
 }
 // Turn a day's lifting into a routine: one step per exercise, in the order you did them,
 // with the number of working sets and your heaviest set's reps and weight.
@@ -387,13 +399,11 @@ async function saveDayAsRoutine(day, btn) {
   try {
     const t = await store.addRoutine({ name: nameFrom(groups.map(g => g.exercise_id)), kind: 'workout' });
     S.templates.push(t);
-    let position = 0;
-    for (const g of groups.slice(0, 100)) {
+    await putItems(groups.slice(0, 100).map((g, i) => {
       const top = g.sets.reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a));
-      const it = await store.addItem({ template_id: t.id, exercise_id: g.exercise_id, position: ++position,
-        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit });
-      S.items.push(it); S.itemsById.set(it.id, it);
-    }
+      return { template_id: t.id, exercise_id: g.exercise_id, position: i + 1,
+        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit };
+    }));
     toast('Saved as “' + t.name + '”. Rename it or tweak away.');
     openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
@@ -422,6 +432,7 @@ function emptyToday() {
     '<h2>' + esc(T.emptyH) + '</h2><p class="muted">' + esc(T.emptyP) + '</p>' +
     (recents.length ? '<div class="section-title" style="margin-top:14px">Pick up where you left off</div><div class="chips" style="justify-content:center">' +
       recents.map(id => '<button class="chip" data-more="' + esc(id) + '">' + esc(exName(id)) + '</button>').join('') + '</div>' : '') +
+    '<button class="btn" style="margin-top:14px" data-generate>🎲 Generate a workout</button>' +
     '</section>';
 }
 view.addEventListener('click', async e => {
@@ -463,6 +474,9 @@ view.addEventListener('click', async e => {
   else if (b.dataset.season) openSeason(b.dataset.season);
   else if (b.hasAttribute('data-season-back')) { S.seasonOpen = null; S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.dataset.seasonProg) openSeasonProgram(b.dataset.seasonProg);
+  else if (b.dataset.cdEdit) { const r = (S.cardio || []).find(x => x.id === b.dataset.cdEdit); if (r) openCardio(r.exercise_id, r); }
+  else if (b.dataset.cdNew) openCardio(b.dataset.cdNew);
+  else if (b.dataset.feedDay) { const k = b.dataset.feedDay; if (feedOpen.has(k)) feedOpen.delete(k); else feedOpen.add(k); render(); }
   else if (b.dataset.wrapped) { S.wrappedOpen = b.dataset.wrapped; openSeason(b.dataset.wrapped); }
   else if (b.hasAttribute('data-wrapped-back')) { S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.dataset.szAgain) openSeasonStart(seasonById(b.dataset.szAgain));
@@ -480,6 +494,9 @@ view.addEventListener('click', async e => {
   else if (b.dataset.trend) { S.trendEx = b.dataset.trend; S.hist = S.hist || new Map(); location.hash = '#progress'; setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200); }
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
+  else if (b.hasAttribute('data-generate')) openGenerator();
+  else if (b.dataset.rtAll) { (S.rtAll = S.rtAll || new Set()).add(b.dataset.rtAll); renderRoutines(); }
+  else if (b.hasAttribute('data-packs-toggle')) { S.packsOpen = !S.packsOpen; renderSeasons(); }
   else if (b.dataset.calMove) { const [y, mo] = S.cal.month.split('-').map(Number); const d = new Date(y, mo - 1 + Number(b.dataset.calMove), 1); S.cal.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderHistory(); }
   else if (b.dataset.calDay) selectCalDay(b.dataset.calDay);
   else if (b.dataset.calSchedule) openWorkoutPicker(b.dataset.calSchedule);
@@ -657,7 +674,7 @@ function syncWaiting() {
 }
 function queueStore(st) {
   const signOut = st.signOut.bind(st);
-  st.signOut = async () => { clearSnap(); S.lastOld.clear(); lastAsked.clear(); return signOut(); };
+  st.signOut = async () => { clearSnap(); S.lastOld.clear(); S.standings = {}; S.seasonAt = {}; lastAsked.clear(); return signOut(); };
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
@@ -674,6 +691,7 @@ function logSet(fields) { return { saved: logSets(fields, 1)[0] }; }
 // Put new sets on screen and in the outbox. fresh = just tapped (counts PRs, clubs, quests); otherwise
 // it's a set coming back (undoing the delete of one that hadn't saved yet).
 function logRows(rows, fresh) {
+  S.seasonAt = {};
   Q.box.push({ kind: 'add', rows: rows.map(plain) });
   const temps = rows.map(r => {
     const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _sync: 'waiting' };
@@ -886,6 +904,7 @@ function openPicker(title, onPick, multi) {
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
     (multi ? '<p class="hint-line">Tap to tick as many as you like, in the order you’ll do them.</p>' : '') +
+    (!onPick && !multi && (S.activities || []).length ? '<div class="section-title">Cardio</div><div class="chips cardio-pick">' + S.activities.map(a => '<button type="button" class="chip" data-cardio-new="' + esc(a.id) + '">' + esc(a.name) + '</button>').join('') + '</div>' : '') +
     '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul>' +
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
@@ -917,6 +936,8 @@ function drawResults(q) {
     html += '<li><button data-add="' + esc(typed) + '"><span>+ Add “' + esc(typed) + '” to the catalogue</span><small>admin</small></button>' +
       (near ? '<p class="warn" style="margin:-2px 4px 10px">Did you mean <b>' + esc(near) + '</b>? It’s already there.</p>' : '') + '</li>';
   }
+  if (typed && !LG.pickFor && !LG.multi) html = (S.activities || []).filter(a => L.norm(a.name).includes(L.norm(typed)))
+    .map(a => '<li><button data-cardio-new="' + esc(a.id) + '"><span>' + esc(a.name) + '</span><small>cardio</small></button></li>').join('') + html;
   $('exResults').innerHTML = html;
   syncPickFoot();
 }
@@ -1153,10 +1174,13 @@ inner.addEventListener('click', async e => {
   if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
+  if (b.dataset.cardioNew) return openCardio(b.dataset.cardioNew);
+  if (LG.mode === 'cardio') return cardioClick(b);
   if (LG.mode === 'chunk') return chunkClick(b);
   if (LG.mode === 'recap') return recapClick(b);
   if (LG.mode === 'wizard') return wizardClick(b);
   if (LG.mode === 'newpick') return newPickClick(b);
+  if (LG.mode === 'gen') return genClick(b);
   if (LG.mode === 'starters') return starterClick(b);
   if (LG.mode === 'progdesign') return programDesignerClick(b);
   if (LG.mode === 'seasonstart') return seasonStartClick(b);
@@ -1339,8 +1363,22 @@ function followCard() {
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
 
+// A routine's first five steps as chips, then "+N more", so a long routine stays one short card.
+function chipsOf(tid) {
+  const items = routineItems(tid);
+  return items.slice(0, 5).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') +
+    (items.length > 5 ? '<span class="chip muted">+' + (items.length - 5) + ' more</span>' : '');
+}
+// Each list on Rites shows six, with "Show all" for the rest; a search box appears once there are lots.
+const RT_SHOW = 6;
+function rtList(key, list, draw) {
+  const all = !!S.rtQuery || (S.rtAll && S.rtAll.has(key)), shown = all ? list : list.slice(0, RT_SHOW);
+  return shown.map(draw).join('') + (shown.length < list.length ? '<button class="btn block rt-more" data-rt-all="' + key + '">Show all ' + list.length + '</button>' : '');
+}
+const rtMatch = t => !S.rtQuery || (t.name + ' ' + routineItems(t.id).map(it => exName(it.exercise_id)).join(' ')).toLowerCase().includes(S.rtQuery.toLowerCase());
 function renderRoutines() {
-  const workouts = S.templates.filter(t => !isBlock(t)), blocks = S.templates.filter(isBlock);
+  const everyone = S.templates.filter(rtMatch);
+  const workouts = everyone.filter(t => !isBlock(t)), blocks = everyone.filter(isBlock);
   const mine = workouts.filter(isMine);
   const subscribed = workouts.filter(t => !isMine(t) && subFor(t.id));
   const shared = workouts.filter(t => !isMine(t) && !subFor(t.id));
@@ -1354,26 +1392,37 @@ function renderRoutines() {
       (changes ? '<span class="tag new">Updated</span>' : isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
     (changes ? '<p class="changes"><b>' + esc(ownerName(t)) + ' changed it:</b> ' + esc(changes.slice(0, 4).join(' · ')) + (changes.length > 4 ? ' · and ' + (changes.length - 4) + ' more' : '') + '</p>' : '') +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
-    '<div class="chips">' + (routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') || '<span class="muted">No exercises yet</span>') + '</div>' +
+    '<div class="chips">' + (chipsOf(t.id) || '<span class="muted">No exercises yet</span>') + '</div>' +
     '<div class="actions">' + actions + (changes ? '<button class="btn ghost" data-seen="' + esc(t.id) + '">Got it</button>' : '') +
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
   view.innerHTML =
     '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.routines) + '</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
-    comingUp() + weekCard() + programsSection() +
-    '<h3 class="section-title">Workouts</h3>' +
-    (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
-      : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
-    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + subscribed.map(t => card(t, start(t) + sched(t) +
-      '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')).join('') : '') +
-    (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + shared.map(t => card(t,
-      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')).join('') : '') +
-    '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>' +
-    (blocks.length ? blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)).map(t => card(t,
+    (S.rtQuery ? '' : comingUp() + weekCard() + programsSection()) +
+    (S.templates.length > 8 ? '<input class="search rt-search" id="rtSearch" type="search" placeholder="Find a workout or block by name or exercise" autocomplete="off" aria-label="Find a workout or block" value="' + esc(S.rtQuery || '') + '">' : '') +
+    (S.rtQuery && !everyone.length ? '<section class="card"><p class="muted" style="margin:0">Nothing matches “' + esc(S.rtQuery) + '”.</p></section>' : '') +
+    (S.rtQuery && !mine.length ? '' : '<h3 class="section-title">Workouts</h3>') +
+    (mine.length ? rtList('mine', mine, t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>'))
+      : S.rtQuery ? '' : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
+    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + rtList('subs', subscribed, t => card(t, start(t) + sched(t) +
+      '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')) : '') +
+    (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + rtList('shared', shared, t => card(t,
+      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')) : '') +
+    (S.rtQuery && !blocks.length ? '' : '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>') +
+    (blocks.length ? rtList('blocks', blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)), t => card(t,
       '<button class="btn" data-from-block="' + esc(t.id) + '">New workout from it</button>' +
-      (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>'))).join('')
-      : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
+      (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')))
+      : S.rtQuery ? '' : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
 }
+// Typing in the Rites search box filters as you go, keeping the box focused.
+view.addEventListener('input', e => {
+  if (e.target.id !== 'rtSearch') return;
+  S.rtQuery = e.target.value.trim();
+  const at = e.target.selectionStart;
+  renderRoutines();
+  const box = $('rtSearch');
+  if (box) { box.focus(); try { box.setSelectionRange(at, at); } catch (x) {} }
+});
 // A name from what's in it: "Bench Press + Rows", "+ 2 more" when there's more.
 const shortName = id => exName(id).replace(/^(Barbell|Dumbbell|Cable|Machine|Seated|Standing) /, '');
 function nameFrom(exIds) {
@@ -1410,13 +1459,8 @@ async function newRoutine(btn, kind) {
 }
 async function copySteps(fromIds, tid) {
   let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
-  for (const id of fromIds) {
-    const src = S.itemsById.get(id);
-    if (!src) continue;
-    const it = await store.addItem({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
-      load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null });
-    S.items.push(it); S.itemsById.set(it.id, it);
-  }
+  await putItems(fromIds.map(id => S.itemsById.get(id)).filter(Boolean).map(src => ({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
+    load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null })));
 }
 async function workoutFromBlock(blockId, btn) {
   const b = S.templates.find(t => t.id === blockId);
@@ -1510,11 +1554,8 @@ async function copyRoutine(id, btn) {
     markSeen(src);
     const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null, kind: src.kind || 'workout' });
     S.templates.push(t);
-    for (const it of routineItems(id)) {
-      const n = await store.addItem({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
-        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
-      S.items.push(n); S.itemsById.set(n.id, n);
-    }
+    await putItems(routineItems(id).map(it => ({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
+      load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null })));
     toast('Copied. This one’s yours to change.');
     openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
@@ -1647,16 +1688,13 @@ function refreshItemView(id) {
 // Add exercises to the end of a routine, each starting from your last numbers for it.
 async function addItemsTo(tid, exIds) {
   try {
-    for (const exId of exIds) {
-      const list = routineItems(tid);
+    const list = routineItems(tid);
+    let pos = list.length ? Math.max(...list.map(i => i.position)) : 0;
+    const made = await putItems(exIds.map(exId => {
       const u = usualFor(exId);
-      const it = await store.addItem({
-        template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
-        sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit,
-      });
-      S.items.push(it); S.itemsById.set(it.id, it);
-      if (exIds.length === 1) D.open = it.id;   // one added: open it, ready to set
-    }
+      return { template_id: tid, exercise_id: exId, position: Math.min(100, ++pos), sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
+    }));
+    if (made.length === 1) D.open = made[0].id;   // one added: open it, ready to set
     if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises at your usual sets and reps.');
     await autoName(tid);
   } catch (x) { fail(x); }
@@ -1807,11 +1845,10 @@ async function quickAdd(b) {
   b.disabled = true;
   let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
   try {
-    for (const x of out) {
+    await putItems(out.map(x => {
       const u = usualFor(x.exId);
-      const it = await store.addItem({ template_id: tid, exercise_id: x.exId, position: ++pos, sets: x.sets || u.sets, reps: x.reps || Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit });
-      S.items.push(it); S.itemsById.set(it.id, it);
-    }
+      return { template_id: tid, exercise_id: x.exId, position: ++pos, sets: x.sets || u.sets, reps: x.reps || Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
+    }));
     await autoName(tid);
   } catch (x) { b.disabled = false; return fail(x); }
   openDesigner(tid);
@@ -1873,7 +1910,7 @@ async function designerClick(b) {
     const list = routineItems(D.id);
     if (list.length >= 100) return toast('That’s the most steps a routine can have.');
     try {
-      for (const later of list.filter(x => x.position > it.position).reverse()) await store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s));
+      await Promise.all(list.filter(x => x.position > it.position).map(later => store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s))));
       const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
         load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
       S.items.push(copy); S.itemsById.set(copy.id, copy);
@@ -2139,9 +2176,11 @@ async function ensureCore() {
   S.seasons.unshift(c);
   const prev = coreFor(String(Number(y) - 1));
   if (prev) {
-    for (const p of planFor(prev.id)) S.plan.push(await store.addPlan({ season_id: c.id, template_id: p.template_id, position: p.position, weekdays: p.weekdays }));
-    for (const g of S.goals.filter(x => x.season_id === prev.id))
-      S.goals.push(await store.addGoal({ season_id: c.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit, exercise_id: g.exercise_id, template_id: g.template_id }));
+    const [plans, goals] = await Promise.all([
+      store.addPlans(planFor(prev.id).map(p => ({ season_id: c.id, template_id: p.template_id, position: p.position, weekdays: p.weekdays }))),
+      store.addGoals(S.goals.filter(x => x.season_id === prev.id).map(g => ({ season_id: c.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit, exercise_id: g.exercise_id, template_id: g.template_id }))),
+    ]);
+    S.plan.push(...plans); S.goals.push(...goals);
   }
   return c;
 }
@@ -2293,8 +2332,8 @@ async function seasonClick(b) {
       else {
         s = await store.addSeason({ name, starts_on, ends_on, is_shared, points: readPoints() });
         S.seasons.unshift(s);
-        for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
-        for (const p of SG.planPending) S.plan.push(await store.addPlan({ ...p, season_id: s.id }));
+        const [goals, plans] = await Promise.all([store.addGoals(SG.pending.map(g => ({ ...g, season_id: s.id }))), store.addPlans(SG.planPending.map(p => ({ ...p, season_id: s.id })))]);
+        S.goals.push(...goals); S.plan.push(...plans);
       }
       sheet.close();
       openSeason(s.id);
@@ -2642,6 +2681,14 @@ inner.addEventListener('click', async e => {
 // address, so changes show up while working on the app.
 if ('serviceWorker' in navigator && (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || new URLSearchParams(location.search).has('sw'))) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // A newer version of the app arrived in the background: offer it once, never reload on its own
+  // (you might be halfway through logging a set).
+  let offered = false;
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (offered || !e.data || e.data.type !== 'lift-updated') return;
+    offered = true;
+    setTimeout(() => toast('A new version of the app is ready.', { label: 'Reload', run: () => location.reload() }), 1500);
+  });
 }
 (async function boot() {
   try {
@@ -2677,13 +2724,11 @@ async function addSession(sid, kind, name) {
   const steps = stepsOf(sid);
   const t = await store.addRoutine({ name: (name || SESSIONS[sid].name).slice(0, 60), kind, notes: null });
   S.templates.push(t);
-  let pos = 0;
-  for (const x of steps) {
+  await putItems(steps.map((x, i) => {
     const ld = lastLoad(x.exId), rule = starterRule(sid, x, ld.unit);
-    const it = await store.addItem({ template_id: t.id, exercise_id: x.exId, position: ++pos, sets: Math.min(20, x.sets), reps: Math.min(100, x.reps),
-      load_mode: rule.mode, load_value: rule.value, unit: ld.unit, rest_s: x.rest == null ? null : Math.min(900, x.rest), note: x.note ? x.note.slice(0, 200) : null });
-    S.items.push(it); S.itemsById.set(it.id, it);
-  }
+    return { template_id: t.id, exercise_id: x.exId, position: i + 1, sets: Math.min(20, x.sets), reps: Math.min(100, x.reps),
+      load_mode: rule.mode, load_value: rule.value, unit: ld.unit, rest_s: x.rest == null ? null : Math.min(900, x.rest), note: x.note ? x.note.slice(0, 200) : null };
+  }));
   return t;
 }
 function openStarters() {
@@ -2740,11 +2785,10 @@ async function programClick(b) {
   try {
     const bySession = new Map();
     for (const [d, sid] of p.days) bySession.set(sid, (bySession.get(sid) || 0) | (1 << d));
-    const made = new Map();
-    for (const sid of bySession.keys()) {
+    const made = new Map(await Promise.all([...bySession.keys()].map(async sid => {
       const existing = S.templates.find(t => isMine(t) && !isBlock(t) && t.name === SESSIONS[sid].name && routineItems(t.id).length);
-      made.set(sid, existing || await addSession(sid, 'workout'));
-    }
+      return [sid, existing || await addSession(sid, 'workout')];
+    })));
     // Into your week: each workout pinned to its days (days already pinned to something else are freed).
     await pinToWeek([...bySession].map(([sid, mask]) => [made.get(sid).id, mask]));
     sheet.close();
@@ -2863,23 +2907,19 @@ async function saveProgram(b) {
 async function addProgramToWeek(p, b) {
   if (b) b.disabled = true;
   try {
-    const made = new Map();
-    for (const w of p.doc.workouts || []) {
+    // Each workout is one routine plus one request for all its steps; the workouts go at the same time.
+    const made = new Map(await Promise.all((p.doc.workouts || []).map(async w => {
       const name = w.name.slice(0, 60);
       let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name && routineItems(x.id).length);
       if (!t) {
         t = await store.addRoutine({ name, kind: 'workout', notes: null });
         S.templates.push(t);
         let pos = 0;
-        for (const s of w.steps) {
-          if (!S.byId.get(s.exercise_id)) continue;
-          const it = await store.addItem({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, reps: s.reps,
-            load_mode: s.load_mode || 'last', load_value: s.load_value ?? 0, unit: s.unit || lastLoad(s.exercise_id).unit, rest_s: s.rest_s ?? null, note: s.note || null });
-          S.items.push(it); S.itemsById.set(it.id, it);
-        }
+        await putItems(w.steps.filter(s => S.byId.get(s.exercise_id)).map(s => ({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, reps: s.reps,
+          load_mode: s.load_mode || 'last', load_value: s.load_value ?? 0, unit: s.unit || lastLoad(s.exercise_id).unit, rest_s: s.rest_s ?? null, note: s.note || null })));
       }
-      made.set(w.key, t);
-    }
+      return [w.key, t];
+    })));
     const masks = new Map();
     for (const [d, k] of p.doc.days || []) if (made.has(k)) masks.set(k, (masks.get(k) || 0) | (1 << d));
     await pinToWeek([...masks].map(([k, mask]) => [made.get(k).id, mask]));
@@ -2892,12 +2932,19 @@ async function pinToWeek(pairs) {   // [[template id, weekday mask]]
   const core = await ensureCore();
   const mine = planFor(core.id);
   let pos = mine.reduce((m, x) => Math.max(m, x.position || 0), 0);
+  // Work out every change first, then send them together: changed days in parallel, new rows in one request.
+  const days = new Map(mine.map(x => [x, x.weekdays])), adds = [];
   for (const [tid, mask] of pairs) {
-    for (const other of mine) if (other.template_id !== tid && other.weekdays & mask) Object.assign(other, await store.updatePlan(other.id, { weekdays: other.weekdays & ~mask }));
+    for (const other of mine) if (other.template_id !== tid && days.get(other) & mask) days.set(other, days.get(other) & ~mask);
     const have = mine.find(x => x.template_id === tid);
-    if (have) Object.assign(have, await store.updatePlan(have.id, { weekdays: have.weekdays | mask }));
-    else S.plan.push(await store.addPlan({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask }));
+    if (have) days.set(have, days.get(have) | mask);
+    else adds.push({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask });
   }
+  const [, added] = await Promise.all([
+    Promise.all(mine.filter(x => days.get(x) !== x.weekdays).map(x => store.updatePlan(x.id, { weekdays: days.get(x) }).then(r => Object.assign(x, r)))),
+    store.addPlans(adds),
+  ]);
+  S.plan.push(...added);
 }
 // The Programs section on Routines: yours, then the crew's shared ones.
 function programsSection() {
@@ -2911,6 +2958,104 @@ function programsSection() {
   return '<h3 class="section-title">Programs</h3>' +
     (mine.length ? mine.map(card).join('') : '<section class="card empty"><p class="muted" style="margin:0">Design a program: workouts on a weekly schedule, ready to share.</p><div class="actions"><button class="btn primary" data-prog-new>+ New program</button></div></section>') +
     (crew.length ? '<h3 class="section-title">From the crew</h3>' + crew.map(card).join('') : '');
+}
+
+// ===========================================================================
+// Cardio: one entry per session (an activity, minutes, and a distance if you have one). The
+// activities are the catalogue's cardio rows and never show up among lifts, bests or programs.
+// ===========================================================================
+const CD = {};
+const actName = id => (S.actById.get(id) || {}).name || 'Cardio';
+const distUnit = () => prefs.distUnit || (prefs.unit === 'kg' ? 'km' : 'mi');
+const trimNum = (v, d) => String(Number(Number(v).toFixed(d)));
+const fmtMin = m => trimNum(m, 1) + ' min';
+// "28 min · 5.2 km · 5:23 /km": pace only when there's a distance.
+function cardioText(r) {
+  const min = Number(r.minutes), dist = r.distance != null ? Number(r.distance) : null, unit = r.distance_unit || r.unit;
+  if (!dist) return fmtMin(min);
+  const pace = min / dist, pm = Math.floor(pace), ps = Math.round((pace - pm) * 60);
+  return fmtMin(min) + ' · ' + trimNum(dist, 2) + ' ' + unit + ' · ' + (ps === 60 ? pm + 1 + ':00' : pm + ':' + String(ps).padStart(2, '0')) + ' /' + unit;
+}
+function openCardio(exId, editing) {
+  LG.mode = 'cardio';
+  const last = editing || (S.cardio || []).find(r => r.exercise_id === exId);
+  Object.assign(CD, { exId, editing: editing || null, minutes: last ? Number(last.minutes) : 30,
+    distance: last && last.distance != null ? Number(last.distance) : '', unit: (last && last.distance_unit) || distUnit(), day: editing ? editing.performed_on : today() });
+  drawCardio();
+  openSheet();
+}
+function drawCardio() {
+  const last = !CD.editing && (S.cardio || []).find(r => r.exercise_id === CD.exId);
+  inner.innerHTML = '<div class="sheet-head"><div class="lg-title"><h2 id="sheetTitle">' + esc(actName(CD.exId)) + '</h2>' +
+      (CD.editing ? '' : '<button class="linkbtn" data-change>Change</button>') + '</div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      (last ? '<p class="hint-line" style="margin-top:0">Last time: ' + esc(cardioText(last)) + ' · ' + esc(fmtDay(last.performed_on, { month: 'short', day: 'numeric' })) + '</p>' : '') +
+      '<div class="cd-grid"><div><div class="field-label"><label for="cdMin">Minutes</label></div>' +
+        '<input class="plain-input cd-big" id="cdMin" type="number" inputmode="decimal" min="1" max="600" step="any" value="' + esc(CD.minutes) + '"></div>' +
+      '<div><div class="field-label"><label for="cdDist">Distance</label><small class="muted">optional</small></div><div class="cd-dist">' +
+        '<input class="plain-input cd-big" id="cdDist" type="number" inputmode="decimal" min="0" max="500" step="any" value="' + esc(CD.distance) + '">' +
+        '<span class="seg" role="group" aria-label="Distance in">' + ['km', 'mi'].map(u => '<button type="button" data-cd-unit="' + u + '" aria-pressed="' + (CD.unit === u) + '">' + u + '</button>').join('') + '</span></div></div></div>' +
+      '<div class="chips" role="group" aria-label="Quick minutes">' + [10, 20, 30, 45, 60].map(m => '<button type="button" class="chip" data-cd-min="' + m + '">' + m + ' min</button>').join('') + '</div>' +
+      (CD.editing ? '' : '<div class="field-label"><label for="cdDay">Day</label></div><input class="plain-input" id="cdDay" type="date" min="' + L.addDays(today(), -7) + '" max="' + today() + '" value="' + CD.day + '">') +
+      '<p class="warn" id="cdErr" role="alert"></p></div>' +
+    '<div class="design-foot wz-foot">' + (CD.editing ? '<button class="btn ghost" data-cd-del>Delete</button>' : '<span></span>') +
+      '<button class="btn primary" data-cd-save>' + (CD.editing ? 'Save changes' : 'Save') + '</button></div>';
+}
+const refreshFeed = () => { const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard(); };
+// Each activity's day as one line in the feed: today's total time (and distance) for it.
+function postCardioWin(exId, day) {
+  const rows = (S.cardio || []).filter(r => r.exercise_id === exId && r.performed_on === day);
+  if (!rows.length) return unpostWin('cardio', actName(exId), day);   // a promise: callers wait so the feed is current
+  const units = new Set(rows.filter(r => r.distance != null).map(r => r.distance_unit));
+  const minutes = rows.reduce((a, r) => a + Number(r.minutes), 0);
+  const distance = units.size === 1 ? rows.reduce((a, r) => a + Number(r.distance || 0), 0) : null;
+  return postWin('cardio', actName(exId), { minutes: Math.round(minutes * 10) / 10, distance: distance ? Math.round(distance * 100) / 100 : null, unit: distance ? [...units][0] : null }, day);
+}
+async function cardioClick(b) {
+  if (b.dataset.cdMin) { $('cdMin').value = b.dataset.cdMin; return; }
+  if (b.dataset.cdUnit) {
+    CD.minutes = $('cdMin').value; CD.distance = $('cdDist').value; if ($('cdDay')) CD.day = $('cdDay').value || today();
+    CD.unit = prefs.distUnit = b.dataset.cdUnit; savePrefs();
+    return drawCardio();
+  }
+  const err = msg => { $('cdErr').textContent = msg; };
+  if (b.hasAttribute('data-cd-del')) {
+    b.disabled = true;
+    try {
+      const row = CD.editing;
+      await store.updateCardio(row.id, { deleted_at: new Date().toISOString() });
+      S.cardio = S.cardio.filter(r => r.id !== row.id);
+      closeSheet(); toast(actName(row.exercise_id) + ' deleted');
+      postCardioWin(row.exercise_id, row.performed_on).then(refreshFeed);
+    } catch (x) { b.disabled = false; err(x.message); }
+    return;
+  }
+  if (!b.hasAttribute('data-cd-save')) return;
+  const minutes = Number($('cdMin').value), raw = $('cdDist').value.trim(), distance = raw === '' ? null : Number(raw);
+  const day = CD.editing ? CD.editing.performed_on : ($('cdDay').value || today());
+  if (!(minutes > 0 && minutes <= 600)) return err('Minutes: anything from 1 to 600.');
+  if (distance != null && !(distance > 0 && distance <= 500)) return err('Distance: up to 500, or leave it empty.');
+  if (day > today() || day < L.addDays(today(), -7)) return err('Pick a day in the last week.');
+  const f = { exercise_id: CD.exId, minutes: Math.round(minutes * 10) / 10, distance: distance == null ? null : Math.round(distance * 100) / 100, distance_unit: distance == null ? null : CD.unit };
+  b.disabled = true;
+  try {
+    if (CD.editing) { const row = await store.updateCardio(CD.editing.id, f); S.cardio = S.cardio.map(r => (r.id === row.id ? row : r)); }
+    else S.cardio.unshift(await store.addCardio({ ...f, performed_on: day }));
+    vibrate(12);
+    closeSheet();
+    toast((CD.editing ? 'Saved: ' : 'Logged: ') + actName(CD.exId) + ', ' + cardioText(f));
+    postCardioWin(f.exercise_id, day).then(refreshFeed);   // the sheet closes at once; the feed line follows
+  } catch (x) { b.disabled = false; err(x.message); }
+}
+// The Log tab: today's cardio, each entry tappable to change, with a duplicate button.
+function cardioCard() {
+  const rows = (S.cardio || []).filter(r => r.performed_on === today());
+  if (!rows.length) return '';
+  const total = rows.reduce((a, r) => a + Number(r.minutes), 0);
+  const dup = r => '<button class="chip dup" data-cd-new="' + esc(r.exercise_id) + '" aria-label="Log more ' + esc(actName(r.exercise_id)) + ', filled in from this one">' +
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="3"/><path d="M16 8V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h2"/><path d="M14.5 12v6M11.5 15h6"/></svg></button>';
+  return '<section class="card ex-card"><div class="row"><h3>Cardio</h3><span class="muted num">' + esc(fmtMin(total)) + '</span></div>' +
+    '<div class="chips">' + rows.slice().reverse().map(r => '<button class="chip" data-cd-edit="' + esc(r.id) + '" aria-label="Change ' + esc(actName(r.exercise_id)) + ', ' + esc(cardioText(r)) + '"><b>' + esc(actName(r.exercise_id)) + '</b>&nbsp;' + esc(cardioText(r)) + '</button>' + dup(r)).join('') + '</div></section>';
 }
 
 // ===========================================================================
@@ -3045,19 +3190,18 @@ async function joinPack(key, btn) {
     const run = await store.addRun({ season_key: key, starts_on });
     S.runs = (S.runs || []).concat(run);
     // Its workouts become your routines (weights follow your last time), so they work with Start and the logger.
-    for (const w of pack.workouts) {
-      if (packRoutine(pack, w)) continue;
+    await Promise.all(pack.workouts.filter(w => !packRoutine(pack, w)).map(async w => {
       const t = await store.addRoutine({ name: routineNameFor(pack, w), kind: 'workout', notes: null });
       S.templates.push(t);
       let pos = 0;
+      const rows = [];
       for (const [names, sets, reps, flavour] of w.steps) {
         const exId = [...packIds(names)][0] || names.map(n => S.nameIndex.get(L.norm(n))).find(Boolean);
-        if (!exId) continue;
-        const it = await store.addItem({ template_id: t.id, exercise_id: exId, position: ++pos, sets: Math.min(20, sets), reps: Math.min(100, reps),
+        if (exId) rows.push({ template_id: t.id, exercise_id: exId, position: ++pos, sets: Math.min(20, sets), reps: Math.min(100, reps),
           load_mode: 'last', load_value: 0, unit: lastLoad(exId).unit, rest_s: null, note: flavour || null });
-        S.items.push(it); S.itemsById.set(it.id, it);
       }
-    }
+      await putItems(rows);
+    }));
     toast('Joined ' + pack.name + '. Its workouts are in your routines.', T.id !== pack.theme && THEMES[pack.theme] ? { label: 'Try its look', run: () => trySkin(pack.theme) } : null);
     renderSeasons(); checkStamps();
   } catch (x) { fail(x); btn.disabled = false; }
@@ -3161,21 +3305,24 @@ function renderSeasons() {
   const got = PACK_ORDER.reduce((n, k) => n + stampsEarned(k), 0), allStamps = PACK_ORDER.reduce((n, k) => n + PACKS[k].stamps.length, 0);
   // Events first (they're on fixed dates), then seasons (start any time). Both are extras.
   const kinds = kind => PACK_ORDER.filter(k => PACKS[k].kind === kind).map(k => packCard(PACKS[k])).join('');
-  const packs = '<p class="hint-line" style="margin-top:0">Your ' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + '. ' +
-      esc(T.eventsWord) + ' and ' + esc(T.seasonsWord.toLowerCase()) + ' are extras: join one for its workouts and ' + esc(T.stamps.toLowerCase()) + ', or skip them all.</p>' +
-    '<h3 class="section-title">' + esc(T.eventsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Same dates every year, for everyone at once.</p><div class="season-grid">' + kinds('event') + '</div>' +
-    '<h3 class="section-title">' + esc(T.seasonsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Start any time, at your own pace.</p><div class="season-grid">' + kinds('season') + '</div>';
-  view.innerHTML = packs +
-    '<h3 class="section-title">Your seasons</h3>' +
-    '<div class="row page-actions"><p class="muted" style="margin:0">A season is a group lifting over the same dates. Everyone picks their own program, or none, and everything you log in between counts. Wrapped comes at the end.</p>' +
-      '<span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
+  // Your own seasons first; the feast days and pilgrimages (extras) fold away below them.
+  const packsOpen = !!S.packsOpen;
+  const packs = '<section class="card packs-fold"><button class="packs-head" data-packs-toggle aria-expanded="' + packsOpen + '">' +
+      '<span><b>' + esc(T.eventsWord) + ' and ' + esc(T.seasonsWord.toLowerCase()) + '</b><small>' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + ' · extras, join one or skip them all</small></span>' +
+      '<span class="sf-chev" aria-hidden="true">›</span></button></section>' +
+    (packsOpen ? '<h3 class="section-title">' + esc(T.eventsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Same dates every year, for everyone at once.</p><div class="season-grid">' + kinds('event') + '</div>' +
+      '<h3 class="section-title">' + esc(T.seasonsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Start any time, at your own pace.</p><div class="season-grid">' + kinds('season') + '</div>' : '');
+  view.innerHTML =
+    '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.seasons) + '</h2><span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
+    '<p class="hint-line" style="margin-top:0">A season is a group lifting over the same dates. Everyone picks their own program, or none, and everything you log in between counts. Wrapped comes at the end.</p>' +
+    group('Live now', mine.filter(x => phaseOf(x) === 'live')) +
     (invites.length ? '<h3 class="section-title">Join the crew</h3><div class="season-grid">' + invites.map(x => '<section class="card sbanner">' + bannerHtml(x) +
       '<div class="sb-body">' + (seasonGoals(x).length ? '<p class="hint-line" style="margin-top:0">Goals: ' + esc(seasonGoals(x).map(g => g.name).join(', ')) + '</p>' : '') + planLine(x) +
       '<div class="actions"><button class="btn primary" data-join-season="' + esc(x.id) + '">Join season</button></div></div></section>').join('') + '</div>' : '') +
-    group('Live now', mine.filter(x => phaseOf(x) === 'live')) +
     group('Coming up', mine.filter(x => phaseOf(x) === 'upcoming')) +
     group('Finished', mine.filter(x => phaseOf(x) === 'done')) +
-    (mine.length || invites.length ? '' : '<section class="card empty"><h2>No seasons yet.</h2><p class="muted">Start one with the crew for a week, a month or a training block. Everyone lifts their own way; the season keeps the feed and the Wrapped.</p><div class="actions"><button class="btn primary" data-new-season>+ New season</button></div></section>');
+    (mine.length || invites.length ? '' : '<section class="card empty"><h2>No seasons yet.</h2><p class="muted">Start one with the crew for a week, a month or a training block. Everyone lifts their own way; the season keeps the feed and the Wrapped.</p><div class="actions"><button class="btn primary" data-new-season>+ New season</button></div></section>') +
+    '<div style="margin-top:22px">' + packs + '</div>';
 }
 // One season: a group lifting over the same dates. Who's in and what they're on (a program, or
 // none), a side-by-side for anyone who happens to share a program, the season's own feed, and
@@ -3188,7 +3335,7 @@ function loadSeason(sn, then) {
   if (!seasonLoads.has(sn.id)) {
     const p = Promise.all([store.standings(sn.id), store.seasonBests(sn.id), store.seasonDaily(sn.id),
         Promise.resolve().then(() => store.seasonPrograms(sn.id)).catch(() => []), store.seasonWins(sn)])
-      .then(([rows, b, d, progs, feed]) => { S.standings[sn.id] = { rows, b, d, progs, feed }; })
+      .then(([rows, b, d, progs, feed]) => { S.standings[sn.id] = { rows, b, d, progs, feed }; S.seasonAt[sn.id] = Date.now(); })
       .finally(() => seasonLoads.delete(sn.id));
     seasonLoads.set(sn.id, p);
   }
@@ -3226,6 +3373,9 @@ function renderSeasonPage(sn) {
   if (S.wrappedOpen === sn.id && phaseOf(sn) === 'done') return renderWrapped(sn);
   const st = S.standings[sn.id];
   if (!st || !st.feed) return seasonLoading(sn, renderSeasonPage);
+  // Shown from what you last saw; refreshed quietly when it's more than a couple of minutes old.
+  if (Date.now() - (S.seasonAt[sn.id] || 0) > 120000 && !seasonLoads.has(sn.id))
+    loadSeason(sn, err => { if (!err && currentTab === 'seasons' && S.seasonOpen === sn.id && !S.wrappedOpen) renderSeasonPage(sn); });
   const ph = phaseOf(sn), people = seasonPeople(sn, st), weeks = seasonWeeks(sn);
   const card = p => {
     const me = p.user_id === S.myId;
@@ -3267,16 +3417,101 @@ function renderSeasonPage(sn) {
     shared.map(sideBySide).join('') + (hint ? '<p class="sz-hint">' + esc(hint) + '</p>' : '') +
     seasonFeedCard(sn, st, people) + (ph !== 'done' ? wrap : '');
 }
-// The season's feed: everyone in it, between its dates. Wins only: no reactions, no comments.
+// The season's feed, a day at a time: this week's pulse, then today in full (with the moments the
+// season posts itself), then earlier days folded to one line each, tap to open. Wins only: no
+// reactions, no comments. Moments come from what's already logged and posted, nothing more.
+const feedOpen = new Set();
+const dayShort = d => fmtDay(d, { weekday: 'short' }) + ' ' + fmtDay(d, { day: 'numeric' });
+function seasonDays(sn, st, by) {
+  const days = new Map();
+  const day = d => { if (!days.has(d)) days.set(d, { lifted: new Map(), wins: [], moments: [] }); return days.get(d); };
+  for (const r of st.d) if (by.has(r.user_id)) { const x = day(String(r.performed_on).slice(0, 10)); x.lifted.set(r.user_id, (x.lifted.get(r.user_id) || 0) + lbOf(r)); }
+  for (const w of st.feed) if (by.has(w.created_by)) day(w.performed_on).wins.push(w);
+  return { days, day };
+}
+function seasonMoments(sn, people, days, last) {
+  const out = [], many = people.length > 1, t = today();
+  const nameOf = new Map(people.map(p => [p.user_id, p.name]));
+  const whose = id => (nameOf.get(id) === 'You' ? 'Your' : nameOf.get(id) + '’s');
+  const dates = [...days.keys()].filter(d => d >= sn.starts_on && d <= last).sort();
+  out.push([sn.starts_on, { icon: '🏁', text: 'The season started' + (many ? ': ' + people.map(p => p.name).join(', ').replace(/, ([^,]*)$/, ' and $1') + '.' : '.') }]);
+  const seen = new Set();
+  for (const d of dates) {
+    const lifted = days.get(d).lifted;
+    for (const id of lifted.keys()) if (!seen.has(id)) { seen.add(id); if (many) out.push([d, { icon: '👟', text: whose(id) + ' first session of the season.' }]); }
+    if (many && lifted.size >= 2) {
+      const all = lifted.size === people.length;
+      out.push([d, { icon: '🤝', text: all ? (people.length === 2 ? 'You both lifted' : 'All ' + people.length + ' of you lifted') + (d === t ? ' today.' : '.') : lifted.size + ' of you lifted' + (d === t ? ' today.' : '.') }]);
+    }
+  }
+  const total = L.daysBetween(sn.starts_on, sn.ends_on) + 1, half = L.addDays(sn.starts_on, Math.floor(total / 2));
+  if (total >= 4 && half <= last) {
+    let lb = 0;
+    for (const d of dates) if (d <= half) for (const v of days.get(d).lifted.values()) lb += v;
+    out.push([half, { icon: '⏳', text: 'Halfway there. ' + C.compact(lb) + ' lb ' + (many ? 'between you' : 'moved') + ' so far.' }]);
+  }
+  if (sn.ends_on <= t) out.push([sn.ends_on, { icon: '🔔', text: sn.ends_on === t ? 'Last day. Wrapped opens tomorrow.' : 'The last day.' }]);
+  return out;
+}
 function seasonFeedCard(sn, st, people, opts) {
   const o = opts || {};
   const by = new Map(people.map(p => [p.user_id, p]));
-  const list = st.feed.filter(w => by.has(w.created_by));
+  const color = id => (by.get(id) || {}).color || 'var(--muted)';
+  const name = id => (by.get(id) || {}).name || S.names.get(id) || 'Someone';
+  const t = today(), ph = phaseOf(sn), last = t < sn.ends_on ? t : sn.ends_on;
   const head = '<div class="card-head"><div><h3 class="card-title">' + esc(o.title || 'In this season') + '</h3><small class="muted">' + esc(o.sub || 'everyone’s wins between the dates') + '</small></div>' +
     (o.open ? '<button class="linkbtn" data-season="' + esc(sn.id) + '">Open ›</button>' : '<button class="linkbtn" data-share-wins>' + (shareOn() ? 'Sharing mine ✓' : 'Mine are private') + '</button>') + '</div>';
-  return '<section class="card wins"' + (o.id ? ' id="' + o.id + '"' : '') + '>' + head +
-    (list.length ? winList(list, id => (by.get(id) || {}).color || 'var(--muted)', id => (by.get(id) || {}).name || S.names.get(id) || 'Someone', o.max || 60)
-      : '<p class="muted" style="margin:0">' + (phaseOf(sn) === 'upcoming' ? 'Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'short', day: 'numeric' })) + '. ' : '') + 'Bests, finished sessions and stamps from everyone in the season show up here.</p>') + '</section>';
+  const shell = body => '<section class="card wins"' + (o.id ? ' id="' + o.id + '"' : '') + '>' + head + body + '</section>';
+  if (ph === 'upcoming') return shell('<p class="muted" style="margin:0">Starts ' + esc(fmtDay(sn.starts_on, { weekday: 'long', month: 'short', day: 'numeric' })) + '. Bests, finished sessions and the season’s moments show up here, a day at a time.</p>');
+  const { days, day } = seasonDays(sn, st, by);
+  for (const [d, m] of seasonMoments(sn, people, days, last)) day(d).moments.push(m);
+
+  // This week's pulse: each person's days done (against their program, if they're on one) and pounds.
+  let pulse = '';
+  if (ph === 'live') {
+    const from = weekOf(t) > sn.starts_on ? weekOf(t) : sn.starts_on, to = L.addDays(weekOf(t), 6) < sn.ends_on ? L.addDays(weekOf(t), 6) : sn.ends_on;
+    pulse = '<div class="sf-pulse"><div class="sf-pulse-head"><b>This week</b><small>' + esc(dayShort(from) + ' – ' + dayShort(to)) + '</small></div>' +
+      people.map(p => {
+        let done = 0, lb = 0;
+        for (const [d, x] of days) if (d >= from && d <= to && x.lifted.has(p.user_id)) { done++; lb += x.lifted.get(p.user_id); }
+        const planned = p.prog ? p.prog.days_a_week || 0 : 0, segs = Math.max(planned, done);
+        const label = planned ? done + ' of ' + planned + ' ' + p.prog.program_name + ' days' : done + ' day' + (done === 1 ? '' : 's') + ' lifted';
+        return '<div class="sf-row"><i class="sf-av" style="background:' + p.color + '">' + esc(initials(p.display_name)) + '</i><div class="sf-mid"><span><b>' + esc(p.name) + '</b> · ' + esc(label) + '</span>' +
+          (segs ? '<span class="sf-segs" role="img" aria-label="' + esc(label) + '">' + Array.from({ length: segs }, (_, i) => '<i' + (i < done ? ' style="background:' + p.color + '"' : '') + '></i>').join('') + '</span>' : '') + '</div>' +
+          '<span class="sf-lb"><b>' + C.compact(lb) + '</b><small>lb</small></span></div>';
+      }).join('') + '</div>';
+  }
+
+  const summary = d => {
+    const x = days.get(d) || { lifted: new Map(), wins: [] }, n = x.lifted.size;
+    const who = !n ? '' : n === people.length && n > 1 ? (n === 2 ? 'Both lifted' : 'Everyone lifted') : [...x.lifted.keys()].map(name).join(' and ') + ' lifted';
+    let lb = 0; for (const v of x.lifted.values()) lb += v;
+    const bests = x.wins.filter(w => w.kind === 'pr').length;
+    return [who, lb ? L.fmtNum(Math.round(lb), 0) + ' lb' : '', bests ? bests + (bests === 1 ? ' best' : ' bests') : ''].filter(Boolean).join(' · ');
+  };
+  const moments = x => x.moments.map(m => '<div class="sf-moment"><span aria-hidden="true">' + m.icon + '</span><span>' + esc(m.text) + '</span></div>').join('');
+  const body = (d, x) => moments(x) + (x.wins.length ? winList(x.wins, color, name, 40) : d === t ? '<p class="muted sf-none">Nothing logged yet today.</p>' : '');
+  // Today in full; every earlier day as one line that opens.
+  let html = '';
+  if (ph === 'live') {
+    const x = day(t), s = summary(t);
+    html += '<div class="sf-day"><h4>Today <small>· ' + esc(dayShort(t)) + '</small></h4>' + (s ? '<small>' + esc(s) + '</small>' : '') + '</div>' + body(t, x);
+  }
+  if (!o.open) {
+    const all = [...days.keys()].filter(d => d >= sn.starts_on && d <= last && !(ph === 'live' && d === t)).sort().reverse();
+    const showAll = feedOpen.has(sn.id + '|all'), earlier = showAll ? all : all.slice(0, 5);   // the latest few days; older ones behind a button
+    if (earlier.length) html += (ph === 'live' ? '<h4 class="sf-earlier">Earlier</h4>' : '');
+    for (const d of earlier) {
+      const x = days.get(d), key = sn.id + '|' + d, open = feedOpen.has(key), mo = x.moments.map(m => m.text).join(' ');
+      html += '<button class="sf-fold" data-feed-day="' + esc(key) + '" aria-expanded="' + open + '">' +
+        '<span class="sf-date"><small>' + esc(fmtDay(d, { weekday: 'short' })) + '</small><b>' + esc(fmtDay(d, { day: 'numeric' })) + '</b></span>' +
+        '<span class="sf-fold-mid"><span class="sf-avs">' + [...x.lifted.keys()].map(id => '<i class="sf-av sm" style="background:' + color(id) + '">' + esc(initials((by.get(id) || {}).display_name)) + '</i>').join('') + '</span>' +
+          '<span>' + esc(summary(d) || 'No lifting') + '</span>' + (mo && !open ? '<small>' + esc(mo) + '</small>' : '') + '</span>' +
+        '<span class="sf-chev" aria-hidden="true">›</span></button>' + (open ? '<div class="sf-open">' + body(d, x) + '</div>' : '');
+    }
+    if (earlier.length < all.length) html += '<button class="btn block" style="margin-top:8px" data-feed-day="' + esc(sn.id) + '|all">Show ' + (all.length - earlier.length) + ' older days</button>';
+  }
+  return shell(pulse + (html || '<p class="muted" style="margin:0">Bests, finished sessions and the season’s moments show up here, a day at a time.</p>'));
 }
 // Pick (or change) your program for a season. Yours only: everyone picks their own.
 function openSeasonProgram(sid) {
@@ -3531,9 +3766,11 @@ async function wizardClick(b) {
     const sn = await store.addSeason({ name: WZ.name.trim().slice(0, 60), starts_on: WZ.start, ends_on: wzEnd(), is_shared: WZ.shared, points: WZ.points });
     S.seasons.unshift(sn);
     let pos = 0;
-    for (const id of WZ.picked) S.plan.push(await store.addPlan({ season_id: sn.id, template_id: id, position: ++pos, weekdays: WZ.mode === 'days' ? WZ.days.get(id) || 0 : 0 }));
-    for (const g of WZ.goals.filter(x => WZ.on.has(x.key)))
-      S.goals.push(await store.addGoal({ season_id: sn.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit || null, exercise_id: g.exercise_id || null, template_id: g.template_id || null }));
+    const [plans, goals] = await Promise.all([
+      store.addPlans([...WZ.picked].map(id => ({ season_id: sn.id, template_id: id, position: ++pos, weekdays: WZ.mode === 'days' ? WZ.days.get(id) || 0 : 0 }))),
+      store.addGoals(WZ.goals.filter(x => WZ.on.has(x.key)).map(g => ({ season_id: sn.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit || null, exercise_id: g.exercise_id || null, template_id: g.template_id || null }))),
+    ]);
+    S.plan.push(...plans); S.goals.push(...goals);
     sheet.close();
     openSeason(sn.id);
     toast(sn.name + ' is on. Every set you log from ' + fmtDay(sn.starts_on, { month: 'short', day: 'numeric' }) + ' counts.');
@@ -3549,6 +3786,7 @@ function openNewChooser() {
   inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">What are you making?</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><ul class="results new-list">' +
       opt('workout', '🏋️', 'A workout', 'What you do on a day. Type it, tick exercises, or stack blocks.') +
+      opt('generate', '🎲', 'Generate a workout', 'Pick push, pull, legs, upper, lower or full body; it builds one from your lifts.') +
       opt('season', '🏆', 'A season', 'Some dates and some people. Everyone picks their own program, or none.') +
       opt('program', '📚', 'A program', 'Workouts on a weekly schedule. Share it, and the crew can add it to their week.') +
       opt('block', '🧩', 'A block', 'A small chunk you reuse in workouts, like “Bench & triceps”.') +
@@ -3559,8 +3797,79 @@ async function newPickClick(b) {
   const k = b.dataset.newKind;
   if (!k) return;
   if (k === 'season') return openSeasonStart();
+  if (k === 'generate') return openGenerator();
   if (k === 'program') return openProgramDesigner(null);
   return newRoutine(b, k);
+}
+
+// ===========================================================================
+// Generate a workout: pick a kind of day and it fills one from the catalogue (generate.js), favouring
+// lifts you've done. Swap any step, shuffle the lot, then start it. It's kept as one routine per kind
+// ("Generated: Push day"), rewritten each time, so generating doesn't pile up routines.
+// ===========================================================================
+const GN = { type: 'push', short: false, steps: [] };
+function genUsage() {
+  const n = new Map();
+  for (const r of S.bestRows || []) n.set(r.exercise_id, (n.get(r.exercise_id) || 0) + 1);
+  for (const x of S.recent || []) if (x.is_warmup !== true) n.set(x.exercise_id, (n.get(x.exercise_id) || 0) + 1);
+  return n;
+}
+const genPool = () => S.exercises.filter(e => !e.deleted_at);
+function openGenerator() {
+  LG.mode = 'gen';
+  GN.type = prefs.genType || 'push';
+  GN.short = !!prefs.genShort;
+  GN.steps = G.generate(GN.type, GN.short, genPool(), genUsage());
+  drawGenerator();
+  openSheet();
+}
+const genLast = exId => (lastSession(exId) || (S.bestRows || []).some(r => r.exercise_id === exId) ? 'done before' : 'new to you');
+function drawGenerator() {
+  const dt = G.dayType(GN.type);
+  inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">Generate a workout</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      '<div class="chips" role="group" aria-label="Kind of day">' + G.DAY_TYPES.map(d => '<button type="button" class="chip" data-gen-type="' + d.id + '" aria-pressed="' + (d.id === GN.type) + '">' + esc(d.name) + '</button>').join('') + '</div>' +
+      '<div class="row" style="margin-top:12px"><span class="muted">How long</span><span class="seg" role="group" aria-label="How long">' +
+        [[true, 'Short · 4'], [false, 'Full · ' + dt.steps.length]].map(([v, l]) => '<button type="button" data-gen-short="' + v + '" aria-pressed="' + (GN.short === v) + '">' + l + '</button>').join('') + '</span></div>' +
+      (GN.steps.length ? '<ol class="gen-list">' + GN.steps.map((x, i) => '<li><span class="what"><b>' + esc(exName(x.exercise_id)) + '</b><small>' + x.sets + ' × ' + x.reps + ' · ' + esc(genLast(x.exercise_id)) + '</small></span>' +
+          '<button type="button" class="iconbtn" data-gen-swap="' + i + '" aria-label="Swap ' + esc(exName(x.exercise_id)) + ' for something else">↻</button></li>').join('') + '</ol>'
+        : '<p class="muted">Nothing in the catalogue fits this kind of day yet.</p>') +
+      '<p class="hint-line">Built from the exercise list, mostly lifts you’ve done. ↻ swaps one. Weights come from your last time.</p>' +
+      '<p class="warn" id="genErr" role="alert"></p></div>' +
+    '<div class="design-foot wz-foot"><button class="btn ghost" data-gen-shuffle>🎲 Shuffle</button>' +
+      '<button class="btn primary" data-gen-go' + (GN.steps.length ? '' : ' disabled') + '>Start it</button></div>';
+}
+async function genClick(b) {
+  if (b.dataset.genType || b.dataset.genShort) {
+    if (b.dataset.genType) GN.type = prefs.genType = b.dataset.genType;
+    if (b.dataset.genShort) GN.short = prefs.genShort = b.dataset.genShort === 'true';
+    savePrefs();
+    GN.steps = G.generate(GN.type, GN.short, genPool(), genUsage());
+    return drawGenerator();
+  }
+  if (b.hasAttribute('data-gen-shuffle')) { GN.steps = G.generate(GN.type, GN.short, genPool(), genUsage()); return drawGenerator(); }
+  if (b.dataset.genSwap) {
+    const i = Number(b.dataset.genSwap), cur = GN.steps[i];
+    const e = G.pickFor(cur.slots, genPool(), genUsage(), new Set(GN.steps.map(x => x.exercise_id)));
+    if (!e) return toast('Nothing else fits that spot');
+    const slot = G.slotOf(e.name);
+    GN.steps[i] = { ...cur, exercise_id: e.id, slot, ...G.prescribe(slot, i) };
+    return drawGenerator();
+  }
+  if (!b.hasAttribute('data-gen-go')) return;
+  const name = 'Generated: ' + G.dayType(GN.type).title;
+  b.disabled = true; b.textContent = 'Setting up…';
+  try {
+    let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name);
+    if (t) {   // rewrite it: the old steps go in one request
+      const old = routineItems(t.id).map(it => it.id);
+      await store.removeItems(old);
+      S.items = S.items.filter(x => !old.includes(x.id)); old.forEach(id => S.itemsById.delete(id));
+    } else { t = await store.addRoutine({ name, kind: 'workout', notes: null }); S.templates.push(t); }
+    await putItems(GN.steps.map((x, i) => ({ template_id: t.id, exercise_id: x.exercise_id, position: i + 1, sets: x.sets, reps: x.reps,
+      load_mode: 'last', load_value: 0, unit: lastLoad(x.exercise_id).unit, rest_s: x.rest_s, note: null })));
+    startFollowing(t.id);
+  } catch (x) { $('genErr').textContent = x.message; b.disabled = false; b.textContent = 'Start it'; }
 }
 
 // ===========================================================================
@@ -3578,7 +3887,12 @@ async function postWin(kind, title, summary, day) {
 }
 async function unpostWin(kind, title, day) {
   const w = (S.wins || []).find(x => x.created_by === S.myId && x.kind === kind && x.title === title && x.performed_on === day);
-  if (w) { try { await store.removeWin(w.id); S.wins = S.wins.filter(x => x !== w); } catch (x) { /* fine */ } }
+  if (w) {
+    try {
+      await store.removeWin(w.id); S.wins = S.wins.filter(x => x !== w);
+      for (const k in S.standings) if (S.standings[k] && S.standings[k].feed) S.standings[k].feed = S.standings[k].feed.filter(x => x.id !== w.id);
+    } catch (x) { /* fine */ }
+  }
 }
 async function removeWin(id) {
   try {
@@ -3622,6 +3936,7 @@ function winText(w) {
   if (w.kind === 'quest') return T.win.quest + w.title;
   if (w.kind === 'stamp') return T.win.stamp + w.title;
   if (w.kind === 'goal') return T.win.goal + w.title;
+  if (w.kind === 'cardio') return w.title + ': ' + cardioText({ minutes: m.minutes, distance: m.distance, distance_unit: m.unit });
   return T.win.session + w.title + (m.lb ? ' · ' + C.compact(m.lb) + ' lb' : '') + (m.sets ? ' · ' + m.sets + ' set' + (m.sets === 1 ? '' : 's') : '') + (m.minutes ? ' · ' + m.minutes + ' min' : '');
 }
 // The daily card: the day's lifts with their top sets, the totals, and badges for what it earned.
@@ -3661,15 +3976,15 @@ function winList(wins, color, who, max) {
   const folded = new Map();
   for (const w of wins) {
     const k = w.created_by + '|' + w.performed_on;
-    if (w.kind !== 'session' && sessions.has(k)) { if (!folded.has(k)) folded.set(k, []); folded.get(k).push(w); }
+    if (w.kind !== 'session' && w.kind !== 'cardio' && sessions.has(k)) { if (!folded.has(k)) folded.set(k, []); folded.get(k).push(w); }
   }
-  const list = wins.filter(w => w.kind === 'session' || !sessions.has(w.created_by + '|' + w.performed_on)).slice(0, max || 25);
+  const list = wins.filter(w => w.kind === 'session' || w.kind === 'cardio' || !sessions.has(w.created_by + '|' + w.performed_on)).slice(0, max || 25);
   const when = d => (dayLabel(d) === 'Today' ? 'Today' : d === L.addDays(today(), -1) ? 'Yesterday' : fmtDay(d, { weekday: 'short', month: 'short', day: 'numeric' }));
   const del = w => (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the feed">✕</button>' : '');
   const whoTag = w => '<b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b>';
   return '<ol class="win-list">' + list.map(w => (w.kind === 'session'
     ? '<li class="win-session"><div class="ws-head">' + whoTag(w) + '<small>' + esc(when(w.performed_on)) + '</small>' + del(w) + '</div>' + sessionCardHtml(w, folded.get(w.created_by + '|' + w.performed_on) || []) + '</li>'
-    : '<li><span class="win-icon">' + (WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body">' + whoTag(w) + ' ' + esc(winText(w)) +
+    : '<li><span class="win-icon">' + (w.kind === 'cardio' ? '🏃' : WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body">' + whoTag(w) + ' ' + esc(winText(w)) +
       '<small>' + esc(when(w.performed_on)) + '</small></span>' + del(w) + '</li>')).join('') + '</ol>';
 }
 // On the Log tab: the feed of a season you're in that's running today (none, no card).
