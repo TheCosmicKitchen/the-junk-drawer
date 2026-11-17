@@ -133,6 +133,8 @@
   .bar > i::after, .gt-bar > i::after, .elapsed > i::after { content: var(--bar-end); position: absolute; left: max(0px, calc(100% - .9em)); top: 50%; transform: translateY(-50%) scaleX(var(--bar-flip)); font-size: calc(var(--bar-h) + 6px); line-height: 1; font-style: normal; pointer-events: none; z-index: 2; }
   .bar::after, .gt-bar::after, .elapsed::after { content: var(--bar-goal); position: absolute; right: -2px; top: 50%; transform: translateY(-50%); font-size: calc(var(--bar-h) + 6px); line-height: 1; pointer-events: none; z-index: 1; }
   .chip[data-gen-type][aria-pressed="true"] { background: var(--accent); color: var(--accent-ink, #fff); }
+  .rt-search { margin: 6px 0 4px; }
+  .rt-more { margin-top: 10px; }
   .packs-fold { padding: 0; }
   .packs-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; }
   .packs-head > span:first-child { flex: 1; display: flex; flex-direction: column; min-width: 0; }
