@@ -176,6 +176,7 @@ async function afterSignIn() {
     applyData(snap.data);
     S.wins = snap.wins || null; S.records = snap.records || null;
     S.lastOld = new Map(snap.lastOld || []);
+    S.standings = snap.standings || {};
     restoreOutbox();
     showApp();
   } else gate('<p class="muted" style="margin-top:30px">Loading your log…</p>');
@@ -228,7 +229,7 @@ function writeSnap() {
     seasons: { seasons: S.seasons, goals: S.goals, subs: S.seasonSubs, plan: S.plan },
     names: [...S.names].map(([user_id, display_name]) => ({ user_id, display_name })), myId: S.myId, wdays: S.wdays, bw: S.bw, runs: S.runs, stamps: S.stampRows, programs: S.programs, cardio: S.cardio,
   };
-  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld] })); }
+  try { localStorage.setItem(SNAP, JSON.stringify({ v: 1, user: S.myId, at: Date.now(), me, data, wins: S.wins, records: S.records, lastOld: [...S.lastOld], standings: S.standings })); }
   catch (e) { clearSnap(); }   // full: better none than a half-written one
 }
 // Coming back to the app after a real break (15 minutes; not the phone sleeping between sets, since
@@ -263,7 +264,8 @@ function applyData({ cat, recent, days, bests, routines, seasons, names, myId, w
   S.goals = seasons.goals;
   S.seasonSubs = seasons.subs || [];
   S.plan = seasons.plan || [];
-  S.standings = {};
+  S.standings = S.standings || {};   // kept across refreshes: a season shows what you last saw while it refreshes
+  S.seasonAt = {};
   S.names = new Map(names.map(n => [n.user_id, n.display_name]));
   S.myId = myId;
   S.exercises = cat.exercises.filter(e => e.kind !== 'cardio');
@@ -369,12 +371,12 @@ function renderLog() {
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
     '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') + '</section>' +
-    weeklyCard() +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
     (groups.length ? groups.map(exCard).join('') : (following() || cardioCard() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
+    weeklyCard() +   // the week's bulletin and quests come after today's logging
     questsCard() +
     winsCard();
   loadWins();
@@ -489,6 +491,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
   else if (b.hasAttribute('data-generate')) openGenerator();
+  else if (b.hasAttribute('data-packs-toggle')) { S.packsOpen = !S.packsOpen; renderSeasons(); }
   else if (b.dataset.calMove) { const [y, mo] = S.cal.month.split('-').map(Number); const d = new Date(y, mo - 1 + Number(b.dataset.calMove), 1); S.cal.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderHistory(); }
   else if (b.dataset.calDay) selectCalDay(b.dataset.calDay);
   else if (b.dataset.calSchedule) openWorkoutPicker(b.dataset.calSchedule);
@@ -666,7 +669,7 @@ function syncWaiting() {
 }
 function queueStore(st) {
   const signOut = st.signOut.bind(st);
-  st.signOut = async () => { clearSnap(); S.lastOld.clear(); lastAsked.clear(); return signOut(); };
+  st.signOut = async () => { clearSnap(); S.lastOld.clear(); S.standings = {}; S.seasonAt = {}; lastAsked.clear(); return signOut(); };
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
@@ -683,6 +686,7 @@ function logSet(fields) { return { saved: logSets(fields, 1)[0] }; }
 // Put new sets on screen and in the outbox. fresh = just tapped (counts PRs, clubs, quests); otherwise
 // it's a set coming back (undoing the delete of one that hadn't saved yet).
 function logRows(rows, fresh) {
+  S.seasonAt = {};
   Q.box.push({ kind: 'add', rows: rows.map(plain) });
   const temps = rows.map(r => {
     const t = { date_only: false, import_batch_id: null, deleted_at: null, count_bodyweight: false, bodyweight: null, ...r, _sync: 'waiting' };
@@ -3282,21 +3286,24 @@ function renderSeasons() {
   const got = PACK_ORDER.reduce((n, k) => n + stampsEarned(k), 0), allStamps = PACK_ORDER.reduce((n, k) => n + PACKS[k].stamps.length, 0);
   // Events first (they're on fixed dates), then seasons (start any time). Both are extras.
   const kinds = kind => PACK_ORDER.filter(k => PACKS[k].kind === kind).map(k => packCard(PACKS[k])).join('');
-  const packs = '<p class="hint-line" style="margin-top:0">Your ' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + '. ' +
-      esc(T.eventsWord) + ' and ' + esc(T.seasonsWord.toLowerCase()) + ' are extras: join one for its workouts and ' + esc(T.stamps.toLowerCase()) + ', or skip them all.</p>' +
-    '<h3 class="section-title">' + esc(T.eventsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Same dates every year, for everyone at once.</p><div class="season-grid">' + kinds('event') + '</div>' +
-    '<h3 class="section-title">' + esc(T.seasonsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Start any time, at your own pace.</p><div class="season-grid">' + kinds('season') + '</div>';
-  view.innerHTML = packs +
-    '<h3 class="section-title">Your seasons</h3>' +
-    '<div class="row page-actions"><p class="muted" style="margin:0">A season is a group lifting over the same dates. Everyone picks their own program, or none, and everything you log in between counts. Wrapped comes at the end.</p>' +
-      '<span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
+  // Your own seasons first; the feast days and pilgrimages (extras) fold away below them.
+  const packsOpen = !!S.packsOpen;
+  const packs = '<section class="card packs-fold"><button class="packs-head" data-packs-toggle aria-expanded="' + packsOpen + '">' +
+      '<span><b>' + esc(T.eventsWord) + ' and ' + esc(T.seasonsWord.toLowerCase()) + '</b><small>' + esc(T.stampBook.replace(/^The /, '')) + ': ' + got + ' of ' + allStamps + ' ' + esc(T.stamps.toLowerCase()) + ' · extras, join one or skip them all</small></span>' +
+      '<span class="sf-chev" aria-hidden="true">›</span></button></section>' +
+    (packsOpen ? '<h3 class="section-title">' + esc(T.eventsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Same dates every year, for everyone at once.</p><div class="season-grid">' + kinds('event') + '</div>' +
+      '<h3 class="section-title">' + esc(T.seasonsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Start any time, at your own pace.</p><div class="season-grid">' + kinds('season') + '</div>' : '');
+  view.innerHTML =
+    '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.seasons) + '</h2><span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
+    '<p class="hint-line" style="margin-top:0">A season is a group lifting over the same dates. Everyone picks their own program, or none, and everything you log in between counts. Wrapped comes at the end.</p>' +
+    group('Live now', mine.filter(x => phaseOf(x) === 'live')) +
     (invites.length ? '<h3 class="section-title">Join the crew</h3><div class="season-grid">' + invites.map(x => '<section class="card sbanner">' + bannerHtml(x) +
       '<div class="sb-body">' + (seasonGoals(x).length ? '<p class="hint-line" style="margin-top:0">Goals: ' + esc(seasonGoals(x).map(g => g.name).join(', ')) + '</p>' : '') + planLine(x) +
       '<div class="actions"><button class="btn primary" data-join-season="' + esc(x.id) + '">Join season</button></div></div></section>').join('') + '</div>' : '') +
-    group('Live now', mine.filter(x => phaseOf(x) === 'live')) +
     group('Coming up', mine.filter(x => phaseOf(x) === 'upcoming')) +
     group('Finished', mine.filter(x => phaseOf(x) === 'done')) +
-    (mine.length || invites.length ? '' : '<section class="card empty"><h2>No seasons yet.</h2><p class="muted">Start one with the crew for a week, a month or a training block. Everyone lifts their own way; the season keeps the feed and the Wrapped.</p><div class="actions"><button class="btn primary" data-new-season>+ New season</button></div></section>');
+    (mine.length || invites.length ? '' : '<section class="card empty"><h2>No seasons yet.</h2><p class="muted">Start one with the crew for a week, a month or a training block. Everyone lifts their own way; the season keeps the feed and the Wrapped.</p><div class="actions"><button class="btn primary" data-new-season>+ New season</button></div></section>') +
+    '<div style="margin-top:22px">' + packs + '</div>';
 }
 // One season: a group lifting over the same dates. Who's in and what they're on (a program, or
 // none), a side-by-side for anyone who happens to share a program, the season's own feed, and
@@ -3309,7 +3316,7 @@ function loadSeason(sn, then) {
   if (!seasonLoads.has(sn.id)) {
     const p = Promise.all([store.standings(sn.id), store.seasonBests(sn.id), store.seasonDaily(sn.id),
         Promise.resolve().then(() => store.seasonPrograms(sn.id)).catch(() => []), store.seasonWins(sn)])
-      .then(([rows, b, d, progs, feed]) => { S.standings[sn.id] = { rows, b, d, progs, feed }; })
+      .then(([rows, b, d, progs, feed]) => { S.standings[sn.id] = { rows, b, d, progs, feed }; S.seasonAt[sn.id] = Date.now(); })
       .finally(() => seasonLoads.delete(sn.id));
     seasonLoads.set(sn.id, p);
   }
@@ -3347,6 +3354,9 @@ function renderSeasonPage(sn) {
   if (S.wrappedOpen === sn.id && phaseOf(sn) === 'done') return renderWrapped(sn);
   const st = S.standings[sn.id];
   if (!st || !st.feed) return seasonLoading(sn, renderSeasonPage);
+  // Shown from what you last saw; refreshed quietly when it's more than a couple of minutes old.
+  if (Date.now() - (S.seasonAt[sn.id] || 0) > 120000 && !seasonLoads.has(sn.id))
+    loadSeason(sn, err => { if (!err && currentTab === 'seasons' && S.seasonOpen === sn.id && !S.wrappedOpen) renderSeasonPage(sn); });
   const ph = phaseOf(sn), people = seasonPeople(sn, st), weeks = seasonWeeks(sn);
   const card = p => {
     const me = p.user_id === S.myId;
@@ -3470,7 +3480,7 @@ function seasonFeedCard(sn, st, people, opts) {
   }
   if (!o.open) {
     const all = [...days.keys()].filter(d => d >= sn.starts_on && d <= last && !(ph === 'live' && d === t)).sort().reverse();
-    const showAll = feedOpen.has(sn.id + '|all'), earlier = showAll ? all : all.slice(0, 14);   // a long season shows its latest two weeks first
+    const showAll = feedOpen.has(sn.id + '|all'), earlier = showAll ? all : all.slice(0, 5);   // the latest few days; older ones behind a button
     if (earlier.length) html += (ph === 'live' ? '<h4 class="sf-earlier">Earlier</h4>' : '');
     for (const d of earlier) {
       const x = days.get(d), key = sn.id + '|' + d, open = feedOpen.has(key), mo = x.moments.map(m => m.text).join(' ');
