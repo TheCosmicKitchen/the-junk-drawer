@@ -383,6 +383,12 @@ function renderLog() {
   loadRecords();
   tickClock();
 }
+// Save several routine steps in one request (not one per step) and keep them in memory.
+async function putItems(rows) {
+  const made = await store.addItems(rows);
+  for (const it of made) { S.items.push(it); S.itemsById.set(it.id, it); }
+  return made;
+}
 // Turn a day's lifting into a routine: one step per exercise, in the order you did them,
 // with the number of working sets and your heaviest set's reps and weight.
 async function saveDayAsRoutine(day, btn) {
@@ -393,13 +399,11 @@ async function saveDayAsRoutine(day, btn) {
   try {
     const t = await store.addRoutine({ name: nameFrom(groups.map(g => g.exercise_id)), kind: 'workout' });
     S.templates.push(t);
-    let position = 0;
-    for (const g of groups.slice(0, 100)) {
+    await putItems(groups.slice(0, 100).map((g, i) => {
       const top = g.sets.reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a));
-      const it = await store.addItem({ template_id: t.id, exercise_id: g.exercise_id, position: ++position,
-        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit });
-      S.items.push(it); S.itemsById.set(it.id, it);
-    }
+      return { template_id: t.id, exercise_id: g.exercise_id, position: i + 1,
+        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit };
+    }));
     toast('Saved as “' + t.name + '”. Rename it or tweak away.');
     openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
@@ -1429,13 +1433,8 @@ async function newRoutine(btn, kind) {
 }
 async function copySteps(fromIds, tid) {
   let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
-  for (const id of fromIds) {
-    const src = S.itemsById.get(id);
-    if (!src) continue;
-    const it = await store.addItem({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
-      load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null });
-    S.items.push(it); S.itemsById.set(it.id, it);
-  }
+  await putItems(fromIds.map(id => S.itemsById.get(id)).filter(Boolean).map(src => ({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
+    load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null })));
 }
 async function workoutFromBlock(blockId, btn) {
   const b = S.templates.find(t => t.id === blockId);
@@ -1529,11 +1528,8 @@ async function copyRoutine(id, btn) {
     markSeen(src);
     const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null, kind: src.kind || 'workout' });
     S.templates.push(t);
-    for (const it of routineItems(id)) {
-      const n = await store.addItem({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
-        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
-      S.items.push(n); S.itemsById.set(n.id, n);
-    }
+    await putItems(routineItems(id).map(it => ({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
+      load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null })));
     toast('Copied. This one’s yours to change.');
     openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
@@ -1666,16 +1662,13 @@ function refreshItemView(id) {
 // Add exercises to the end of a routine, each starting from your last numbers for it.
 async function addItemsTo(tid, exIds) {
   try {
-    for (const exId of exIds) {
-      const list = routineItems(tid);
+    const list = routineItems(tid);
+    let pos = list.length ? Math.max(...list.map(i => i.position)) : 0;
+    const made = await putItems(exIds.map(exId => {
       const u = usualFor(exId);
-      const it = await store.addItem({
-        template_id: tid, exercise_id: exId, position: Math.min(100, (list.length ? Math.max(...list.map(i => i.position)) : 0) + 1),
-        sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit,
-      });
-      S.items.push(it); S.itemsById.set(it.id, it);
-      if (exIds.length === 1) D.open = it.id;   // one added: open it, ready to set
-    }
+      return { template_id: tid, exercise_id: exId, position: Math.min(100, ++pos), sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
+    }));
+    if (made.length === 1) D.open = made[0].id;   // one added: open it, ready to set
     if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises at your usual sets and reps.');
     await autoName(tid);
   } catch (x) { fail(x); }
@@ -1826,11 +1819,10 @@ async function quickAdd(b) {
   b.disabled = true;
   let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
   try {
-    for (const x of out) {
+    await putItems(out.map(x => {
       const u = usualFor(x.exId);
-      const it = await store.addItem({ template_id: tid, exercise_id: x.exId, position: ++pos, sets: x.sets || u.sets, reps: x.reps || Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit });
-      S.items.push(it); S.itemsById.set(it.id, it);
-    }
+      return { template_id: tid, exercise_id: x.exId, position: ++pos, sets: x.sets || u.sets, reps: x.reps || Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
+    }));
     await autoName(tid);
   } catch (x) { b.disabled = false; return fail(x); }
   openDesigner(tid);
@@ -1892,7 +1884,7 @@ async function designerClick(b) {
     const list = routineItems(D.id);
     if (list.length >= 100) return toast('That’s the most steps a routine can have.');
     try {
-      for (const later of list.filter(x => x.position > it.position).reverse()) await store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s));
+      await Promise.all(list.filter(x => x.position > it.position).map(later => store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s))));
       const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
         load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
       S.items.push(copy); S.itemsById.set(copy.id, copy);
@@ -2158,9 +2150,11 @@ async function ensureCore() {
   S.seasons.unshift(c);
   const prev = coreFor(String(Number(y) - 1));
   if (prev) {
-    for (const p of planFor(prev.id)) S.plan.push(await store.addPlan({ season_id: c.id, template_id: p.template_id, position: p.position, weekdays: p.weekdays }));
-    for (const g of S.goals.filter(x => x.season_id === prev.id))
-      S.goals.push(await store.addGoal({ season_id: c.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit, exercise_id: g.exercise_id, template_id: g.template_id }));
+    const [plans, goals] = await Promise.all([
+      store.addPlans(planFor(prev.id).map(p => ({ season_id: c.id, template_id: p.template_id, position: p.position, weekdays: p.weekdays }))),
+      store.addGoals(S.goals.filter(x => x.season_id === prev.id).map(g => ({ season_id: c.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit, exercise_id: g.exercise_id, template_id: g.template_id }))),
+    ]);
+    S.plan.push(...plans); S.goals.push(...goals);
   }
   return c;
 }
@@ -2312,8 +2306,8 @@ async function seasonClick(b) {
       else {
         s = await store.addSeason({ name, starts_on, ends_on, is_shared, points: readPoints() });
         S.seasons.unshift(s);
-        for (const g of SG.pending) S.goals.push(await store.addGoal({ ...g, season_id: s.id }));
-        for (const p of SG.planPending) S.plan.push(await store.addPlan({ ...p, season_id: s.id }));
+        const [goals, plans] = await Promise.all([store.addGoals(SG.pending.map(g => ({ ...g, season_id: s.id }))), store.addPlans(SG.planPending.map(p => ({ ...p, season_id: s.id })))]);
+        S.goals.push(...goals); S.plan.push(...plans);
       }
       sheet.close();
       openSeason(s.id);
@@ -2704,13 +2698,11 @@ async function addSession(sid, kind, name) {
   const steps = stepsOf(sid);
   const t = await store.addRoutine({ name: (name || SESSIONS[sid].name).slice(0, 60), kind, notes: null });
   S.templates.push(t);
-  let pos = 0;
-  for (const x of steps) {
+  await putItems(steps.map((x, i) => {
     const ld = lastLoad(x.exId), rule = starterRule(sid, x, ld.unit);
-    const it = await store.addItem({ template_id: t.id, exercise_id: x.exId, position: ++pos, sets: Math.min(20, x.sets), reps: Math.min(100, x.reps),
-      load_mode: rule.mode, load_value: rule.value, unit: ld.unit, rest_s: x.rest == null ? null : Math.min(900, x.rest), note: x.note ? x.note.slice(0, 200) : null });
-    S.items.push(it); S.itemsById.set(it.id, it);
-  }
+    return { template_id: t.id, exercise_id: x.exId, position: i + 1, sets: Math.min(20, x.sets), reps: Math.min(100, x.reps),
+      load_mode: rule.mode, load_value: rule.value, unit: ld.unit, rest_s: x.rest == null ? null : Math.min(900, x.rest), note: x.note ? x.note.slice(0, 200) : null };
+  }));
   return t;
 }
 function openStarters() {
@@ -2767,11 +2759,10 @@ async function programClick(b) {
   try {
     const bySession = new Map();
     for (const [d, sid] of p.days) bySession.set(sid, (bySession.get(sid) || 0) | (1 << d));
-    const made = new Map();
-    for (const sid of bySession.keys()) {
+    const made = new Map(await Promise.all([...bySession.keys()].map(async sid => {
       const existing = S.templates.find(t => isMine(t) && !isBlock(t) && t.name === SESSIONS[sid].name && routineItems(t.id).length);
-      made.set(sid, existing || await addSession(sid, 'workout'));
-    }
+      return [sid, existing || await addSession(sid, 'workout')];
+    })));
     // Into your week: each workout pinned to its days (days already pinned to something else are freed).
     await pinToWeek([...bySession].map(([sid, mask]) => [made.get(sid).id, mask]));
     sheet.close();
@@ -2890,23 +2881,19 @@ async function saveProgram(b) {
 async function addProgramToWeek(p, b) {
   if (b) b.disabled = true;
   try {
-    const made = new Map();
-    for (const w of p.doc.workouts || []) {
+    // Each workout is one routine plus one request for all its steps; the workouts go at the same time.
+    const made = new Map(await Promise.all((p.doc.workouts || []).map(async w => {
       const name = w.name.slice(0, 60);
       let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name && routineItems(x.id).length);
       if (!t) {
         t = await store.addRoutine({ name, kind: 'workout', notes: null });
         S.templates.push(t);
         let pos = 0;
-        for (const s of w.steps) {
-          if (!S.byId.get(s.exercise_id)) continue;
-          const it = await store.addItem({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, reps: s.reps,
-            load_mode: s.load_mode || 'last', load_value: s.load_value ?? 0, unit: s.unit || lastLoad(s.exercise_id).unit, rest_s: s.rest_s ?? null, note: s.note || null });
-          S.items.push(it); S.itemsById.set(it.id, it);
-        }
+        await putItems(w.steps.filter(s => S.byId.get(s.exercise_id)).map(s => ({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, reps: s.reps,
+          load_mode: s.load_mode || 'last', load_value: s.load_value ?? 0, unit: s.unit || lastLoad(s.exercise_id).unit, rest_s: s.rest_s ?? null, note: s.note || null })));
       }
-      made.set(w.key, t);
-    }
+      return [w.key, t];
+    })));
     const masks = new Map();
     for (const [d, k] of p.doc.days || []) if (made.has(k)) masks.set(k, (masks.get(k) || 0) | (1 << d));
     await pinToWeek([...masks].map(([k, mask]) => [made.get(k).id, mask]));
@@ -2919,12 +2906,19 @@ async function pinToWeek(pairs) {   // [[template id, weekday mask]]
   const core = await ensureCore();
   const mine = planFor(core.id);
   let pos = mine.reduce((m, x) => Math.max(m, x.position || 0), 0);
+  // Work out every change first, then send them together: changed days in parallel, new rows in one request.
+  const days = new Map(mine.map(x => [x, x.weekdays])), adds = [];
   for (const [tid, mask] of pairs) {
-    for (const other of mine) if (other.template_id !== tid && other.weekdays & mask) Object.assign(other, await store.updatePlan(other.id, { weekdays: other.weekdays & ~mask }));
+    for (const other of mine) if (other.template_id !== tid && days.get(other) & mask) days.set(other, days.get(other) & ~mask);
     const have = mine.find(x => x.template_id === tid);
-    if (have) Object.assign(have, await store.updatePlan(have.id, { weekdays: have.weekdays | mask }));
-    else S.plan.push(await store.addPlan({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask }));
+    if (have) days.set(have, days.get(have) | mask);
+    else adds.push({ season_id: core.id, template_id: tid, position: ++pos, weekdays: mask });
   }
+  const [, added] = await Promise.all([
+    Promise.all(mine.filter(x => days.get(x) !== x.weekdays).map(x => store.updatePlan(x.id, { weekdays: days.get(x) }).then(r => Object.assign(x, r)))),
+    store.addPlans(adds),
+  ]);
+  S.plan.push(...added);
 }
 // The Programs section on Routines: yours, then the crew's shared ones.
 function programsSection() {
@@ -3170,19 +3164,18 @@ async function joinPack(key, btn) {
     const run = await store.addRun({ season_key: key, starts_on });
     S.runs = (S.runs || []).concat(run);
     // Its workouts become your routines (weights follow your last time), so they work with Start and the logger.
-    for (const w of pack.workouts) {
-      if (packRoutine(pack, w)) continue;
+    await Promise.all(pack.workouts.filter(w => !packRoutine(pack, w)).map(async w => {
       const t = await store.addRoutine({ name: routineNameFor(pack, w), kind: 'workout', notes: null });
       S.templates.push(t);
       let pos = 0;
+      const rows = [];
       for (const [names, sets, reps, flavour] of w.steps) {
         const exId = [...packIds(names)][0] || names.map(n => S.nameIndex.get(L.norm(n))).find(Boolean);
-        if (!exId) continue;
-        const it = await store.addItem({ template_id: t.id, exercise_id: exId, position: ++pos, sets: Math.min(20, sets), reps: Math.min(100, reps),
+        if (exId) rows.push({ template_id: t.id, exercise_id: exId, position: ++pos, sets: Math.min(20, sets), reps: Math.min(100, reps),
           load_mode: 'last', load_value: 0, unit: lastLoad(exId).unit, rest_s: null, note: flavour || null });
-        S.items.push(it); S.itemsById.set(it.id, it);
       }
-    }
+      await putItems(rows);
+    }));
     toast('Joined ' + pack.name + '. Its workouts are in your routines.', T.id !== pack.theme && THEMES[pack.theme] ? { label: 'Try its look', run: () => trySkin(pack.theme) } : null);
     renderSeasons(); checkStamps();
   } catch (x) { fail(x); btn.disabled = false; }
@@ -3747,9 +3740,11 @@ async function wizardClick(b) {
     const sn = await store.addSeason({ name: WZ.name.trim().slice(0, 60), starts_on: WZ.start, ends_on: wzEnd(), is_shared: WZ.shared, points: WZ.points });
     S.seasons.unshift(sn);
     let pos = 0;
-    for (const id of WZ.picked) S.plan.push(await store.addPlan({ season_id: sn.id, template_id: id, position: ++pos, weekdays: WZ.mode === 'days' ? WZ.days.get(id) || 0 : 0 }));
-    for (const g of WZ.goals.filter(x => WZ.on.has(x.key)))
-      S.goals.push(await store.addGoal({ season_id: sn.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit || null, exercise_id: g.exercise_id || null, template_id: g.template_id || null }));
+    const [plans, goals] = await Promise.all([
+      store.addPlans([...WZ.picked].map(id => ({ season_id: sn.id, template_id: id, position: ++pos, weekdays: WZ.mode === 'days' ? WZ.days.get(id) || 0 : 0 }))),
+      store.addGoals(WZ.goals.filter(x => WZ.on.has(x.key)).map(g => ({ season_id: sn.id, name: g.name, metric: g.metric, target: g.target, unit: g.unit || null, exercise_id: g.exercise_id || null, template_id: g.template_id || null }))),
+    ]);
+    S.plan.push(...plans); S.goals.push(...goals);
     sheet.close();
     openSeason(sn.id);
     toast(sn.name + ' is on. Every set you log from ' + fmtDay(sn.starts_on, { month: 'short', day: 'numeric' }) + ' counts.');
@@ -3840,14 +3835,13 @@ async function genClick(b) {
   b.disabled = true; b.textContent = 'Setting up…';
   try {
     let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name);
-    if (t) for (const it of routineItems(t.id)) { await store.removeItem(it.id); S.items = S.items.filter(x => x.id !== it.id); S.itemsById.delete(it.id); }
-    else { t = await store.addRoutine({ name, kind: 'workout', notes: null }); S.templates.push(t); }
-    let pos = 0;
-    for (const x of GN.steps) {
-      const it = await store.addItem({ template_id: t.id, exercise_id: x.exercise_id, position: ++pos, sets: x.sets, reps: x.reps,
-        load_mode: 'last', load_value: 0, unit: lastLoad(x.exercise_id).unit, rest_s: x.rest_s, note: null });
-      S.items.push(it); S.itemsById.set(it.id, it);
-    }
+    if (t) {   // rewrite it: the old steps go in one request
+      const old = routineItems(t.id).map(it => it.id);
+      await store.removeItems(old);
+      S.items = S.items.filter(x => !old.includes(x.id)); old.forEach(id => S.itemsById.delete(id));
+    } else { t = await store.addRoutine({ name, kind: 'workout', notes: null }); S.templates.push(t); }
+    await putItems(GN.steps.map((x, i) => ({ template_id: t.id, exercise_id: x.exercise_id, position: i + 1, sets: x.sets, reps: x.reps,
+      load_mode: 'last', load_value: 0, unit: lastLoad(x.exercise_id).unit, rest_s: x.rest_s, note: null })));
     startFollowing(t.id);
   } catch (x) { $('genErr').textContent = x.message; b.disabled = false; b.textContent = 'Start it'; }
 }

@@ -18,6 +18,29 @@
 <meta name="description" content="A lifting log for a small crew. Keep the faith, log the set.">
 <link rel="preconnect" href="https://tjavdrqrhhvzdptlbbfv.supabase.co" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<!-- Fetch every script at once instead of one hop at a time (app.js imports these, data.js imports supabase-js,
+     which imports its parts). Keep the supabase-js parts in step with SUPABASE_JS in config.js. -->
+<link rel="modulepreload" href="app.js">
+<link rel="modulepreload" href="data.js">
+<link rel="modulepreload" href="logic.js">
+<link rel="modulepreload" href="config.js">
+<link rel="modulepreload" href="starters.js">
+<link rel="modulepreload" href="generate.js">
+<link rel="modulepreload" href="charts.js">
+<link rel="modulepreload" href="themes.js">
+<link rel="modulepreload" href="seasons.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/auth-js@2.118.0/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/postgrest-js@2.118.0/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/functions-js@2.118.0/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/realtime-js@2.118.0/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/storage-js@2.118.0/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/phoenix@0.4.5/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/tslib@2.8.1/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/iceberg-js@0.8.1/+esm" crossorigin>
+<script src="boot.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   /* Chalk and iron: cool steel neutrals, competition-plate blue for actions, plate gold for PRs and clubs.

@@ -1017,7 +1017,11 @@ export function applyTheme(id) {
     const href = 'https://fonts.googleapis.com/css2?' + t.fonts + '&display=swap';
     if (!link) { link = document.createElement('link'); link.id = 'skinFonts'; link.rel = 'stylesheet'; document.head.appendChild(link); }
     if (link.getAttribute('href') !== href) link.href = href;
-  } else if (link) link.remove();
+    try { localStorage.setItem('lift.fontHref', href); } catch (e) {}   // boot.js starts it loading next time
+  } else {
+    if (link) link.remove();
+    try { localStorage.removeItem('lift.fontHref'); } catch (e) {}
+  }
   document.title = t.brand;
   document.querySelectorAll('.brand-logo').forEach(e => { e.innerHTML = t.logo; });
   document.querySelectorAll('.brand-name').forEach(e => { e.textContent = t.brand; });
