@@ -495,6 +495,10 @@ view.addEventListener('click', async e => {
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
   else if (b.hasAttribute('data-generate')) openGenerator();
+  else if (b.dataset.progAll) {
+    (S.progAll = S.progAll || new Set()).add(b.dataset.progAll);
+    if (b.dataset.progAll === 'bests') drawBests(); else if (b.dataset.progAll === 'records') drawRecords(); else renderProgress();
+  }
   else if (b.dataset.rtAll) { (S.rtAll = S.rtAll || new Set()).add(b.dataset.rtAll); renderRoutines(); }
   else if (b.hasAttribute('data-packs-toggle')) { S.packsOpen = !S.packsOpen; renderSeasons(); }
   else if (b.dataset.calMove) { const [y, mo] = S.cal.month.split('-').map(Number); const d = new Date(y, mo - 1 + Number(b.dataset.calMove), 1); S.cal.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderHistory(); }
@@ -2194,6 +2198,7 @@ async function openCore(btn) {
   try { openSeasonSheet((await ensureCore()).id); } catch (x) { fail(x); }
   if (btn) btn.disabled = false;
 }
+const hasYearGoals = () => { const c = coreNow(); return !!c && S.goals.some(g => g.season_id === c.id); };
 function goalsCard() {
   const c = coreNow(), goals = c ? S.goals.filter(g => g.season_id === c.id) : [];
   const m = c ? seasonM(c) : null;
@@ -2524,9 +2529,10 @@ function renderProgress() {
   const mark = lb => { const m = (T.clubMarks || []).find(([upTo]) => lb <= upTo); return m ? '<svg class="medal-art" viewBox="0 0 24 24" aria-hidden="true">' + m[1] + '</svg>' : null; };
   const medal = a => a.milestone ? (mark(a.need) || (a.need === 10000 ? T.icons.elephant : T.icons.club)) : a.id === 'first_pr' ? T.icons.pr : '⭐';
   view.innerHTML =
+    '<div class="row page-actions prog-head"><h2 style="font-size:28px">' + esc(T.titles.progress) + '</h2>' +
     '<div class="seg" role="group" aria-label="Period">' +
-      [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div>' +
-    goalsCard() +
+      [['all', 'All time'], ['year', 'Past year'], ['30', '30 days']].map(([k, l]) => '<button data-period="' + k + '" aria-pressed="' + (S.period === k) + '">' + l + '</button>').join('') + '</div></div>' +
+    (hasYearGoals() ? goalsCard() : '') +   // your vows up top once you have some; the empty prompt waits at the bottom
     '<div class="kpis">' +
       kpi('Pounds moved', C.compact(lbEq) + ' lb', lbEq > 0 ? 'about ' + esc(L.fmtNum(cmp.times, cmp.times < 10 ? 1 : 0)) + ' × a ' + esc(cmp.thing) : 'nothing yet', w12.map(w => w.lb)) +
       kpi('Gym days', L.fmtNum(t.visits, 0), streakWeeks() ? T.icons.streak + ' ' + streakWeeks() + ' ' + T.streak : 'no streak going', w12.map(w => w.visits)) +
@@ -2544,14 +2550,23 @@ function renderProgress() {
       candlesSVG(ms.count, ms.ratio, T.clubsLabel(ms.count, ms.next ? ms.next.title : 'top')) +
       (ms.next ? '<div class="row" style="font-size:14px;font-weight:700"><span>' + (ms.earned ? esc(ms.earned.title) : 'Start') + '</span><span>' + esc(ms.next.title) + '</span></div>' +
         '<div class="bar" style="margin-top:6px;--p:' + (ms.ratio * 100).toFixed(1) + '%"><i></i></div><p class="hint-line">' + esc(L.fmtNum(Math.ceil(ms.remaining), 0)) + ' lb to go</p>' : '<p><b>Every club unlocked.</b> Legend.</p>') +
-      '<div class="badges">' + earned.filter(a => !a.milestone).concat(earned.filter(a => a.milestone).slice(-4)).concat(nextClub ? [nextClub] : []).map(a =>
-        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(T.ach[a.id] || a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(T.achTitle[a.id] || a.title) + '</div>').join('') + '</div></section>' +
-    bodyweightCard();
+      badgesHtml(earned.filter(a => !a.milestone).concat(earned.filter(a => a.milestone).slice(-4)).concat(nextClub ? [nextClub] : []).map(a =>
+        '<div class="badge' + (a.earned ? ' got' : '') + '" title="' + esc(T.ach[a.id] || a.desc) + '"><div class="medal">' + medal(a) + '</div>' + esc(T.achTitle[a.id] || a.title) + '</div>')) + '</section>' +
+    bodyweightCard() +
+    (hasYearGoals() ? '' : goalsCard());
   const input = $('bestSearch');
   input.addEventListener('input', () => { S.bestQuery = input.value; drawBests(); });
   drawBests();
   drawTrend();
   drawRecords();
+}
+// Long lists on Progress show their top few, with a button for the rest (remembered while the app is open).
+const PROG_SHOW = { bests: 5, records: 5, badges: 4 };
+const progAll = k => !!(S.progAll && S.progAll.has(k));
+const moreBtn = (k, n) => '<button class="btn ghost block prog-more" data-prog-all="' + k + '">Show all ' + n + '</button>';
+function badgesHtml(list) {
+  const shown = progAll('badges') ? list : list.slice(-PROG_SHOW.badges);   // the latest ones and the next club
+  return '<div class="badges">' + shown.join('') + '</div>' + (shown.length < list.length ? moreBtn('badges', list.length) : '');
 }
 // Lift trend: top set and estimated 1-rep max per day, for any lift you've done.
 function trendChoices() {
@@ -2614,10 +2629,12 @@ function drawBests() {
     const cur = byEx.get(r.exercise_id);
     if (!cur || score > cur.score) byEx.set(r.exercise_id, { r, e1, score });
   }
-  const rows = [...byEx.entries()].filter(([id]) => !q || L.norm(exName(id)).includes(q)).sort((a, b) => b[1].score - a[1].score).slice(0, q ? 30 : 12);
+  const all = [...byEx.entries()].filter(([id]) => !q || L.norm(exName(id)).includes(q)).sort((a, b) => b[1].score - a[1].score).slice(0, q ? 30 : 12);
+  const rows = q || progAll('bests') ? all : all.slice(0, PROG_SHOW.bests);
   $('bestsBox').innerHTML = rows.length ? '<table class="cmp lifts"><thead><tr><th>Lift</th><th>Best set</th><th>Est. 1RM</th></tr></thead><tbody>' +
     rows.map(([id, { r, e1 }], i) => '<tr><td><span class="rank">' + (i + 1) + '</span>' + esc(exName(id)) + '<br><small>' + esc(fmtDay(r.first_lifted_on, { month: 'short', day: 'numeric', year: 'numeric' })) + '</small></td>' +
-      '<td class="num">' + esc(L.fmtLoad(r.heaviest)) + ' <small>' + r.unit + ' × ' + r.reps + '</small></td><td class="num"><b>' + (e1 ? esc(L.fmtLoad(Math.round(e1))) : '–') + '</b></td></tr>').join('') + '</tbody></table>'
+      '<td class="num">' + esc(L.fmtLoad(r.heaviest)) + ' <small>' + r.unit + ' × ' + r.reps + '</small></td><td class="num"><b>' + (e1 ? esc(L.fmtLoad(Math.round(e1))) : '–') + '</b></td></tr>').join('') + '</tbody></table>' +
+      (rows.length < all.length ? moreBtn('bests', all.length) : '')
     : '<p class="muted">' + (q ? 'No bests for that yet.' : 'Your bests show up here as you log.') + '</p>';
 }
 
@@ -4122,15 +4139,16 @@ function drawRecords() {
   const head = '<div class="card-head"><div><h3 class="card-title">' + esc(T.records) + '</h3><small class="muted">crew records, by estimated 1-rep max</small></div></div>';
   if (!S.records) { box.innerHTML = head + '<p class="muted">Loading…</p>'; loadRecords(); return; }
   const multi = S.records.some(r => Number(r.lifters) >= 2);
-  const rows = S.records.filter(r => !multi || Number(r.lifters) >= 2).sort((a, b) => Number(b.e1rm_lb) - Number(a.e1rm_lb)).slice(0, 15);
-  const mine = rows.filter(r => r.user_id === S.myId).length;
-  box.innerHTML = head + (rows.length ? '<p class="hint-line" style="margin-top:2px">You hold ' + mine + ' of these ' + rows.length + '. ' + esc(T.recordsBlurb) + '</p>' +
+  const top = S.records.filter(r => !multi || Number(r.lifters) >= 2).sort((a, b) => Number(b.e1rm_lb) - Number(a.e1rm_lb)).slice(0, 15);
+  const rows = progAll('records') ? top : top.slice(0, PROG_SHOW.records);
+  const mine = top.filter(r => r.user_id === S.myId).length;
+  box.innerHTML = head + (rows.length ? '<p class="hint-line" style="margin-top:2px">You hold ' + mine + ' of these ' + top.length + '. ' + esc(T.recordsBlurb) + '</p>' +
     '<div class="cmp-wrap"><table class="cmp saints"><thead><tr><th>Lift</th><th>' + esc(T.holderCol) + '</th><th>Best</th><th>You</th></tr></thead><tbody>' +
     rows.map(r => { const m = myBestE1(r.exercise_id), me = r.user_id === S.myId;
       return '<tr' + (me ? ' class="me"' : '') + '><td>' + esc(exName(r.exercise_id)) + '</td><td>' + T.icons.holder + ' ' + (me ? 'You' : esc(r.display_name)) + '</td>' +
         '<td class="num"><b>' + esc(L.fmtLoad(Number(r.weight))) + '</b> <small>' + r.unit + ' × ' + r.reps + '</small></td>' +
         '<td class="num">' + (me ? '<span class="muted">✓</span>' : m ? '<span title="Your best: ' + esc(L.fmtLoad(m.w) + ' × ' + m.reps) + '">' + Math.round(m.e / Number(r.e1rm_lb) * 100) + '%</span>' : '<span class="muted">–</span>') + '</td></tr>'; }).join('') +
-    '</tbody></table></div>' : '<p class="muted">Records show up once the crew has logged some sets.</p>');
+    '</tbody></table></div>' + (rows.length < top.length ? moreBtn('records', top.length) : '') : '<p class="muted">Records show up once the crew has logged some sets.</p>');
 }
 // After a set: did it take a record from someone else?
 function checkRecord(x) {
