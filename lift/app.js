@@ -370,7 +370,7 @@ function renderLog() {
       '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>moved today</small></div>' +
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
       '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
-    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') + '</section>' +
+    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + (unfinished() ? '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') : '') + '</section>' +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
@@ -1358,7 +1358,7 @@ function followCard() {
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
-    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div><button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>'
+    (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div>' + (unfinished() ? '<button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>' : '')
       : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>' + restRow()) +
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
@@ -3923,8 +3923,10 @@ async function loadWins() {
   if (!S.goalsDone) S.goalsDone = goalKeyDone();
   if (S.winsLoading || (S.wins && Date.now() - (S.winsAt || 0) < 600000)) return;   // ten minutes; coming back to the app refreshes sooner
   S.winsLoading = true;
+  const before = S.myId ? unfinished() : null;
   try { S.wins = await store.wins(); S.winsAt = Date.now(); } catch (x) { S.wins = S.wins || []; }
   S.winsLoading = false;
+  if (currentTab === 'log' && before !== null && before !== unfinished()) return render();
   const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard();
 }
 const WIN_ICON = new Proxy({}, { get: (_, k) => T.icons[k] });
@@ -4036,6 +4038,18 @@ function sessionPost(r) {
   return { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length,
     items, streak: streakWeeks() || 0, nth, where: where.slice(0, 60) };
 }
+// Finished? Today's working sets are all covered by your last Finish: the session posted to the
+// feed (any device) says how many sets it had, and this phone remembers the same for private finishes.
+// Log more after finishing and Finish comes back to update it.
+const workingToday = () => todaySets().filter(x => x.is_warmup !== true && x._sync !== 'gone').length;
+function finishedSets() {
+  const t = today();
+  const w = (S.wins || []).find(x => x.created_by === S.myId && x.kind === 'session' && x.performed_on === t);
+  let local = 0;
+  try { const [d, n] = (localStorage.getItem('lift.finished') || '').split('|'); if (d === t && n) local = Number(n) || 0; } catch (e) {}
+  return Math.max((w && w.summary && Number(w.summary.sets)) || 0, local);
+}
+const unfinished = () => workingToday() > finishedSets();
 function openRecap() {
   const r = sessionSummary();
   if (!r) return toast('Log a set first.');
@@ -4060,7 +4074,7 @@ async function recapClick(b) {
   b.disabled = true;
   if (r && shareOn()) await postWin('session', r.title, sessionPost(r));
   stopRest(); sheet.close(); render();
-  try { localStorage.setItem('lift.finished', today()); } catch (e) {}
+  try { localStorage.setItem('lift.finished', today() + '|' + (r ? r.sets : 0)); } catch (e) {}
   toast(shareOn() ? T.endedFeed : T.ended);
 }
 
@@ -4151,10 +4165,9 @@ const dryHint = exId => (stallOf(exId) ? '<p class="dry">' + T.icons.dry + ' ' +
 // ===========================================================================
 function sessionClock() {
   const sets = todaySets(); if (!sets.length) return '';
-  let done = null; try { done = localStorage.getItem('lift.finished'); } catch (e) {}
   const first = Math.min(...sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite)), last = Math.max(...sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite));
   if (!Number.isFinite(first)) return '';
-  const finished = done === today(), live = !finished && Date.now() - last < 3 * 3600e3;
+  const finished = !unfinished(), live = !finished && Date.now() - last < 3 * 3600e3;
   const mins = Math.max(1, Math.round(((live ? Date.now() : last) - first) / 60000));
   return '<p class="sess-clock" id="sessClock" data-first="' + first + '" data-live="' + live + '">' + (live ? '⏱ In session · ' : finished ? T.endedClock : '⏱ ') + mins + ' min</p>';
 }
