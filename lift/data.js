@@ -154,6 +154,9 @@ class SupaStore {
   async addItem(fields) { return must(await this.sb.from('lift_template_items').insert(fields).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').single()); }
   async updateItem(id, patch) { return must(await this.sb.from('lift_template_items').update(patch).eq('id', id).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note').single()); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
+  // Several steps in one request (a whole workout at once), returned in position order.
+  async addItems(rows) { if (!rows.length) return []; return must(await this.sb.from('lift_template_items').insert(rows).select('id,template_id,exercise_id,position,sets,reps,load_mode,load_value,unit,rest_s,note')).sort((a, b) => a.template_id.localeCompare(b.template_id) || a.position - b.position); }
+  async removeItems(ids) { if (ids.length) must(await this.sb.from('lift_template_items').update({ deleted_at: new Date().toISOString() }).in('id', ids)); }
   async subscribe(templateId) { return must(await this.sb.from('lift_routine_subscriptions').insert({ template_id: templateId }).select('id,template_id').single()); }
   async unsubscribe(subId) { must(await this.sb.from('lift_routine_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', subId)); }
 
@@ -173,6 +176,7 @@ class SupaStore {
   async addPlan(f) { return must(await this.sb.from('lift_season_plan').insert(f).select(PLAN).single()); }
   async updatePlan(id, patch) { return must(await this.sb.from('lift_season_plan').update(patch).eq('id', id).select(PLAN).single()); }
   removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
+  async addPlans(rows) { if (!rows.length) return []; return must(await this.sb.from('lift_season_plan').insert(rows).select(PLAN)).sort((a, b) => a.position - b.position); }
   async joinSeason(seasonId, programId) { return must(await this.sb.from('lift_season_subscriptions').insert({ season_id: seasonId, program_id: programId || null }).select('id,season_id,program_id').single()); }
   async setSeasonProgram(subId, programId) { return must(await this.sb.from('lift_season_subscriptions').update({ program_id: programId || null }).eq('id', subId).select('id,season_id,program_id').single()); }
   // Who's on which program in a season (someone's private program shows as "their own program").
@@ -245,6 +249,7 @@ class SupaStore {
   async stamps() { return must(await this.sb.from('lift_stamps').select('id,season_key,stamp_key,earned_on,created_by').is('deleted_at', null).order('earned_on')); }
   async addStamp(f) { return must(await this.sb.from('lift_stamps').insert(f).select('id,season_key,stamp_key,earned_on,created_by').single()); }
   async addGoal(f) { return must(await this.sb.from('lift_season_goals').insert(f).select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by').single()); }
+  async addGoals(rows) { if (!rows.length) return []; return must(await this.sb.from('lift_season_goals').insert(rows).select('id,season_id,name,metric,target,unit,exercise_id,template_id,created_by')); }
   async deleteGoal(id) { must(await this.sb.from('lift_season_goals').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
 }
 
@@ -430,6 +435,8 @@ class DemoStore {
   async addItem(f) { const i = { id: uid(), position: 1, sets: 3, reps: 8, load_mode: 'last', load_value: 0, unit: 'lb', rest_s: null, note: null, ...f }; this.items.push(i); return clone(i); }
   async updateItem(id, patch) { const i = this.items.find(x => x.id === id); Object.assign(i, patch); return clone(i); }
   removeItem(id) { return this.updateItem(id, { deleted_at: new Date().toISOString() }); }
+  async addItems(rows) { const out = []; for (const r of rows) out.push(await this.addItem(r)); return out; }
+  async removeItems(ids) { for (const id of ids) await this.removeItem(id); }
   async subscribe(templateId) { const s = { id: uid(), template_id: templateId }; this.subs.push(s); return clone(s); }
   async unsubscribe(subId) { const s = this.subs.find(x => x.id === subId); if (s) s.deleted_at = new Date().toISOString(); }
 
@@ -462,6 +469,7 @@ class DemoStore {
   async addPlan(f) { const p = { id: uid(), position: 1, weekdays: 0, ...f }; this.planRows.push(p); return clone(p); }
   async updatePlan(id, patch) { const p = this.planRows.find(x => x.id === id); Object.assign(p, patch); return clone(p); }
   removePlan(id) { return this.updatePlan(id, { deleted_at: new Date().toISOString() }); }
+  async addPlans(rows) { const out = []; for (const r of rows) out.push(await this.addPlan(r)); return out; }
   async joinSeason(seasonId, programId) { const s = { id: uid(), season_id: seasonId, program_id: programId || null }; this.seasonSubs.push(s); return clone(s); }
   async setSeasonProgram(subId, programId) { const s = this.seasonSubs.find(x => x.id === subId); s.program_id = programId || null; return clone(s); }
   async seasonPrograms(seasonId) {
@@ -600,6 +608,7 @@ class DemoStore {
     const s = { id: uid(), created_by: 'me', ...f }; this.stampRows.push(s); return clone(s);
   }
   async addGoal(f) { const g = { id: uid(), unit: null, exercise_id: null, template_id: null, created_by: 'me', ...f }; this.goalRows.push(g); return clone(g); }
+  async addGoals(rows) { const out = []; for (const r of rows) out.push(await this.addGoal(r)); return out; }
   async deleteGoal(id) { const g = this.goalRows.find(x => x.id === id); if (g) g.deleted_at = new Date().toISOString(); }
 }
 const clone = o => ({ ...o });
