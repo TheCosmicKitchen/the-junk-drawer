@@ -413,16 +413,21 @@
   .cal-card h2 { font-size: 20px; margin: 0; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
   .cal-head span { text-align: center; font-size: 12px; color: var(--muted); font-weight: 700; }
-  .cal-grid button { aspect-ratio: 1; border: 1px solid transparent; border-radius: 10px; background: var(--bg); font-weight: 600; font-size: 15px; position: relative; touch-action: manipulation; }
+  .cal-grid button { aspect-ratio: 1; border: 1px solid transparent; border-radius: 10px; background: var(--bg); font-weight: 600; font-size: 15px; position: relative; touch-action: manipulation; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; color: inherit; }
+  .cal-grid button b { font-weight: inherit; line-height: 1.1; }
+  .cal-ico { font-size: 11px; line-height: 1; letter-spacing: -1px; }
   .cal-grid button.done { background: var(--accent-soft); color: var(--accent); }
-  .cal-grid button.planned::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--accent); }
+  .cal-grid button.pr { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
+  .cal-grid button.planned::after { content: ""; position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   .cal-grid button.today { border-color: var(--accent); }
   .cal-grid button.sel { background: var(--accent); color: var(--accent-ink); }
   .cal-grid button.sel::after { background: var(--accent-ink); }
-  .cal-key { font-size: 13px; color: var(--muted); margin: 10px 0 0; display: flex; gap: 6px; align-items: center; }
+  .cal-key { font-size: 13px; color: var(--muted); margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .cal-key span { display: inline-flex; gap: 5px; align-items: center; }
+  .cal-key .k-pr { background: var(--gold-soft); border: 1px solid var(--gold); }
   .cal-key i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; }
   .cal-key .k-done { background: var(--accent-soft); border: 1px solid var(--accent); }
-  .cal-key .k-plan { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 8px; }
+  .cal-key .k-plan { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   .cal-day h3 { margin: 0; }
   .head-actions { display: flex; gap: 8px; }
   .routine.block { border-style: dashed; }
