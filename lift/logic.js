@@ -118,7 +118,11 @@ export function bestsMap(rows) {   // rows from lift_bests
 export function isPr(set, bests) {
   if (set.is_warmup === true) return false;
   const prev = bests.get(bestKey(set));
-  return prev == null ? false : Number(set.weight) > prev;   // a first-ever rep count isn't a PR, just a start
+  if (prev != null) return Number(set.weight) > prev;
+  // The first time you ever do a lift is a PR. A new rep count on a lift you've done is just a start.
+  const lift = set.exercise_id + '|';
+  for (const k of bests.keys()) if (k.startsWith(lift)) return false;
+  return true;
 }
 // PR count in a window, the same way the app counts a season: a set is a PR when it beats every
 // earlier set (including ones before the window) for that exercise, unit and rep count, or when
