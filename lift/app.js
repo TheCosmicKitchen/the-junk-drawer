@@ -322,7 +322,6 @@ function route() {
   render();
 }
 function render() {
-  syncTabDot();
   if (currentTab === 'history') renderHistory();
   else if (currentTab === 'progress') renderProgress();
   else if (currentTab === 'seasons') renderSeasons();
@@ -457,8 +456,10 @@ view.addEventListener('click', async e => {
   else if (b.dataset.progEdit) openProgramDesigner(b.dataset.progEdit);
   else if (b.hasAttribute('data-prog-new')) openProgramDesigner(null);
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
-  else if (b.dataset.seen) { const t = S.templates.find(x => x.id === b.dataset.seen); if (t) { markSeen(t); render(); } }
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
+  else if (b.hasAttribute('data-add-today-pick')) openAddToday();
+  else if (b.dataset.unfollow) unfollow(b.dataset.unfollow);
+  else if (b.dataset.addToday) startFollowing(b.dataset.addToday, true);
   else if (b.dataset.design) openDesigner(b.dataset.design);
   else if (b.hasAttribute('data-new-routine')) newRoutine(b, 'workout');
   else if (b.hasAttribute('data-new-block')) newRoutine(b, 'block');
@@ -1174,12 +1175,14 @@ inner.addEventListener('click', async e => {
   if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
   if (b.dataset.add) return addExercise(b.dataset.add, b);
   if (b.dataset.start) return startFollowing(b.dataset.start);
+  if (b.dataset.addToday) return startFollowing(b.dataset.addToday, true);
   if (b.dataset.cardioNew) return openCardio(b.dataset.cardioNew);
   if (LG.mode === 'cardio') return cardioClick(b);
   if (LG.mode === 'chunk') return chunkClick(b);
   if (LG.mode === 'recap') return recapClick(b);
   if (LG.mode === 'wizard') return wizardClick(b);
   if (LG.mode === 'newpick') return newPickClick(b);
+  if (LG.mode === 'addtoday') return;
   if (LG.mode === 'gen') return genClick(b);
   if (LG.mode === 'starters') return starterClick(b);
   if (LG.mode === 'progdesign') return programDesignerClick(b);
@@ -1286,81 +1289,90 @@ const isBlock = t => t.kind === 'block';
 const ownerName = t => (isMine(t) ? 'you' : S.names.get(t.created_by) || 'a friend');
 const subFor = id => S.subs.find(s => s.template_id === id);
 
-// "What's new" on the other person's routines. This browser remembers what each one looked like
-// when you last saw it, and summarises the difference. Nothing about this goes to the server.
-const routineSig = t => JSON.stringify({ n: t.name, i: routineItems(t.id).map(i => [i.exercise_id, i.sets, i.reps, i.load_mode, Number(i.load_value), i.unit]) });
-function seenMap() { try { return JSON.parse(localStorage.getItem('lift.seen') || '{}'); } catch (e) { return {}; } }
-function markSeen(t) {
-  if (!t || isMine(t)) return;
-  const m = seenMap(); m[t.id] = routineSig(t);
-  try { localStorage.setItem('lift.seen', JSON.stringify(m)); } catch (e) {}
-}
-function routineChanges(t) {
-  if (isMine(t)) return null;
-  const prev = seenMap()[t.id];
-  if (!prev) { markSeen(t); return null; }   // first time you see it: nothing to report yet
-  const now = routineSig(t);
-  if (prev === now) return null;
-  const a = JSON.parse(prev), b = JSON.parse(now), out = [];
-  if (a.n !== b.n) out.push('renamed from “' + a.n + '”');
-  const step = i => i[1] + '×' + i[2] + (i[3] === 'percent_1rm' ? ' @ ' + L.fmtLoad(i[4]) + '%' : i[4] ? ' @ ' + L.fmtLoad(i[4]) + ' ' + i[5] : '');
-  const before = new Map(a.i.map(i => [i[0], i])), after = new Map(b.i.map(i => [i[0], i]));
-  for (const [ex, i] of after) {
-    const p = before.get(ex);
-    if (!p) out.push('added ' + exName(ex));
-    else if (step(p) !== step(i)) out.push(exName(ex) + ' ' + step(p) + ' → ' + step(i));
-  }
-  for (const ex of before.keys()) if (!after.has(ex)) out.push('removed ' + exName(ex));
-  if (!out.length) out.push('steps reordered');
-  return out;
-}
-function syncTabDot() {
-  const news = (S.templates || []).some(t => !isMine(t) && seenMap()[t.id] && seenMap()[t.id] !== routineSig(t));
-  const tab = document.querySelector('.tabs a[href="#routines"]');
-  if (tab) tab.classList.toggle('has-news', news);
-}
-
-// Which routine you're following today. Kept in this browser and forgotten tomorrow.
-function following() {
+// Today's routine: one or more workouts and blocks, done in the order you added them. Kept in this
+// browser and forgotten tomorrow.
+function followIds() {
   let f = null;
   try { f = JSON.parse(localStorage.getItem('lift.follow') || 'null'); } catch (e) {}
-  if (!f || f.day !== today()) return null;
-  const t = S.templates.find(x => x.id === f.id);
-  return t ? { template: t, items: routineItems(t.id) } : null;
+  if (!f || f.day !== today()) return [];
+  return (f.ids || (f.id ? [f.id] : [])).filter(id => tplById(id));
 }
-const stepDone = item => todaySets().filter(s => s.exercise_id === item.exercise_id && s.is_warmup !== true).length;
-function startFollowing(id) {
-  const t = S.templates.find(x => x.id === id);
+function saveFollow(ids) {
+  try { if (ids.length) localStorage.setItem('lift.follow', JSON.stringify({ ids, day: today() })); else localStorage.removeItem('lift.follow'); } catch (e) {}
+}
+function following() {
+  const templates = followIds().map(tplById).filter(t => routineItems(t.id).length);
+  if (!templates.length) return null;
+  return { template: { id: templates[0].id, name: templates.map(t => t.name).join(' + ') }, templates, ids: templates.map(t => t.id),
+    items: templates.flatMap(t => routineItems(t.id)) };
+}
+// How many of a step's sets are in today. When the same lift is in two parts of today's routine,
+// the earlier step takes its sets first and the later one gets the rest.
+function stepDone(item) {
+  let left = todaySets().filter(s => s.exercise_id === item.exercise_id && s.is_warmup !== true).length;
+  const f = following(), same = f ? f.items.filter(it => it.exercise_id === item.exercise_id) : [];
+  if (!same.some(it => it.id === item.id)) return left;
+  for (const it of same) {
+    if (it.id === item.id) return it === same[same.length - 1] ? left : Math.min(left, it.sets);
+    left = Math.max(0, left - it.sets);
+  }
+  return left;
+}
+// Start a routine for today, or (add) put it after what you're already doing.
+function startFollowing(id, add) {
+  const t = tplById(id);
   if (!t) return;
-  markSeen(t);
   prefetchLast(routineItems(t.id).map(it => it.exercise_id));
-  try { localStorage.setItem('lift.follow', JSON.stringify({ id, day: today() })); } catch (e) {}
+  const cur = add ? followIds() : [];
+  const adding = add && cur.length && !cur.includes(id);
+  saveFollow(add ? (cur.includes(id) ? cur : cur.concat(id)) : [id]);
   if (sheet.open) { flushSaves(); sheet.close(); }
   if (location.hash !== '#log') location.hash = '#log'; else render();
-  toast('Following ' + t.name + '. Tap a step to start.');
+  toast(adding ? 'Added ' + t.name + ' to today.' : 'Following ' + t.name + '. Tap a step to start.');
 }
-function stopFollowing() { try { localStorage.removeItem('lift.follow'); } catch (e) {} render(); }
+function unfollow(id) { saveFollow(followIds().filter(x => x !== id)); render(); }
+function stopFollowing() { saveFollow([]); render(); }
+// Pick a workout or block to add to today's routine.
+function openAddToday() {
+  LG.mode = 'addtoday';
+  const have = new Set(followIds());
+  const list = S.templates.filter(t => routineItems(t.id).length && !have.has(t.id))
+    .sort((a, b) => Number(isBlock(a)) - Number(isBlock(b)) || Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
+  const row = t => '<li><button data-add-today="' + esc(t.id) + '"><span>' + esc(t.name) + '</span><small>' +
+    esc(routineItems(t.id).map(it => exName(it.exercise_id)).slice(0, 4).join(', ') + (routineItems(t.id).length > 4 ? '…' : '')) + '</small></button></li>';
+  const ws = list.filter(t => !isBlock(t)), bs = list.filter(isBlock);
+  inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">Add to today</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><p class="hint-line" style="margin-top:0">It goes after what you’re already doing.</p>' +
+      (bs.length ? '<div class="section-title">Blocks</div><ul class="results">' + bs.map(row).join('') + '</ul>' : '') +
+      (ws.length ? '<div class="section-title">Workouts</div><ul class="results">' + ws.map(row).join('') + '</ul>' : '') +
+      (list.length ? '' : '<p class="muted">Nothing else to add yet. Make a workout or a block on the Rites tab.</p>') + '</div>';
+  openSheet();
+}
 function followCard() {
   const f = following();
   if (!f) return '';
   prefetchLast(f.items.map(it => it.exercise_id));
   const nextIdx = f.items.findIndex(it => stepDone(it) < it.sets);
   const done = f.items.filter(it => stepDone(it) >= it.sets).length;
-  return '<section class="card follow"><div class="row"><div><div class="date">Following</div><h2>' + esc(f.template.name) + '</h2></div>' +
+  const multi = f.templates.length > 1, firstOf = new Map(f.templates.map(t => [routineItems(t.id)[0].id, t]));
+  return '<section class="card follow"><div class="row"><div><div class="date">Today’s routine</div><h2>' + esc(f.template.name) + '</h2></div>' +
       '<span class="muted num">' + done + ' / ' + f.items.length + '</span></div>' +
     '<div class="bar" style="margin-top:10px;--p:' + (f.items.length ? (done / f.items.length) * 100 : 0) + '%"><i></i></div>' +
     '<ol class="steps">' + f.items.map((it, i) => {
+      const part = multi && firstOf.get(it.id);
+      const head = part ? '<li class="step-part"><span>' + (isBlock(part) ? 'Block · ' : '') + esc(part.name) + '</span>' +
+        '<button class="linkbtn" data-unfollow="' + esc(part.id) + '" aria-label="Take ' + esc(part.name) + ' out of today">Remove</button></li>' : '';
       const d = stepDone(it), full = d >= it.sets;
       const tg = full ? null : suggestFor(it);
       const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log ' + (it.sets - d) + ' × ' + tg.reps + ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit + ', as planned">✓</button>' : '';
-      return '<li class="step-row"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
+      return head + '<li class="step-row"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
         '<span class="tick" aria-hidden="true">' + (full ? '✓' : i + 1) + '</span>' +
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
     (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div>' + (unfinished() ? '<button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>' : '')
       : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>' + restRow()) +
-    '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
+    '<div class="actions"><button class="btn" data-add-today-pick>+ Add a block or workout</button><button class="btn ghost" data-stop-follow>Stop</button></div></section>';
 }
 
 // A routine's first five steps as chips, then "+N more", so a long routine stays one short card.
@@ -1383,17 +1395,16 @@ function renderRoutines() {
   const subscribed = workouts.filter(t => !isMine(t) && subFor(t.id));
   const shared = workouts.filter(t => !isMine(t) && !subFor(t.id));
   const f = following();
-  const start = t => routineItems(t.id).length
-    ? '<button class="btn primary" data-start="' + esc(t.id) + '">' + (f && f.template.id === t.id ? 'Following ✓' : 'Start') + '</button>' : '';
+  const start = t => !routineItems(t.id).length ? '' : f && f.ids.includes(t.id) ? '<button class="btn" disabled>Today ✓</button>'
+    : f ? '<button class="btn primary" data-add-today="' + esc(t.id) + '">+ Add to today</button>'
+    : '<button class="btn primary" data-start="' + esc(t.id) + '">Start</button>';
   const sched = t => routineItems(t.id).length ? '<button class="btn" data-schedule="' + esc(t.id) + '">📅 Schedule</button>' : '';
   const card = (t, actions) => {
-    const changes = routineChanges(t);
-    return '<section class="card routine' + (isBlock(t) ? ' block' : '') + (changes ? ' updated' : '') + '" id="rt-' + esc(t.id) + '"><div class="row"><h3>' + esc(t.name) + '</h3>' +
-      (changes ? '<span class="tag new">Updated</span>' : isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
-    (changes ? '<p class="changes"><b>' + esc(ownerName(t)) + ' changed it:</b> ' + esc(changes.slice(0, 4).join(' · ')) + (changes.length > 4 ? ' · and ' + (changes.length - 4) + ' more' : '') + '</p>' : '') +
+    return '<section class="card routine' + (isBlock(t) ? ' block' : '') + '" id="rt-' + esc(t.id) + '"><div class="row"><h3>' + esc(t.name) + '</h3>' +
+      (isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
     '<div class="chips">' + (chipsOf(t.id) || '<span class="muted">No exercises yet</span>') + '</div>' +
-    '<div class="actions">' + actions + (changes ? '<button class="btn ghost" data-seen="' + esc(t.id) + '">Got it</button>' : '') +
+    '<div class="actions">' + actions +
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
   view.innerHTML =
@@ -1410,7 +1421,7 @@ function renderRoutines() {
       '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')) : '') +
     (S.rtQuery && !blocks.length ? '' : '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>') +
     (blocks.length ? rtList('blocks', blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)), t => card(t,
-      '<button class="btn" data-from-block="' + esc(t.id) + '">New workout from it</button>' +
+      start(t) + '<button class="btn" data-from-block="' + esc(t.id) + '">New workout from it</button>' +
       (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')))
       : S.rtQuery ? '' : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
 }
@@ -1539,7 +1550,7 @@ async function schedClick(b) {
 }
 async function subscribeTo(id, btn) {
   btn.disabled = true;
-  try { S.subs.push(await store.subscribe(id)); markSeen(S.templates.find(t => t.id === id)); toast('Subscribed. It follows their edits.'); render(); }
+  try { S.subs.push(await store.subscribe(id)); toast('Subscribed. It follows their edits.'); render(); }
   catch (x) { fail(x); btn.disabled = false; }
 }
 async function unsubscribeFrom(subId, btn) {
@@ -1551,7 +1562,6 @@ async function copyRoutine(id, btn) {
   btn.disabled = true;
   try {
     const src = S.templates.find(t => t.id === id);
-    markSeen(src);
     const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null, kind: src.kind || 'workout' });
     S.templates.push(t);
     await putItems(routineItems(id).map(it => ({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
@@ -1609,7 +1619,7 @@ function openDesigner(id, fresh) {
       '<p class="hint-line" id="rtHint"></p>' +
       '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
     '</div>' +
-    '<div class="design-foot"><button class="btn" id="rtAdd">+ Exercises</button><button class="btn" id="rtFrom">+ Blocks</button><button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button></div>';
+    '<div class="design-foot"><button class="btn" id="rtAdd">+ Exercises</button><button class="btn" id="rtFrom">+ Blocks</button>' + (followIds().length && !followIds().includes(id) ? '<button class="btn primary" data-add-today="' + esc(id) + '" id="rtStart">+ Today</button>' : '<button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button>') + '</div>';
   openSheet();
   drawItems();
   const name = $('rtName'), notes = $('rtNotes');
@@ -1773,14 +1783,14 @@ function openChunkPicker() {
     '<div class="sheet-head"><div><button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-chunk-back>← Back to ' + esc(here ? here.name : 'the routine') + '</button>' +
       '<h2 id="sheetTitle">Add blocks</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
-      (others.length ? '<p class="hint-line" style="margin-top:0">Tick whole blocks, or just the steps you want, in the order you’ll do them. Sets, reps and load come too. You can also borrow from other workouts.</p>' +
+      (others.length ? '<p class="hint-line" style="margin-top:0">Add a whole block with one tap, or tick just the steps you want, in the order you’ll do them. Sets, reps and load come too.</p>' +
         others.map((t, i) => (isBlock(t) !== isBlock(others[i - 1] || {}) || i === 0 ? '<div class="section-title">' + (isBlock(t) ? 'Blocks' : 'Workouts') + '</div>' : '') +
           '<section class="chunk"><div class="row"><h3>' + esc(t.name) + (isMine(t) ? '' : ' <small class="muted">by ' + esc(ownerName(t)) + '</small>') + '</h3>' +
-          '<button type="button" class="linkbtn" data-chunk-all="' + esc(t.id) + '">' + (isBlock(t) ? 'Whole block' : 'Tick all') + '</button></div><ul class="results">' +
+          '<button type="button" class="btn sm primary" data-chunk-all="' + esc(t.id) + '">' + (isBlock(t) ? '+ Add block' : '+ Add all') + '</button></div><ul class="results">' +
           routineItems(t.id).map(it => '<li><button data-chunk="' + esc(it.id) + '" aria-pressed="false"><span><i class="tickbox" aria-hidden="true"></i>' + esc(exName(it.exercise_id)) + '</span>' +
             '<small>' + esc(stepText(it)) + '</small></button></li>').join('') + '</ul></section>').join('')
         : '<p class="muted">No other routines with steps yet. Make one, or subscribe to one the crew shares.</p>') +
-      '<div class="pick-foot"><button class="btn primary block" data-chunk-add disabled>Tick steps to add</button></div>' +
+      '<div class="pick-foot" hidden><button class="btn primary block" data-chunk-add>Add</button></div>' +
     '</div>';
   openSheet();
 }
@@ -1791,8 +1801,8 @@ function drawChunk() {
     b.querySelector('.tickbox').textContent = i >= 0 ? i + 1 : '';
   });
   const n = CH.picked.length, add = inner.querySelector('[data-chunk-add]');
-  add.disabled = !n;
-  add.textContent = n ? 'Add ' + n + ' step' + (n === 1 ? '' : 's') : 'Tick steps to add';
+  add.parentNode.hidden = !n;   // only there once you've ticked something
+  add.textContent = 'Add ' + n + ' step' + (n === 1 ? '' : 's');
 }
 async function chunkClick(b) {
   if (b.hasAttribute('data-chunk-back')) return openDesigner(D.id);
@@ -1801,20 +1811,16 @@ async function chunkClick(b) {
     if (i >= 0) CH.picked.splice(i, 1); else CH.picked.push(id);
     vibrate(5); return drawChunk();
   }
-  if (b.dataset.chunkAll) {
-    const ids = routineItems(b.dataset.chunkAll).map(it => it.id);
-    if (ids.every(id => CH.picked.includes(id))) CH.picked = CH.picked.filter(id => !ids.includes(id));
-    else for (const id of ids) if (!CH.picked.includes(id)) CH.picked.push(id);
-    return drawChunk();
-  }
-  if (b.hasAttribute('data-chunk-add')) {
+  if (b.dataset.chunkAll || b.hasAttribute('data-chunk-add')) {
+    const src = b.dataset.chunkAll && tplById(b.dataset.chunkAll);
+    const ids = src ? routineItems(src.id).map(it => it.id) : CH.picked.slice();
     b.disabled = true;
-    const tid = D.id, list = routineItems(tid);
-    if (list.length + CH.picked.length > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
+    const tid = D.id;
+    if (routineItems(tid).length + ids.length > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
     try {
-      await copySteps(CH.picked, tid);
+      await copySteps(ids, tid);
       await autoName(tid);
-      toast('Added ' + CH.picked.length + ' step' + (CH.picked.length === 1 ? '' : 's') + '.');
+      toast(src ? 'Added ' + src.name + '.' : 'Added ' + ids.length + ' step' + (ids.length === 1 ? '' : 's') + '.');
     } catch (x) { fail(x); }
     openDesigner(tid);
   }
@@ -1879,7 +1885,7 @@ async function designerClick(b) {
     if (!confirm('Delete “' + t.name + '”?' + (t.is_shared ? ' Anyone subscribed loses it too.' : ''))) return;
     try { await store.deleteRoutine(t.id); } catch (x) { return fail(x); }
     S.templates = S.templates.filter(x => x.id !== t.id);
-    const f = following(); if (f && f.template.id === t.id) stopFollowing();
+    if (followIds().includes(t.id)) saveFollow(followIds().filter(x => x !== t.id));
     sheet.close(); render(); toast('Routine deleted');
     return;
   }
