@@ -2377,20 +2377,24 @@ function calendarCard() {
   const [y, mo] = S.cal.month.split('-').map(Number);
   const first = new Date(y, mo - 1, 1), daysIn = new Date(y, mo, 0).getDate();
   const logged = new Set(S.days.filter(d => d.sets > 0).map(d => d.performed_on));
+  const cardio = new Set((S.cardio || []).map(r => r.performed_on));
+  const prs = new Set((S.bestRows || []).map(r => r.first_lifted_on));   // a day with a new best goes gold
   const cells = [];
   for (let i = 0; i < first.getDay(); i++) cells.push('<span></span>');
   for (let d = 1; d <= daysIn; d++) {
     const iso = y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
     const sched = (S.wdays || []).some(w => w.on_date === iso), plan = iso >= today() && planOn(iso).length;
-    const cls = [logged.has(iso) ? 'done' : '', sched || plan ? 'planned' : '', iso === today() ? 'today' : '', iso === S.cal.day ? 'sel' : ''].filter(Boolean).join(' ');
+    const lift = logged.has(iso), run = cardio.has(iso), pr = lift && prs.has(iso);
+    const cls = [lift || run ? 'done' : '', pr ? 'pr' : '', sched || plan ? 'planned' : '', iso === today() ? 'today' : '', iso === S.cal.day ? 'sel' : ''].filter(Boolean).join(' ');
     cells.push('<button class="' + cls + '" data-cal-day="' + iso + '" aria-pressed="' + (iso === S.cal.day) + '" aria-label="' + esc(fmtDay(iso, { weekday: 'long', month: 'long', day: 'numeric' })) +
-      (logged.has(iso) ? ', lifted' : '') + (sched || plan ? ', workout planned' : '') + '">' + d + '</button>');
+      (lift ? ', lifted' : '') + (run ? ', cardio' : '') + (pr ? ', new PR' : '') + (sched || plan ? ', workout planned' : '') + '"><b>' + d + '</b>' +
+      (lift || run ? '<span class="cal-ico" aria-hidden="true">' + (lift ? '🏋️' : '') + (run ? '🏃' : '') + '</span>' : '') + '</button>');
   }
   return '<section class="card cal-card"><div class="row"><button class="iconbtn" data-cal-move="-1" aria-label="Previous month">‹</button>' +
     '<h2>' + esc(first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })) + '</h2><button class="iconbtn" data-cal-move="1" aria-label="Next month">›</button></div>' +
     '<div class="cal-grid cal-head">' + ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => '<span>' + x + '</span>').join('') + '</div>' +
     '<div class="cal-grid">' + cells.join('') + '</div>' +
-    '<p class="cal-key"><i class="k-done"></i> lifted <i class="k-plan"></i> planned</p></section>' + calDayDetail();
+    '<p class="cal-key"><span>🏋️ lifted</span><span>🏃 cardio</span><span><i class="k-pr"></i> PR</span><span><i class="k-plan"></i> planned</span></p></section>' + calDayDetail();
 }
 function calDayDetail() {
   const d = S.cal.day, row = S.days.find(x => x.performed_on === d && x.sets > 0);
