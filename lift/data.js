@@ -268,6 +268,9 @@ const DEMO_EXERCISES = [
   ['Pull Up', ['pullups', 'pull-ups']], ['Goblet Squat', []], ['Lateral Raise', []], ['RDL', ['romanian deadlift']],
 ];
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+// ?demo&big=3: a stress test with years of heavy history, 90 extra routines, a full season feed and
+// years of weigh-ins. Demo only; nothing leaves the browser.
+const BIG = (() => { try { return Math.min(10, Math.max(0, Number(new URLSearchParams(location.search).get('big')) || 0)); } catch (e) { return 0; } })();
 
 const CARDIO = 'id,exercise_id,performed_on,minutes,distance,distance_unit,created_at';
 const DEMO_CARDIO = ['Walk', 'Run', 'Rowing machine', 'Bike', 'Elliptical', 'Stair climber', 'Swim'];
@@ -298,6 +301,21 @@ class DemoStore {
           weight: w ? w + grow * (w >= 100 ? 10 : 5) : 0, reps: Math.max(3, r - (s === sets - 1 ? 1 : 0)), unit: 'lb',
           count_bodyweight: ex === 'ex6', bodyweight: ex === 'ex6' ? 180 : null });
       });
+    }
+    if (BIG) this.bigHistory(today);
+  }
+  // Stress test (?demo&big=3): N years, five days a week, eight lifts of four sets each (about 32 sets a
+  // day), over every demo exercise, before the usual last 52 days. Plus big routines, feed and weigh-ins below.
+  bigHistory(today) {
+    const ids = this.exercises.filter(e => e.kind === 'strength').map(e => e.id);
+    for (let back = 53; back <= 53 + BIG * 365; back++) {
+      if (back % 7 === 0 || back % 7 === 3) continue;
+      const day = addDays(today, -back), t0 = new Date(day + 'T07:00:00').getTime();
+      for (let k = 0; k < 8; k++) {
+        const ex = ids[(back * 3 + k * 5) % ids.length], w = 45 + ((back * 7 + k * 13) % 40) * 5;
+        for (let s = 0; s < 4; s++) this.push({ exercise_id: ex, performed_on: day, logged_at: new Date(t0 + (k * 4 + s) * 120000).toISOString(),
+          weight: w, reps: 5 + ((back + s) % 8), unit: 'lb' });
+      }
     }
   }
   push(r) {
@@ -387,6 +405,14 @@ class DemoStore {
       it('b-calves', 'ex9', 1, 3, 10, 'last', 0), it('b-calves', 'ex7', 2, 3, 12, 'last', 0),
     ];
     this.subs = [{ id: uid(), template_id: 't-legs' }];
+    if (BIG) {   // stress test: up to the 100-routine cap, 12 steps each
+      const ids = this.exercises.filter(e => e.kind === 'strength').map(e => e.id);
+      for (let n = 1; n <= 90; n++) {
+        const id = 't-big' + n;
+        this.templates.push({ id, name: 'Stress routine ' + n, notes: '', is_shared: n % 3 === 0, kind: n % 5 === 0 ? 'block' : 'workout', created_by: n % 4 === 0 ? 'alex' : 'me', updated_at: now });
+        for (let p = 1; p <= 12; p++) this.items.push(it(id, ids[(n + p * 7) % ids.length], p, 4, 8, 'last', 0));
+      }
+    }
   }
   async routines() {
     this.seedRoutines();
@@ -522,6 +548,16 @@ class DemoStore {
         { id: uid(), kind: 'club', performed_on: addDays(t, -3), title: '250K Club', summary: {}, created_by: 'alex', created_at: at(addDays(t, -3)) },
       ];
     }
+    if (BIG && !this.bigWins) {   // stress test: the 300 posts a season's feed loads at most, over its last 60 days
+      this.bigWins = true;
+      const t = localDate(), kinds = ['pr', 'session', 'pr', 'quest', 'pr'];
+      for (let i = 0; i < 300; i++) {
+        const d = addDays(t, -1 - Math.floor(i / 5)), who = i % 2 ? 'alex' : 'me', kind = kinds[i % 5];
+        this.winRows.push({ id: uid(), kind, performed_on: d, created_by: who, created_at: new Date(new Date(d + 'T18:00:00').getTime() + i * 1000).toISOString(),
+          title: kind === 'pr' ? 'Bench Press PR' : kind === 'session' ? 'Push day' : 'Show up three times',
+          summary: kind === 'pr' ? { weight: 200 + i, reps: 5, unit: 'lb' } : kind === 'session' ? { lb: 12000 + i * 10, sets: 24, minutes: 60, lifts: 6, prs: 1, items: [['Bench Press', 4, 5, 200, 'lb', 0, 1]] } : {} });
+      }
+    }
     return this.winRows.filter(w => !w.deleted_at).sort((a, b) => b.created_at.localeCompare(a.created_at)).map(clone);
   }
   async postWin(f) {
@@ -540,7 +576,7 @@ class DemoStore {
   async bodyweights() {
     if (!this.bwRows) {
       const t = localDate();
-      this.bwRows = Array.from({ length: 14 }, (_, i) => ({ id: uid(), measured_on: addDays(t, -i * 5 - 1), weight: Math.round((181 + i * 0.35 + Math.sin(i) * 0.8) * 10) / 10, unit: 'lb', created_at: new Date().toISOString() }));
+      this.bwRows = Array.from({ length: BIG ? 1000 : 14 }, (_, i) => ({ id: uid(), measured_on: addDays(t, -i * 5 - 1), weight: Math.round((181 + i * 0.35 + Math.sin(i) * 0.8) * 10) / 10, unit: 'lb', created_at: new Date().toISOString() }));
     }
     return this.bwRows.filter(b => !b.deleted_at).sort((a, b) => b.measured_on.localeCompare(a.measured_on) || b.created_at.localeCompare(a.created_at)).map(clone);
   }

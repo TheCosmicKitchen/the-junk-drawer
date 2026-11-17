@@ -495,6 +495,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
   else if (b.hasAttribute('data-generate')) openGenerator();
+  else if (b.dataset.rtAll) { (S.rtAll = S.rtAll || new Set()).add(b.dataset.rtAll); renderRoutines(); }
   else if (b.hasAttribute('data-packs-toggle')) { S.packsOpen = !S.packsOpen; renderSeasons(); }
   else if (b.dataset.calMove) { const [y, mo] = S.cal.month.split('-').map(Number); const d = new Date(y, mo - 1 + Number(b.dataset.calMove), 1); S.cal.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderHistory(); }
   else if (b.dataset.calDay) selectCalDay(b.dataset.calDay);
@@ -1362,8 +1363,22 @@ function followCard() {
     '<div class="actions"><button class="btn ghost" data-stop-follow>Stop following</button></div></section>';
 }
 
+// A routine's first five steps as chips, then "+N more", so a long routine stays one short card.
+function chipsOf(tid) {
+  const items = routineItems(tid);
+  return items.slice(0, 5).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') +
+    (items.length > 5 ? '<span class="chip muted">+' + (items.length - 5) + ' more</span>' : '');
+}
+// Each list on Rites shows six, with "Show all" for the rest; a search box appears once there are lots.
+const RT_SHOW = 6;
+function rtList(key, list, draw) {
+  const all = !!S.rtQuery || (S.rtAll && S.rtAll.has(key)), shown = all ? list : list.slice(0, RT_SHOW);
+  return shown.map(draw).join('') + (shown.length < list.length ? '<button class="btn block rt-more" data-rt-all="' + key + '">Show all ' + list.length + '</button>' : '');
+}
+const rtMatch = t => !S.rtQuery || (t.name + ' ' + routineItems(t.id).map(it => exName(it.exercise_id)).join(' ')).toLowerCase().includes(S.rtQuery.toLowerCase());
 function renderRoutines() {
-  const workouts = S.templates.filter(t => !isBlock(t)), blocks = S.templates.filter(isBlock);
+  const everyone = S.templates.filter(rtMatch);
+  const workouts = everyone.filter(t => !isBlock(t)), blocks = everyone.filter(isBlock);
   const mine = workouts.filter(isMine);
   const subscribed = workouts.filter(t => !isMine(t) && subFor(t.id));
   const shared = workouts.filter(t => !isMine(t) && !subFor(t.id));
@@ -1377,26 +1392,37 @@ function renderRoutines() {
       (changes ? '<span class="tag new">Updated</span>' : isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
     (changes ? '<p class="changes"><b>' + esc(ownerName(t)) + ' changed it:</b> ' + esc(changes.slice(0, 4).join(' · ')) + (changes.length > 4 ? ' · and ' + (changes.length - 4) + ' more' : '') + '</p>' : '') +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
-    '<div class="chips">' + (routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(stepText(it)) + '</small></span>').join('') || '<span class="muted">No exercises yet</span>') + '</div>' +
+    '<div class="chips">' + (chipsOf(t.id) || '<span class="muted">No exercises yet</span>') + '</div>' +
     '<div class="actions">' + actions + (changes ? '<button class="btn ghost" data-seen="' + esc(t.id) + '">Got it</button>' : '') +
       (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
   };
   view.innerHTML =
     '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.routines) + '</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
-    comingUp() + weekCard() + programsSection() +
-    '<h3 class="section-title">Workouts</h3>' +
-    (mine.length ? mine.map(t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>')).join('')
-      : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
-    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + subscribed.map(t => card(t, start(t) + sched(t) +
-      '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')).join('') : '') +
-    (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + shared.map(t => card(t,
-      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')).join('') : '') +
-    '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>' +
-    (blocks.length ? blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)).map(t => card(t,
+    (S.rtQuery ? '' : comingUp() + weekCard() + programsSection()) +
+    (S.templates.length > 8 ? '<input class="search rt-search" id="rtSearch" type="search" placeholder="Find a workout or block by name or exercise" autocomplete="off" aria-label="Find a workout or block" value="' + esc(S.rtQuery || '') + '">' : '') +
+    (S.rtQuery && !everyone.length ? '<section class="card"><p class="muted" style="margin:0">Nothing matches “' + esc(S.rtQuery) + '”.</p></section>' : '') +
+    (S.rtQuery && !mine.length ? '' : '<h3 class="section-title">Workouts</h3>') +
+    (mine.length ? rtList('mine', mine, t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>'))
+      : S.rtQuery ? '' : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
+    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + rtList('subs', subscribed, t => card(t, start(t) + sched(t) +
+      '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')) : '') +
+    (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + rtList('shared', shared, t => card(t,
+      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')) : '') +
+    (S.rtQuery && !blocks.length ? '' : '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>') +
+    (blocks.length ? rtList('blocks', blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)), t => card(t,
       '<button class="btn" data-from-block="' + esc(t.id) + '">New workout from it</button>' +
-      (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>'))).join('')
-      : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
+      (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')))
+      : S.rtQuery ? '' : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
 }
+// Typing in the Rites search box filters as you go, keeping the box focused.
+view.addEventListener('input', e => {
+  if (e.target.id !== 'rtSearch') return;
+  S.rtQuery = e.target.value.trim();
+  const at = e.target.selectionStart;
+  renderRoutines();
+  const box = $('rtSearch');
+  if (box) { box.focus(); try { box.setSelectionRange(at, at); } catch (x) {} }
+});
 // A name from what's in it: "Bench Press + Rows", "+ 2 more" when there's more.
 const shortName = id => exName(id).replace(/^(Barbell|Dumbbell|Cable|Machine|Seated|Standing) /, '');
 function nameFrom(exIds) {
