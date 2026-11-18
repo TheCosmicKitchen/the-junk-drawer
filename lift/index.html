@@ -176,6 +176,29 @@
   .add-tile small { color: var(--muted); font-size: 13px; }
   .add-tile:hover { border-color: var(--accent); }
   .rest-card { padding: 10px 14px; }
+  /* Supersets: a bracket down the left of paired steps, labelled A1, A2… */
+  .item.ss, .step-row.ss { box-shadow: inset 3px 0 0 var(--accent); }
+  .item.ss:not(.ss-first) { margin-top: -4px; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+  .ss-tag { display: inline-block; font-size: 11px; font-weight: 800; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 5px; vertical-align: 1px; }
+  .item-actions button[data-pair][aria-pressed="true"] { color: var(--accent); }
+  /* Linked blocks */
+  .item.link-row { border-color: var(--gold); box-shadow: inset 3px 0 0 var(--gold); }
+  .item.link-row .item-sum b { color: var(--gold); }
+  .link-steps { list-style: none; margin: 0 0 8px; padding: 0; }
+  .link-steps li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 2px; border-top: 1px dashed var(--line); font-size: 14px; }
+  .link-steps li:first-child { border-top: 0; }
+  .link-steps li span { color: var(--muted); white-space: nowrap; }
+  /* Week days in the builder */
+  .week-pick { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .week-days { display: flex; gap: 4px; }
+  .week-days button { position: relative; width: 38px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: inherit; font-weight: 700; font-size: 13px; }
+  .week-days button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .week-days button i { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+  .design-title { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .design-cols { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* Drop markers while dragging from the library */
+  .item.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+  #rtItems.drop-end { box-shadow: 0 3px 0 var(--accent); }
   .rest-card .rest-pick { margin: 0; }
   li.step-part { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 2px 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
   li.step-part:first-child { margin-top: 0; }
@@ -796,6 +819,16 @@
     .sheet { top: 0; bottom: 0; left: var(--side); right: 0; margin: auto; width: min(640px, calc(100vw - var(--side) - 64px)); height: fit-content; max-height: 88dvh;
       border-radius: 22px; animation: pop-in .18s ease-out; }
     .sheet.tall { height: 88dvh; max-height: 88dvh; }
+    .sheet.wide { width: min(1180px, calc(100vw - var(--side) - 48px)); max-width: none; }
+    .design-cols.wide { display: grid; grid-template-columns: 360px minmax(0, 1fr); }
+    .design-panel { border-right: 1px solid var(--line); padding: 6px 18px 18px 22px; overflow: auto; min-height: 0; }
+    .design-panel .search { margin-top: 10px; }
+    .panel-tabs { margin-top: 2px; }
+    .panel-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+    .panel-list li { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 12px; cursor: grab; }
+    .panel-list li.muted { cursor: default; }
+    .panel-list li:active { cursor: grabbing; }
+    .panel-list .lib-name { flex: 1; }
     .grab { display: none; }
     .sheet-head { padding: 20px 22px 10px; }
     .sheet-body { padding: 4px 22px 22px; }
