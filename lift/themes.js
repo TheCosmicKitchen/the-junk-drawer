@@ -7,8 +7,8 @@
 const PLAIN = {
   brand: 'Lift Log', motto: 'SHOW UP · LIFT · WRITE IT DOWN', tagline: 'Log the set.',
   fonts: '', brandFont: 'var(--display)', headFont: 'var(--display)', brandWeight: 800, css: '',
-  titles: { log: 'Today', routines: 'Routines', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
-  tabs: { log: 'Log', routines: 'Routines', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
+  titles: { log: 'Today', routines: 'Routines', library: 'Library', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
+  tabs: { log: 'Log', routines: 'Routines', library: 'Library', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
   helloBig: 'Big day.', helloSome: 'In session.', helloNone: 'Today',
   restUp: 'Rest’s up. Next set!',
   // Stamps: what a season gives you for its little achievements. The season decides each stamp's
@@ -57,7 +57,7 @@ const PLAIN = {
   // Extra keys are fine too, for the theme's own css to use.
   colors: { light: {}, dark: {} },
   // Tab bar icons: the inside of a 24 x 24 line drawing, stroked in the tab's color with no fill.
-  tabIcons: { log: '<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>', routines: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>', seasons: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>', progress: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>' },
+  tabIcons: { library: '<path d="M4 4h4v16H4zM10 4h4v16h-4z"/><path d="M15 5l3.8-1 3.2 15.5-3.8 1z"/>', log: '<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>', routines: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>', history: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>', seasons: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>', progress: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>' },
 };
 
 const theme = (id, name, blurb, o) => ({
