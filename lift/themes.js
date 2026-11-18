@@ -1027,7 +1027,7 @@ export function applyTheme(id) {
   document.querySelectorAll('.brand-name').forEach(e => { e.textContent = t.brand; });
   document.querySelectorAll('.tabs a[href^="#"]').forEach(a => {
     const k = a.getAttribute('href').slice(1), lab = a.querySelector('.tab-label'), ic = a.querySelector('svg');
-    if (lab && t.tabs[k]) lab.textContent = t.tabs[k];
+    if (lab && PLAIN.tabs[k]) lab.textContent = PLAIN.tabs[k];   // names stay put in every theme; only the icons change
     if (ic && t.tabIcons[k]) { ic.innerHTML = t.tabIcons[k]; ic.setAttribute('stroke-linejoin', 'round'); ic.setAttribute('aria-hidden', 'true'); }
   });
   const light = document.querySelector('meta[name="theme-color"][media*="light"]'), dark = document.querySelector('meta[name="theme-color"][media*="dark"]');
