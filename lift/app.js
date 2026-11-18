@@ -3702,7 +3702,10 @@ const dayShort = d => fmtDay(d, { weekday: 'short' }) + ' ' + fmtDay(d, { day: '
 function seasonDays(sn, st, by) {
   const days = new Map();
   const day = d => { if (!days.has(d)) days.set(d, { lifted: new Map(), wins: [], moments: [] }); return days.get(d); };
-  for (const r of st.d) if (by.has(r.user_id)) { const x = day(String(r.performed_on).slice(0, 10)); x.lifted.set(r.user_id, (x.lifted.get(r.user_id) || 0) + lbOf(r)); }
+  // Your own days come from this phone (so a set you just logged counts at once); everyone else's
+  // from the season's last refresh.
+  for (const r of st.d) if (by.has(r.user_id) && r.user_id !== S.myId) { const x = day(String(r.performed_on).slice(0, 10)); x.lifted.set(r.user_id, (x.lifted.get(r.user_id) || 0) + lbOf(r)); }
+  if (by.has(S.myId)) for (const r of S.days) if (r.sets > 0 && r.performed_on >= sn.starts_on && r.performed_on <= sn.ends_on) day(r.performed_on).lifted.set(S.myId, lbOf(r));
   for (const w of st.feed) if (by.has(w.created_by)) day(w.performed_on).wins.push(w);
   return { days, day };
 }
@@ -3767,7 +3770,7 @@ function seasonFeedCard(sn, st, people, opts) {
     return [who, lb ? L.fmtNum(Math.round(lb), 0) + ' lb' : '', bests ? bests + (bests === 1 ? ' best' : ' bests') : ''].filter(Boolean).join(' · ');
   };
   const moments = x => x.moments.map(m => '<div class="sf-moment"><span aria-hidden="true">' + m.icon + '</span><span>' + esc(m.text) + '</span></div>').join('');
-  const body = (d, x) => moments(x) + (x.wins.length ? winList(x.wins, color, name, 40) : d === t ? '<p class="muted sf-none">Nothing logged yet today.</p>' : '');
+  const body = (d, x) => moments(x) + (x.wins.length ? winList(x.wins, color, name, 40) : d === t && !x.lifted.size ? '<p class="muted sf-none">Nothing logged yet today.</p>' : '');
   // Today in full; every earlier day as one line that opens.
   let html = '';
   if (ph === 'live') {
@@ -4459,8 +4462,11 @@ function winsCard() {
   const sn = liveSeason();
   if (!sn) return '';
   const st = S.standings[sn.id];
+  const redraw = err => { const box = $('winsBox'); if (!err && box && currentTab === 'log') box.outerHTML = winsCard(); };
+  // Shown from what you last saw; refreshed quietly when it's more than a couple of minutes old.
+  if (st && st.feed && Date.now() - (S.seasonAt[sn.id] || 0) > 120000 && !seasonLoads.has(sn.id)) loadSeason(sn, redraw);
   if (!st || !st.feed) {
-    loadSeason(sn, err => { const box = $('winsBox'); if (!err && box && currentTab === 'log') box.outerHTML = winsCard(); });
+    loadSeason(sn, redraw);
     return '<section class="card wins" id="winsBox"><div class="card-head"><h3 class="card-title">' + esc(sn.name) + '</h3></div><p class="muted" style="margin:0">Loading…</p></section>';
   }
   return seasonFeedCard(sn, st, seasonPeople(sn, st), { id: 'winsBox', title: sn.name, sub: 'the season’s feed', open: true, max: 15 });
