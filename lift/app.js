@@ -5,6 +5,7 @@ import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as G from './generate.js';
 import * as C from './charts.js';
 import { shareCard } from './share.js';
+import * as LIB from './library.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
 
@@ -314,7 +315,7 @@ let currentTab = null;
 function route() {
   const h = location.hash.slice(1);
   if (/^[rs]-[A-Za-z0-9-]+$/.test(h)) return openLink(h);
-  const tab = ['log', 'routines', 'history', 'seasons', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
+  const tab = ['log', 'routines', 'library', 'history', 'seasons', 'progress'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'log';
   document.querySelectorAll('.tabs a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + tab ? 'page' : 'false'));
   if (tab !== currentTab) window.scrollTo(0, 0);
   $('fab').hidden = tab !== 'log';   // only on Log, so it never covers buttons elsewhere
@@ -327,6 +328,7 @@ function render() {
   else if (currentTab === 'progress') renderProgress();
   else if (currentTab === 'seasons') renderSeasons();
   else if (currentTab === 'routines') renderRoutines();
+  else if (currentTab === 'library') renderLibrary();
   else renderLog();
 }
 window.addEventListener('hashchange', route);
@@ -374,7 +376,7 @@ function renderLog() {
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
-    (groups.length ? groups.map(exCard).join('') : (following() || cardioCard() ? '' : emptyToday())) +
+    (groups.length ? groups.map(exCard).join('') + (following() ? '' : '<section class="card rest-card">' + restRow() + '</section>') : (following() || cardioCard() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
     weeklyCard() +   // the week's bulletin and quests come after today's logging
     questsCard() +
@@ -439,6 +441,13 @@ view.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
+  else if (b.dataset.libMus != null) { S.lib.mus = b.dataset.libMus || null; S.libAll = false; drawLib(); }
+  else if (b.dataset.libEq) { S.lib.eq = S.lib.eq === b.dataset.libEq ? null : b.dataset.libEq; S.libAll = false; drawLib(); }
+  else if (b.dataset.libMine != null) { S.lib.mine = !S.lib.mine; S.libAll = false; drawLib(); }
+  else if (b.dataset.libSort) { S.lib.sort = b.dataset.libSort; drawLib(); }
+  else if (b.hasAttribute('data-lib-all')) { S.libAll = true; drawLib(); }
+  else if (b.dataset.libEx) openExInfo(b.dataset.libEx);
+  else if (b.hasAttribute('data-lib-new')) openNewExercise(b.dataset.libNew || '');
   else if (b.dataset.more) openLogger(b.dataset.more);
   else if (b.dataset.day) toggleDay(b.dataset.day);
   else if (b.dataset.period) { S.period = b.dataset.period; renderProgress(); }
@@ -907,10 +916,12 @@ function openPicker(title, onPick, multi) {
   LG.mode = 'pick';
   LG.pickFor = onPick;
   LG.multi = multi ? [] : null;
+  LG.pf = { mus: null, eq: null, mine: false, sort: 'used' };
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
-    (multi ? '<p class="hint-line">Tap to tick as many as you like, in the order you’ll do them.</p>' : '') +
+    '<div id="pkFilters">' + libChips(LG.pf, 'pk') + '</div>' +
+    (multi ? '<p class="hint-line">Tap to tick as many as you like, in the order you’ll do them. Each comes in at your usual sets and reps.</p>' : '') +
     (!onPick && !multi && (S.activities || []).length ? '<div class="section-title">Cardio</div><div class="chips cardio-pick">' + S.activities.map(a => '<button type="button" class="chip" data-cardio-new="' + esc(a.id) + '">' + esc(a.name) + '</button>').join('') + '</div>' : '') +
     '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul>' +
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
@@ -928,14 +939,18 @@ function lastSummary(exId) {
   return s ? setText(s) + ' · ' + fmtDay(s.performed_on, { month: 'short', day: 'numeric' }) : '';
 }
 function drawResults(q) {
-  const recents = recentExerciseIds();
-  const list = L.searchExercises(q, S.exercises, S.aliases, recents);
-  $('resTitle').textContent = q.trim() ? (list.length ? 'Matches' : 'No matches') : (list.length ? 'Recent' : 'Start typing to find an exercise');
+  const f = LG.pf || {}, filtering = !!(f.mus || f.eq || f.mine);
+  // Nothing typed or filtered: your recent lifts when logging, the whole library (yours first) when building.
+  let list = !q.trim() && !filtering && !LG.multi ? L.searchExercises('', S.exercises, S.aliases, recentExerciseIds()) : [];
+  if (!list.length) list = libList({ ...f, q: q.trim(), sort: 'used' });
+  $('resTitle').textContent = q.trim() ? (list.length ? 'Matches' : 'No matches')
+    : filtering ? (list.length ? list.length + ' ' + [f.mus && LIB.muscleName(f.mus), f.eq && LIB.equipmentName(f.eq)].filter(Boolean).join(' · ') + ' exercise' + (list.length === 1 ? '' : 's') : 'Nothing here yet')
+    : LG.multi ? 'The library · yours first' : 'Recent';
   const picked = id => LG.multi && LG.multi.includes(id);
   // While ticking, keep what's already ticked at the top so it's easy to see and untick.
   const shown = LG.multi && !q.trim() ? LG.multi.map(id => S.byId.get(id)).filter(Boolean).concat(list.filter(e => !picked(e.id))) : list;
   let html = shown.map(e => '<li><button data-pick="' + esc(e.id) + '"' + (LG.multi ? ' class="' + (picked(e.id) ? 'sel' : '') + '" aria-pressed="' + picked(e.id) + '"' : '') + '><span>' +
-    (LG.multi ? '<i class="tickbox" aria-hidden="true">' + (picked(e.id) ? LG.multi.indexOf(e.id) + 1 : '') + '</i>' : '') + esc(e.name) + '</span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
+    (LG.multi ? '<i class="tickbox" aria-hidden="true">' + (picked(e.id) ? LG.multi.indexOf(e.id) + 1 : '') + '</i>' : '') + '<span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small></span></span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
   const typed = q.trim();
   const exact = e => [e.name, ...(S.aliases.get(e.id) || [])].some(n => L.norm(n) === L.norm(typed));
   if (typed && me && me.is_admin && !S.exercises.some(e => !e.deleted_at && exact(e))) {
@@ -1170,6 +1185,15 @@ inner.addEventListener('click', async e => {
   if (!b) return;
   if (b.hasAttribute('data-close')) return closeSheet();
   if (b.hasAttribute('data-change')) return openLogger();
+  if (LG.mode === 'pick' && (b.dataset.pkMus != null || b.dataset.pkEq || b.dataset.pkMine != null)) {
+    const f = LG.pf;
+    if (b.dataset.pkMus != null) f.mus = b.dataset.pkMus || null;
+    else if (b.dataset.pkEq) f.eq = f.eq === b.dataset.pkEq ? null : b.dataset.pkEq;
+    else f.mine = !f.mine;
+    $('pkFilters').innerHTML = libChips(f, 'pk');
+    return drawResults($('exSearch').value);
+  }
+  if (LG.mode === 'exinfo' || LG.mode === 'libaddto' || LG.mode === 'newex') return libSheetClick(b);
   if (b.dataset.pick && LG.multi) {
     const id = b.dataset.pick, i = LG.multi.indexOf(id);
     if (i >= 0) LG.multi.splice(i, 1); else LG.multi.push(id);
@@ -1261,10 +1285,10 @@ async function saveEntry(btn) {
       const n = Math.max(1, Math.min(20, parseInt(($('nIn') || {}).value, 10) || st().sets || 1));
       const saved = await logSets({ exercise_id: LG.exId, ...fields }, n);
       afterLogToast(saved);
-      if (fields.notes) { $('noteIn').value = ''; st().showNote = false; $('noteRow').hidden = true; inner.querySelector('[data-t="note"]').setAttribute('aria-pressed', 'false'); }
-      st().sets = 1; syncInputs();   // the block is in; the next tap adds one more
-      btn.disabled = false;
-      refreshLoggerList(); updateLive(); render();
+      // Done: back to today. A running rest timer moves out of the sheet with you.
+      const timing = REST.el && !REST.el.hidden;
+      sheet.close(); render();
+      if (timing) restEl();
     }
   } catch (x) { $('formErr').textContent = x.message; btn.disabled = false; }
 }
@@ -1431,6 +1455,11 @@ function renderRoutines() {
       (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')))
       : S.rtQuery ? '' : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
 }
+view.addEventListener('input', e => {
+  if (e.target.id !== 'libSearch') return;
+  S.lib.q = e.target.value.trim(); S.libAll = false;
+  $('libList').innerHTML = libListHtml();
+});
 // Typing in the Rites search box filters as you go, keeping the box focused.
 view.addEventListener('input', e => {
   if (e.target.id !== 'rtSearch') return;
@@ -1471,7 +1500,7 @@ async function newRoutine(btn, kind) {
     const t = await store.addRoutine({ name: kind === 'block' ? 'New block' : 'New workout', kind: kind || 'workout' });
     S.templates.push(t);
     openDesigner(t.id);
-    setTimeout(() => { const q = $('qaIn'); if (q) q.focus(); }, 80);   // the name fills itself in from what you add
+    openPicker('Add to ' + t.name, ids => addItemsTo(t.id, ids), true);   // the name fills itself in from what you add
   } catch (x) { fail(x); } finally { if (btn) btn.disabled = false; }
 }
 async function copySteps(fromIds, tid) {
@@ -1619,9 +1648,9 @@ function openDesigner(id, fresh) {
         (t.notes ? '' : '<button type="button" class="toggle" id="rtNoteBtn">+ Add a note</button>') +
       '</div>' +
       '<textarea class="plain-input" id="rtNotes" rows="2" maxlength="500" placeholder="Notes: warm-up, rest times, anything" aria-label="Notes"' + (t.notes ? '' : ' hidden') + '>' + esc(t.notes || '') + '</textarea>' +
-      '<div class="quick-add"><input class="plain-input" id="qaIn" placeholder="Type to add: bench 3x5, ohp 3x8, rows" aria-label="Type exercises to add" enterkeyhint="go" autocomplete="off">' +
-        '<button type="button" class="btn" id="qaGo">Add</button></div>' +
       '<ol class="items" id="rtItems"></ol>' +
+      '<div class="add-tiles"><button type="button" class="add-tile" data-design-add="ex"><b>＋ Exercises</b><small>Browse the library by muscle or equipment</small></button>' +
+        '<button type="button" class="add-tile" data-design-add="block"><b>＋ A block</b><small>Reuse a chunk of another workout</small></button></div>' +
       '<p class="hint-line" id="rtHint"></p>' +
       '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
     '</div>' +
@@ -1631,14 +1660,13 @@ function openDesigner(id, fresh) {
   const name = $('rtName'), notes = $('rtNotes');
   name.addEventListener('input', () => debounceSave('name', () => saveRoutine({ name: name.value.trim() || 'Untitled routine' })));
   name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
-  $('qaIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('qaGo').click(); } });
   notes.addEventListener('input', () => debounceSave('notes', () => saveRoutine({ notes: notes.value.trim() || null })));
   if (fresh) setTimeout(() => { name.focus(); name.select(); }, 60);
 }
 function drawItems() {
   const list = routineItems(D.id), t = S.templates.find(x => x.id === D.id);
   $('rtItems').innerHTML = list.length ? list.map(itemRow).join('')
-    : '<li class="empty-steps"><b>No exercises yet.</b><br>Tap <b>+ Exercises</b> below and tick the ones you do, in order, or stack up blocks with <b>+ Blocks</b>.</li>';
+    : '<li class="empty-steps"><b>Nothing in it yet.</b><br>Add exercises from the library, or drop in a block you’ve already built. Sets, reps and weight start from what each person usually does.</li>';
   $('rtStart').disabled = !list.length;
   $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
     'Saves as you go.' + (t && t.is_shared ? ' Anyone subscribed sees changes straight away.' : '');
@@ -1741,7 +1769,6 @@ inner.addEventListener('pointerdown', e => {
   document.addEventListener('pointerup', stop); document.addEventListener('pointercancel', stop);
 });
 inner.addEventListener('click', e => { if (HOLD.held && e.isTrusted) { HOLD.held = false; e.stopImmediatePropagation(); } }, true);
-
 // Drag to reorder: works with mouse and touch (the handle has touch-action: none).
 inner.addEventListener('pointerdown', e => {
   const h = e.target.closest('[data-handle]');
@@ -1831,45 +1858,9 @@ async function chunkClick(b) {
     openDesigner(tid);
   }
 }
-// "bench 3x5, ohp 3x8, rows" -> steps. Names match the catalogue and its search words; a step
-// without NxM gets your usual sets and reps for that lift.
-function parseQuick(text) {
-  const out = [], missing = [];
-  for (const raw of text.split(/[,;\n]+/).map(x => x.trim()).filter(Boolean)) {
-    const m = /^(.*?)\s*(?:(\d{1,2})\s*[x×*]\s*(\d{1,3}))?\s*$/i.exec(raw);
-    const name = (m && m[1] ? m[1] : raw).trim();
-    let id = S.nameIndex.get(L.norm(name));
-    for (const q of [name, name.replace(/e?s$/i, '')]) {   // "rows" finds "Row", "presses" finds "Press"
-      if (id || !q) break;
-      id = S.nameIndex.get(L.norm(q));
-      if (!id) { const hit = L.searchExercises(q, S.exercises, S.aliases, recentExerciseIds())[0]; id = hit && hit.id; }
-    }
-    if (!id) { missing.push(name); continue; }
-    out.push({ exId: id, sets: m && m[2] ? Math.min(20, Math.max(1, +m[2])) : null, reps: m && m[3] ? Math.min(100, Math.max(1, +m[3])) : null });
-  }
-  return { out, missing };
-}
-async function quickAdd(b) {
-  const tid = D.id, text = $('qaIn').value;
-  const { out, missing } = parseQuick(text);
-  if (!out.length) return toast(missing.length ? 'Couldn’t find: ' + missing.join(', ') : 'Type exercises, like: bench 3x5, rows');
-  if (routineItems(tid).length + out.length > 100) return toast('That would be more than 100 steps.');
-  b.disabled = true;
-  let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
-  try {
-    await putItems(out.map(x => {
-      const u = usualFor(x.exId);
-      return { template_id: tid, exercise_id: x.exId, position: ++pos, sets: x.sets || u.sets, reps: x.reps || Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
-    }));
-    await autoName(tid);
-  } catch (x) { b.disabled = false; return fail(x); }
-  openDesigner(tid);
-  toast('Added ' + out.map(x => shortName(x.exId)).join(', ') + (missing.length ? '. Couldn’t find: ' + missing.join(', ') : ''));
-}
 async function designerClick(b) {
-  if (b.id === 'rtAdd') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
-  if (b.id === 'rtFrom') { flushSaves(); return openChunkPicker(); }
-  if (b.id === 'qaGo') return quickAdd(b);
+  if (b.id === 'rtAdd' || b.dataset.designAdd === 'ex') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
+  if (b.id === 'rtFrom' || b.dataset.designAdd === 'block') { flushSaves(); return openChunkPicker(); }
   if (b.dataset.kind) {
     const t = S.templates.find(x => x.id === D.id);
     if ((t.kind || 'workout') === b.dataset.kind) return;
@@ -4001,6 +3992,156 @@ function sessionCardHtml(w, extra) {
     (badges ? '<div class="ws-badges">' + badges + '</div>' : '') +
     (foot ? '<div class="ws-foot">' + esc(foot) + '</div>' : '') + '</div>';
 }
+// ===========================================================================
+// The exercise library: every lift in the catalogue, browsable by muscle and equipment, each with
+// your own numbers. Open one to log it, add it to a workout or see its trend.
+// ===========================================================================
+S.lib = { q: '', mus: null, eq: null, mine: false, sort: 'used' };
+const libTag = e => [LIB.muscleName(LIB.muscleOf(e.name)), LIB.equipmentName(LIB.equipmentOf(e.name, e.supports_bodyweight) || '')].filter(Boolean).join(' · ');
+let LIBSTATS = null, LIBKEY = '';
+// Per exercise: days done in the last 120, the last day, and your best set by estimated 1-rep max.
+function libStats() {
+  const key = S.recent.length + '|' + (S.recent[0] || {}).id + '|' + (S.bestRows || []).length;
+  if (LIBSTATS && LIBKEY === key) return LIBSTATS;
+  const m = new Map(), get = id => m.get(id) || (m.set(id, { days: new Set(), last: null, ever: false, best: null }), m.get(id));
+  for (const x of S.recent) {
+    if (x.is_warmup === true) continue;
+    const r = get(x.exercise_id); r.days.add(x.performed_on); r.ever = true;
+    if (!r.last || x.performed_on > r.last) r.last = x.performed_on;
+  }
+  for (const b of S.bestRows || []) {
+    const r = get(b.exercise_id), w = Number(b.heaviest);
+    const e1 = (L.e1rm(w, b.reps) || w) * (b.unit === 'kg' ? L.LB_PER_KG : 1);
+    r.ever = true;
+    if (!r.best || e1 > r.best.e1) r.best = { e1, w, unit: b.unit, reps: b.reps };
+  }
+  LIBSTATS = m; LIBKEY = key;
+  return m;
+}
+function libList(f) {
+  const st = libStats();
+  let list = f.q ? L.searchExercises(f.q, S.exercises, S.aliases, recentExerciseIds()) : S.exercises.filter(e => !e.deleted_at);
+  if (f.mus) list = list.filter(e => LIB.muscleOf(e.name) === f.mus);
+  if (f.eq) list = list.filter(e => LIB.equipmentOf(e.name, e.supports_bodyweight) === f.eq);
+  if (f.mine) list = list.filter(e => (st.get(e.id) || {}).ever);
+  const used = e => { const r = st.get(e.id); return r ? r.days.size * 10 + (r.ever ? 1 : 0) : 0; };
+  if (!f.q) list = list.slice().sort((a, b) => (f.sort === 'az' ? 0 : used(b) - used(a)) || a.name.localeCompare(b.name));
+  return list;
+}
+function libChips(f, pre) {
+  const chip = (attr, val, label, on) => '<button type="button" class="chip lib-chip" data-' + pre + '-' + attr + '="' + val + '" aria-pressed="' + !!on + '">' + label + '</button>';
+  return '<div class="chips lib-row" role="group" aria-label="Muscle">' + chip('mus', '', 'All', !f.mus) + LIB.MUSCLES.map(([k, l]) => chip('mus', k, l, f.mus === k)).join('') + '</div>' +
+    '<div class="chips lib-row" role="group" aria-label="Equipment and more">' + chip('mine', '', 'Done before', f.mine) + LIB.EQUIPMENT.map(([k, l]) => chip('eq', k, l, f.eq === k)).join('') + '</div>';
+}
+function renderLibrary() {
+  const n = S.exercises.filter(e => !e.deleted_at).length;
+  view.innerHTML = '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.library) + '</h2>' +
+      (me && me.is_admin ? '<button class="btn" data-lib-new>+ New exercise</button>' : '') + '</div>' +
+    '<section class="card lib-card"><input class="search" id="libSearch" type="search" placeholder="Search ' + n + ' exercises" autocomplete="off" aria-label="Search the library" value="' + esc(S.lib.q) + '">' +
+      '<div id="libFilters">' + libChips(S.lib, 'lib') + '</div></section>' +
+    '<div id="libList" class="lib-wrap">' + libListHtml() + '</div>';
+}
+function drawLib() { $('libFilters').innerHTML = libChips(S.lib, 'lib'); $('libList').innerHTML = libListHtml(); }
+function libListHtml() {
+  const f = S.lib, list = libList(f), st = libStats();
+  if (!list.length) return '<section class="card"><p class="muted" style="margin:0">Nothing matches. ' +
+    (me && me.is_admin && f.q ? '<button class="linkbtn" data-lib-new="' + esc(f.q) + '">Add “' + esc(f.q) + '” to the library</button>' : 'Try another muscle, or clear the search.') + '</p></section>';
+  const shown = S.libAll || f.q ? list : list.slice(0, 60);
+  const sort = f.q ? '' : '<span class="seg lib-sort" role="group" aria-label="Sort">' + [['used', 'Most done'], ['az', 'A–Z']].map(([k, l]) =>
+    '<button type="button" data-lib-sort="' + k + '" aria-pressed="' + (f.sort === k) + '">' + l + '</button>').join('') + '</span>';
+  return '<div class="row lib-count"><span class="muted">' + list.length + ' exercise' + (list.length === 1 ? '' : 's') + '</span>' + sort + '</div>' +
+    '<ul class="results lib-list">' + shown.map(e => {
+      const r = st.get(e.id);
+      const mine = r && r.best ? 'best ' + (r.best.w > 0 ? L.fmtLoad(r.best.w) + ' ' + r.best.unit + ' × ' + r.best.reps : r.best.reps + ' reps') : '';
+      const when = r && r.last ? (r.days.size > 1 ? r.days.size + ' days lately · ' : '') + 'last ' + fmtDay(r.last, { month: 'short', day: 'numeric' }) : '';
+      return '<li><button data-lib-ex="' + esc(e.id) + '"><span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small>' +
+        (mine || when ? '<small class="lib-me">' + esc([mine, when].filter(Boolean).join(' · ')) + '</small>' : '') + '</span><span class="chev" aria-hidden="true">›</span></button></li>';
+    }).join('') + '</ul>' +
+    (shown.length < list.length ? '<button class="btn ghost block" data-lib-all>Show all ' + list.length + '</button>' : '');
+}
+// One exercise: how to do it, your numbers, where it's used, and what to do with it.
+function openExInfo(id) {
+  const e = S.byId.get(id);
+  if (!e) return;
+  LG.mode = 'exinfo'; LG.exInfo = id;
+  const r = libStats().get(id), tip = S.tips.get(id), last = localLast(id) || S.lastOld.get(id);
+  const bests = (S.bestRows || []).filter(b => b.exercise_id === id).sort((a, b) => a.unit.localeCompare(b.unit) || a.reps - b.reps).slice(0, 10);
+  const usedIn = S.templates.filter(t => routineItems(t.id).some(it => it.exercise_id === id));
+  inner.innerHTML = '<div class="sheet-head"><div><small class="muted">' + esc(libTag(e)) + '</small><h2 id="sheetTitle">' + esc(e.name) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body">' +
+      (tip ? '<p class="tip">💡 ' + esc(tip) + '</p>' : '') +
+      '<p class="last-line">' + (last && last.length ? 'Last time, ' + esc(fmtDay(last[0].performed_on, { month: 'short', day: 'numeric' })) + ': <b>' + esc(summarizeSets(last)) + '</b>' +
+        (r && r.days.size ? ' · ' + r.days.size + ' day' + (r.days.size === 1 ? '' : 's') + ' in the last 4 months' : '') : 'You haven’t logged this one yet.') + '</p>' +
+      (bests.length ? '<div class="section-title" style="margin-top:14px">Your bests</div><div class="chips">' + bests.map(b =>
+        '<span class="chip">' + b.reps + ' rep' + (b.reps === 1 ? '' : 's') + ': <b>&nbsp;' + esc(Number(b.heaviest) > 0 ? L.fmtLoad(Number(b.heaviest)) + ' ' + b.unit : 'bodyweight') + '</b></span>').join('') + '</div>' : '') +
+      (usedIn.length ? '<div class="section-title" style="margin-top:14px">In workouts</div><div class="chips">' + usedIn.slice(0, 12).map(t =>
+        (isMine(t) ? '<button type="button" class="chip" data-lib-open-rt="' + esc(t.id) + '">' : '<span class="chip">') + esc(t.name) + (isMine(t) ? '</button>' : '</span>')).join('') + '</div>' : '') +
+      '<div class="ex-actions"><button class="btn primary" data-lib-log="' + esc(id) + '">Log it</button>' +
+        '<button class="btn" data-lib-addto="' + esc(id) + '">+ Add to a workout</button>' +
+        (r && r.ever ? '<button class="btn ghost" data-lib-trend="' + esc(id) + '">See the trend</button>' : '') + '</div>' +
+    '</div>';
+  openSheet();
+  if (!last) fetchLast(id);
+}
+function openAddTo(id) {
+  LG.mode = 'libaddto'; LG.exInfo = id;
+  const mine = S.templates.filter(isMine).sort((a, b) => Number(isBlock(a)) - Number(isBlock(b)) || a.name.localeCompare(b.name));
+  const row = t => '<li><button data-lib-to="' + esc(t.id) + '"><span>' + esc(t.name) + '</span><small>' + (isBlock(t) ? 'block · ' : '') + routineItems(t.id).length + ' steps</small></button></li>';
+  inner.innerHTML = '<div class="sheet-head"><div><button class="linkbtn" data-lib-back>← ' + esc(exName(id)) + '</button><h2 id="sheetTitle">Add to which?</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><ul class="results"><li><button data-lib-to="new"><span>＋ New workout with it</span><small>start one from this exercise</small></button></li>' + mine.map(row).join('') + '</ul></div>';
+  openSheet();
+}
+function openNewExercise(name) {
+  LG.mode = 'newex';
+  inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">Add to the library</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><p class="hint-line" style="margin-top:0">Everyone in the crew can use it straight away. Name it the way people say it at the gym; muscle and equipment come from the name.</p>' +
+      '<input class="plain-input" id="newExName" maxlength="80" placeholder="e.g. Cable Y-raise" value="' + esc(name) + '" aria-label="Exercise name" autocomplete="off">' +
+      '<p class="hint-line" id="newExHint"></p><p class="warn" id="newExWarn"></p>' +
+      '<button class="btn primary block big" data-new-ex-save>Add it</button></div>';
+  openSheet();
+  const box = $('newExName');
+  const hint = () => {
+    const v = box.value.trim(), near = v && L.suggestMatch(v, S.exercises.filter(e => !e.deleted_at).map(e => e.name));
+    $('newExHint').textContent = v ? 'It’ll show under ' + (libTag({ name: v }) || 'Other') + '.' : '';
+    $('newExWarn').innerHTML = near ? 'Did you mean <b>' + esc(near) + '</b>? It’s already there.' : '';
+  };
+  box.addEventListener('input', hint); hint();
+  setTimeout(() => box.focus(), 60);
+}
+async function libSheetClick(b) {
+  const id = LG.exInfo;
+  if (b.dataset.libLog) return openEntry(b.dataset.libLog);
+  if (b.dataset.libAddto) return openAddTo(b.dataset.libAddto);
+  if (b.hasAttribute('data-lib-back')) return openExInfo(id);
+  if (b.dataset.libOpenRt) return openDesigner(b.dataset.libOpenRt);
+  if (b.dataset.libTrend) {
+    sheet.close(); S.trendEx = b.dataset.libTrend; S.hist = S.hist || new Map(); location.hash = '#progress';
+    return setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200);
+  }
+  if (b.dataset.libTo) {
+    b.disabled = true;
+    try {
+      let tid = b.dataset.libTo;
+      if (tid === 'new') { const t = await store.addRoutine({ name: exName(id), kind: 'workout' }); S.templates.push(t); tid = t.id; }
+      else if (routineItems(tid).length >= 100) { b.disabled = false; return toast('That one already has 100 steps.'); }
+      return addItemsTo(tid, [id]);   // opens the workout with it on the end
+    } catch (x) { b.disabled = false; return fail(x); }
+  }
+  if (b.hasAttribute('data-new-ex-save')) {
+    const name = $('newExName').value.trim().replace(/\s+/g, ' ');
+    if (!name) return toast('Give it a name.');
+    if (S.exercises.some(e => !e.deleted_at && L.norm(e.name) === L.norm(name))) return toast('“' + name + '” is already in the library.');
+    b.disabled = true;
+    try {
+      const e = await store.addExercise(name);
+      S.exercises.push(e); S.byId.set(e.id, e); LIBSTATS = null;
+      toast('Added “' + e.name + '” to the library.');
+      if (currentTab === 'library') { S.lib.q = ''; render(); }
+      return openExInfo(e.id);
+    } catch (x) { b.disabled = false; return fail(x); }
+  }
+}
+
 // Share card: your finished workout as a picture in the current theme, for people outside the app.
 const SHARE_SRC = new Map();   // feed session id → { w, extras }, filled as the feed is drawn
 function sessionActs(w, extras, del) {
