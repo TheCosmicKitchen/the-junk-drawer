@@ -46,12 +46,16 @@ function setText(s) {
   const load = s.count_bodyweight ? (s.weight > 0 ? 'BW+' + L.fmtLoad(s.weight) : 'BW') : L.fmtLoad(s.weight);
   return load + unitTag(s.unit) + ' × ' + s.reps;
 }
+// A day's pounds moved with its unit always shown: "25,275 lb".
+const volLabel = d => { const v = { lb: Number(d.volume_lb), kg: Number(d.volume_kg) }; return volText(v) + (v.kg ? '' : ' lb'); };
 function volText(v) {
   const parts = [];
   if (v.lb || !v.kg) parts.push(L.fmtBig(v.lb) + (v.kg ? ' lb' : ''));
   if (v.kg) parts.push(L.fmtBig(v.kg) + ' kg');
   return parts.join(' + ');
 }
+// Weeks run Monday to Sunday everywhere: the calendar, the Log tab, seasons and the bulletin.
+const weekStartOf = d => L.addDays(d, -((L.parseDate(d).getDay() + 6) % 7));
 const todaySets = () => S.recent.filter(s => s.performed_on === today()).sort((a, b) => a.logged_at.localeCompare(b.logged_at));
 function groupByExercise(sets) {
   const out = [];
@@ -363,16 +367,23 @@ async function copyLink(key) {
 function renderLog() {
   const sets = todaySets();
   const vol = L.volumeByUnit(sets);
-  const weekVisits = S.days.filter(d => d.performed_on > L.addDays(today(), -7) && d.sets > 0).length;
+  // The same Monday-to-Sunday week as seasons and the bulletin, counting days you lifted.
+  const weekVisits = S.days.filter(d => d.performed_on >= weekStartOf(today()) && d.sets > 0).length;
   const groups = groupByExercise(sets);
   const hello = sets.length ? (sets.length >= 15 ? T.helloBig : T.helloSome) : T.helloNone;
-  view.innerHTML =
-    '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
+  const finishBtn = groups.length && unfinished() ? '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '';
+  // Following a routine: the day's numbers shrink to one line so the steps sit near the top.
+  const hero = following()
+    ? '<section class="card hero compact"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
+        '<p class="hero-line"><b>' + sets.length + '</b> set' + (sets.length === 1 ? '' : 's') + ' · <b>' + esc(volText(vol)) + '</b> ' + (vol.kg ? '' : 'lb ') + 'today · <b>' + weekVisits + '</b> day' + (weekVisits === 1 ? '' : 's') + ' lifted this week</p>' +
+        (groups.length ? sessionClock() : '') + countsLine() + syncLine() + finishBtn + '</section>'
+    : '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
     '<h1>' + hello + '</h1><div class="stats">' +
-      '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>moved today</small></div>' +
+      '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>' + (vol.kg ? '' : 'lb ') + 'moved today</small></div>' +
       '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
-      '<div class="stat"><b>' + weekVisits + '</b><small>visit' + (weekVisits === 1 ? '' : 's') + ' this week</small></div>' +
-    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + (unfinished() ? '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '') : '') + '</section>' +
+      '<div class="stat"><b>' + weekVisits + '</b><small>day' + (weekVisits === 1 ? '' : 's') + ' lifted this week</small></div>' +
+    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + finishBtn : '') + '</section>';
+  view.innerHTML = hero +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
@@ -475,6 +486,7 @@ view.addEventListener('click', async e => {
   else if (b.hasAttribute('data-new-block')) newRoutine(b, 'block');
   else if (b.dataset.fromBlock) workoutFromBlock(b.dataset.fromBlock, b);
   else if (b.dataset.schedule) openScheduleSheet(b.dataset.schedule);
+  else if (b.dataset.use) openUseMenu(b.dataset.use);
   else if (b.dataset.unday) removeDay(b.dataset.unday, b);
   else if (b.hasAttribute('data-weigh')) weighIn(b);
   else if (b.dataset.bwDel) removeWeighIn(b.dataset.bwDel);
@@ -542,8 +554,19 @@ function lastSession(exId) {
   const day = pool.reduce((m, x) => (x.performed_on > m ? x.performed_on : m), '');
   return { day, sets: pool.filter(x => x.performed_on === day) };
 }
+// Copying a step: a set weight stays only when it's yours and stays yours (shared programs and other
+// people's steps get each person's last weight instead).
+const loadFor = (it, sharing) => (it.load_mode === 'fixed' && (sharing || !ownStep(it)) ? { load_mode: 'last', load_value: 0 } : { load_mode: it.load_mode, load_value: it.load_value });
+// Is this step in a routine of yours (a set weight only applies to the person who set it)?
+const ownStep = it => { const t = tplById(it.template_id); return !!t && isMine(t); };
 function suggestFor(it) {
-  const reps = it.reps, mode = it.load_mode || 'last';
+  const reps = it.reps;
+  let mode = it.load_mode || 'last';
+  // A set weight is the author's own number: it's for them, and anyone else following uses their last.
+  if (mode === 'fixed') {
+    if (ownStep(it)) return { weight: Number(it.load_value), unit: it.unit || prefs.unit, reps, why: 'the set weight' };
+    mode = 'last';
+  }
   if (mode === 'percent_1rm') {
     const ls = lastSession(it.exercise_id), unit = ls ? ls.sets[0].unit : it.unit || prefs.unit;
     const basis = L.bestE1rm(it.exercise_id, unit, S.bestRows);
@@ -573,13 +596,15 @@ function suggestFor(it) {
   return { weight, unit, reps, why };
 }
 // "3 × 8", plus the rule when it isn't plain "your last".
-const ruleTag = it => (it.load_mode === 'progress' ? ' · +' + L.fmtLoad(Number(it.load_value)) : it.load_mode === 'percent_1rm' ? ' · ' + L.fmtNum(Number(it.load_value), 0) + '%' : '');
+const ruleTag = it => (it.load_mode === 'progress' ? ' · +' + L.fmtLoad(Number(it.load_value)) : it.load_mode === 'percent_1rm' ? ' · ' + L.fmtNum(Number(it.load_value), 0) + '%'
+  : it.load_mode === 'fixed' && ownStep(it) ? ' @ ' + (Number(it.load_value) > 0 ? L.fmtLoad(Number(it.load_value)) + ' ' + it.unit : 'bodyweight') : '');
 const stepText = it => it.sets + ' × ' + it.reps + ruleTag(it);
 // For the person following: the step with their own weight.
 const loadText = g => (g.weight == null ? '' : g.weight > 0 ? L.fmtLoad(g.weight) + ' ' + g.unit : 'bodyweight');
 const myStepText = it => { const g = suggestFor(it); return it.sets + ' × ' + it.reps + (g.weight != null ? (g.weight > 0 ? ' @ ' : ' · ') + loadText(g) : ''); };
 
-// Log what's left of a routine step at its planned reps and weight, in one tap.
+// Log the next set of a routine step at its planned reps and weight, in one tap: one tap per set,
+// the way you actually lift. The step's rest (if it has one) starts by itself.
 async function quickStep(itemId, btn) {
   const it = S.itemsById.get(itemId);
   const tg = it && suggestFor(it);
@@ -591,9 +616,10 @@ async function quickStep(itemId, btn) {
   const bw = last ? !!last.count_bodyweight : false;
   try {
     const saved = await logSets({ exercise_id: it.exercise_id, weight: tg.weight, reps: tg.reps, unit: tg.unit,
-      count_bodyweight: bw, bodyweight: bw ? last.bodyweight : null, is_warmup: false }, left);
+      count_bodyweight: bw, bodyweight: bw ? last.bodyweight : null, is_warmup: false }, 1);
     afterLogToast(saved);
     render();
+    restAfterStep(it);
   } catch (x) { fail(x); btn.disabled = false; render(); }
 }
 // ===========================================================================
@@ -1222,6 +1248,7 @@ inner.addEventListener('click', async e => {
   if (LG.mode === 'program') return programClick(b);
   if (LG.mode === 'pickwk') return pickWkClick(b);
   if (LG.mode === 'sched') return schedClick(b);
+  if (LG.mode === 'use') return useClick(b);
   if (LG.mode === 'design') return designerClick(b);
   if (LG.mode === 'season') return seasonClick(b);
   if (LG.mode !== 'entry' && LG.mode !== 'edit') return;
@@ -1284,12 +1311,14 @@ async function saveEntry(btn) {
       toast('Saved');
     } else {
       const n = Math.max(1, Math.min(20, parseInt(($('nIn') || {}).value, 10) || st().sets || 1));
+      const item = LG.item;
       const saved = await logSets({ exercise_id: LG.exId, ...fields }, n);
       afterLogToast(saved);
-      // Done: back to today. A running rest timer moves out of the sheet with you.
+      // Done: back to today. A running rest timer moves out of the sheet with you; a routine step
+      // with a rest time starts its own.
       const timing = REST.el && !REST.el.hidden;
       sheet.close(); render();
-      if (timing) restEl();
+      if (!(item && fields.is_warmup !== true && restAfterStep(item)) && timing) restEl();
     }
   } catch (x) { $('formErr').textContent = x.message; btn.disabled = false; }
 }
@@ -1424,7 +1453,7 @@ function openAddToday() {
     '<div class="sheet-body"><p class="hint-line" style="margin-top:0">It goes after what you’re already doing.</p>' +
       (bs.length ? '<div class="section-title">Blocks</div><ul class="results">' + bs.map(row).join('') + '</ul>' : '') +
       (ws.length ? '<div class="section-title">Workouts</div><ul class="results">' + ws.map(row).join('') + '</ul>' : '') +
-      (list.length ? '' : '<p class="muted">Nothing else to add yet. Make a workout or a block on the Rites tab.</p>') + '</div>';
+      (list.length ? '' : '<p class="muted">Nothing else to add yet. Make a workout or a block on the Routines tab.</p>') + '</div>';
   openSheet();
 }
 function followCard() {
@@ -1443,7 +1472,7 @@ function followCard() {
         '<button class="linkbtn" data-unfollow="' + esc(part.id) + '" aria-label="Take ' + esc(part.name) + ' out of today">Remove</button></li>' : '';
       const d = stepDone(it), full = d >= it.sets;
       const tg = full ? null : suggestFor(it);
-      const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log ' + (it.sets - d) + ' × ' + tg.reps + ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit + ', as planned">✓</button>' : '';
+      const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log set ' + (d + 1) + ' of ' + it.sets + ': ' + tg.reps + ' reps' + (tg.weight > 0 ? ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit : ', bodyweight') + '">✓</button>' : '';
       const ss = labels.get(it.id);
       return head + '<li class="step-row' + (ss ? ' ss' + (ss.endsWith('1') ? ' ss-first' : '') : '') + '"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
         '<span class="tick" aria-hidden="true">' + (full ? '✓' : ss || i + 1) + '</span>' +
@@ -1451,7 +1480,7 @@ function followCard() {
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
     (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div>' + (unfinished() ? '<button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>' : '')
-      : '<p class="hint-line">Tap ✓ to log a step exactly as planned, or tap the step to adjust first.</p>' + restRow()) +
+      : '<p class="hint-line">Tap ✓ after each set to log it as planned, or tap the step to change the weight or reps first.</p>' + restRow()) +
     '<div class="actions"><button class="btn" data-add-today-pick>+ Add a block or workout</button><button class="btn ghost" data-stop-follow>Stop</button></div></section>';
 }
 
@@ -1478,32 +1507,29 @@ function renderRoutines() {
   const start = t => !routineItems(t.id).length ? '' : f && f.ids.includes(t.id) ? '<button class="btn" disabled>Today ✓</button>'
     : f ? '<button class="btn primary" data-add-today="' + esc(t.id) + '">+ Add to today</button>'
     : '<button class="btn primary" data-start="' + esc(t.id) + '">Start</button>';
-  const sched = t => routineItems(t.id).length ? '<button class="btn" data-schedule="' + esc(t.id) + '">📅 Schedule</button>' : '';
-  const card = (t, actions) => {
+  // Every card has the same buttons: Start (or add to today), Edit when it's yours, and More, which
+  // holds everything else you can do with it (schedule, subscribe, copy, link, new workout from a block).
+  const card = t => {
     return '<section class="card routine' + (isBlock(t) ? ' block' : '') + '" id="rt-' + esc(t.id) + '"><div class="row"><h3>' + esc(t.name) + '</h3>' +
-      (isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + '</span>') + '</div>' +
+      (isMine(t) ? (t.is_shared ? '<span class="tag">Shared</span>' : '') : '<span class="tag">by ' + esc(ownerName(t)) + (subFor(t.id) ? ' · subscribed' : '') + '</span>') + '</div>' +
     (t.notes ? '<p class="muted" style="margin:6px 0 0">' + esc(t.notes) + '</p>' : '') +
     '<div class="chips">' + (chipsOf(t.id) || '<span class="muted">No exercises yet</span>') + '</div>' +
-    '<div class="actions">' + actions +
-      (t.is_shared || !isMine(t) ? '<button class="btn ghost" data-link="r-' + esc(t.id) + '" aria-label="Copy a link to ' + esc(t.name) + '">🔗</button>' : '') + '</div></section>';
+    '<div class="actions">' + start(t) + (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '') +
+      '<button class="btn ghost" data-use="' + esc(t.id) + '" aria-label="More for ' + esc(t.name) + '">More ▾</button></div></section>';
   };
   view.innerHTML =
     '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.routines) + '</h2><span class="head-actions"><button class="btn" data-starters>📚 Starters</button><button class="btn primary" data-new-any>+ New</button></span></div>' +
-    (S.rtQuery ? '' : comingUp() + weekCard() + programsSection()) +
+    (S.rtQuery ? '' : weekCard() + programsSection()) +
     (S.templates.length > 8 ? '<input class="search rt-search" id="rtSearch" type="search" placeholder="Find a workout or block by name or exercise" autocomplete="off" aria-label="Find a workout or block" value="' + esc(S.rtQuery || '') + '">' : '') +
     (S.rtQuery && !everyone.length ? '<section class="card"><p class="muted" style="margin:0">Nothing matches “' + esc(S.rtQuery) + '”.</p></section>' : '') +
     (S.rtQuery && !mine.length ? '' : '<h3 class="section-title">Workouts</h3>') +
-    (mine.length ? rtList('mine', mine, t => card(t, start(t) + sched(t) + '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>'))
-      : S.rtQuery ? '' : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ Workout</b> and build one from blocks, or subscribe to one the crew shares.</p></section>') +
-    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + rtList('subs', subscribed, t => card(t, start(t) + sched(t) +
-      '<button class="btn" data-copy="' + esc(t.id) + '">Make it mine</button><button class="btn ghost" data-unsub="' + esc(subFor(t.id).id) + '">Unsubscribe</button>')) : '') +
-    (shared.length ? '<h3 class="section-title">Shared by the crew</h3>' + rtList('shared', shared, t => card(t,
-      '<button class="btn primary" data-sub="' + esc(t.id) + '">Subscribe</button>' + sched(t) + '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')) : '') +
-    (S.rtQuery && !blocks.length ? '' : '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Stack them into a workout with <b>+ Blocks</b> in the workout editor.</p>') +
-    (blocks.length ? rtList('blocks', blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)), t => card(t,
-      start(t) + '<button class="btn" data-from-block="' + esc(t.id) + '">New workout from it</button>' +
-      (isMine(t) ? '<button class="btn" data-design="' + esc(t.id) + '">Edit</button>' : '<button class="btn" data-copy="' + esc(t.id) + '">Copy</button>')))
-      : S.rtQuery ? '' : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ Block</b> to make one.</p></section>');
+    (mine.length ? rtList('mine', mine, card)
+      : S.rtQuery ? '' : '<section class="card empty"><h2>No workouts yet.</h2><p class="muted">Tap <b>+ New</b> to build one from the library, or subscribe to one the crew shares.</p></section>') +
+    (subscribed.length ? '<h3 class="section-title">Subscribed</h3>' + rtList('subs', subscribed, card) : '') +
+    (shared.length ? '<h3 class="section-title">Shared by the crew</h3><p class="hint-line" style="margin-top:-4px">Try one with Start, or <b>More › Subscribe</b> to keep it.</p>' + rtList('shared', shared, card) : '') +
+    (S.rtQuery && !blocks.length ? '' : '<h3 class="section-title">Blocks</h3><p class="hint-line" style="margin-top:-4px">Small chunks you reuse, like “Bench & triceps”. Drop one into a workout with <b>+ Blocks</b> in the workout editor.</p>') +
+    (blocks.length ? rtList('blocks', blocks.sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name)), card)
+      : S.rtQuery ? '' : '<section class="card"><p class="muted" style="margin:0">No blocks yet. Tap <b>+ New</b> › A block to make one.</p></section>');
 }
 view.addEventListener('input', e => {
   if (e.target.id !== 'libSearch') return;
@@ -1556,7 +1582,7 @@ async function newRoutine(btn, kind) {
 async function copySteps(fromIds, tid) {
   let pos = Math.max(0, ...rawItems(tid).map(i => i.position));
   await putItems(fromIds.map(id => S.itemsById.get(id)).filter(Boolean).map(src => ({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
-    load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null, with_next: !!src.with_next })));
+    ...loadFor(src), unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null, with_next: !!src.with_next })));
 }
 // Link a block into a workout (at the end, or at a position): it stays one block, so changing the
 // block changes it here too. Sharing the workout shares your block with it, so the crew can see it.
@@ -1584,7 +1610,7 @@ async function unlinkBlock(refId) {
   // Renumber: everything after the link moves down to make room for the copied steps.
   await Promise.all(after.map((x, k) => store.updateItem(x.id, { position: Math.min(100, ref.position + steps.length + k) }).then(r => Object.assign(x, r))));
   await putItems(steps.map((b, k) => ({ template_id: tid, exercise_id: b.exercise_id, position: Math.min(100, ref.position + k), sets: b.sets, reps: b.reps,
-    load_mode: b.load_mode, load_value: b.load_value, unit: b.unit, rest_s: b.rest_s ?? null, note: b.note ?? null, with_next: !!b.with_next })));
+    ...loadFor(b), unit: b.unit, rest_s: b.rest_s ?? null, note: b.note ?? null, with_next: !!b.with_next })));
   await store.removeItem(ref.id);
   S.items = S.items.filter(x => x.id !== ref.id);
 }
@@ -1603,15 +1629,59 @@ async function workoutFromBlock(blockId, btn) {
 // ----- workout days: put a workout on a date, and it's waiting on the Log tab that day -----
 const dayLabel = d => (d === today() ? 'Today' : d === L.addDays(today(), 1) ? 'Tomorrow' : fmtDay(d));
 const todaysDays = () => (S.wdays || []).filter(d => d.on_date === today() && tplById(d.template_id));
-function comingUp() {
-  const list = (S.wdays || []).filter(d => d.on_date >= today() && tplById(d.template_id)).slice(0, 10);
-  if (!list.length) return '';
-  return '<h3 class="section-title">Coming up</h3><section class="card coming">' + list.map(d => {
+// What's on for today, one answer everywhere (the Log tab, the Calendar, Routines › Coming up):
+// what you're following, then workouts put on today's date, then today's pick from your week or a
+// season's plan.
+function todayList() {
+  const out = [], seen = new Set();
+  const add = (tid, why, extra) => { if (!seen.has(tid) && tplById(tid)) { seen.add(tid); out.push({ tid, why, ...extra }); } };
+  const f = following();
+  if (f) f.ids.forEach(id => add(id, 'following now', { following: true }));
+  todaysDays().forEach(d => add(d.template_id, 'on the calendar', { wday: d }));
+  const tp = todaysPlan();
+  if (tp && tp.entry) add(tp.entry.template_id, (isCore(tp.season) ? 'your week' : tp.season.name) + ', ' + tp.why);
+  return out;
+}
+const todayRow = x => '<div class="row day-row"><span><b>Today</b> · ' + esc(tplById(x.tid).name) + ' <small class="muted">· ' + esc(x.why) + '</small></span><span>' +
+  (x.following ? '<span class="tag">Now</span>' : '<button class="btn primary sm" data-start="' + esc(x.tid) + '">Start</button>') +
+  (x.wday ? '<button class="iconbtn sm" data-unday="' + esc(x.wday.id) + '" aria-label="Take ' + esc(tplById(x.tid).name) + ' off today">✕</button>' : '') + '</span></div>';
+// More: everything you can do with a routine, in one list, the same for every card.
+function openUseMenu(tid) {
+  const t = tplById(tid);
+  if (!t) return;
+  LG.mode = 'use';
+  const has = routineItems(t.id).length, sub = subFor(t.id), f = following(), today_ = f && f.ids.includes(t.id);
+  const opt = (attr, icon, title, sub_) => '<li><button ' + attr + '><span>' + icon + ' ' + esc(title) + '</span><small>' + esc(sub_) + '</small></button></li>';
+  const id = esc(t.id);
+  inner.innerHTML = '<div class="sheet-head"><div><small class="muted">' + (isBlock(t) ? 'Block' : 'Workout') + (isMine(t) ? '' : ' · by ' + esc(ownerName(t))) + '</small><h2 id="sheetTitle">' + esc(t.name) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><ul class="results use-menu">' +
+      (has && !today_ ? opt(f ? 'data-add-today="' + id + '"' : 'data-start="' + id + '"', '▶', f ? 'Add to today' : 'Start today', f ? 'After what you’re already doing' : 'Follow it on the Log tab') : '') +
+      (has ? opt('data-use-sched="' + id + '"', '📅', 'Schedule', isBlock(t) ? 'Put it on a day' : 'Every week, or just once on a day') : '') +
+      (isMine(t) ? opt('data-design="' + id + '"', '✎', 'Edit', 'Steps, sets, reps, weight') : '') +
+      (isBlock(t) && has ? opt('data-from-block="' + id + '"', '＋', 'New workout from it', 'Linked: change the block and the workout changes too') : '') +
+      (!isMine(t) && !isBlock(t) ? (sub ? opt('data-unsub="' + esc(sub.id) + '"', '✕', 'Unsubscribe', 'Take it off your list') : opt('data-sub="' + id + '"', '★', 'Subscribe', 'Keep it on your list; it follows ' + ownerName(t) + '’s edits')) : '') +
+      opt('data-copy="' + id + '"', '⧉', isMine(t) ? 'Duplicate' : 'Make my own copy', isMine(t) ? 'A copy to change' : 'Yours to change; their edits won’t reach it') +
+      (t.is_shared || !isMine(t) ? opt('data-link="r-' + id + '"', '🔗', 'Copy link', 'Send it to someone in the crew') : '') +
+    '</ul></div>';
+  openSheet();
+}
+function useClick(b) {
+  if (b.dataset.useSched) return openScheduleSheet(b.dataset.useSched);
+  if (b.dataset.design) return openDesigner(b.dataset.design);
+  sheet.close();
+  if (b.dataset.fromBlock) workoutFromBlock(b.dataset.fromBlock, b);
+  else if (b.dataset.sub) subscribeTo(b.dataset.sub, b);
+  else if (b.dataset.unsub) unsubscribeFrom(b.dataset.unsub, b);
+  else if (b.dataset.copy) copyRoutine(b.dataset.copy, b);
+  else if (b.dataset.link) copyLink(b.dataset.link);
+}
+// The coming days: workouts put on a date after today.
+function comingRows() {
+  return (S.wdays || []).filter(d => d.on_date > today() && tplById(d.template_id)).slice(0, 10).map(d => {
     const t = tplById(d.template_id);
     return '<div class="row day-row"><span><b>' + esc(dayLabel(d.on_date)) + '</b> · ' + esc(t.name) + '</span><span>' +
-      (d.on_date === today() ? '<button class="btn primary sm" data-start="' + esc(t.id) + '">Start</button>' : '') +
       '<button class="iconbtn sm" data-unday="' + esc(d.id) + '" aria-label="Take ' + esc(t.name) + ' off ' + esc(dayLabel(d.on_date)) + '">✕</button></span></div>';
-  }).join('') + '</section>';
+  }).join('');
 }
 function dayCard() {
   if (following()) return '';
@@ -1641,7 +1711,8 @@ function drawSchedule() {
   const later = (S.wdays || []).filter(x => x.template_id === SD.id && x.on_date > days[days.length - 1]);
   inner.innerHTML =
     '<div class="sheet-head"><div><small class="muted">Schedule</small><h2 id="sheetTitle">' + esc(t.name) + '</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
-    '<div class="sheet-body"><p class="hint-line" style="margin-top:0">Tap the days you’ll do it. On the day it’s waiting at the top of Log, ready to follow.</p>' +
+    '<div class="sheet-body"><p class="hint-line" style="margin-top:0">On the day it’s waiting at the top of Log, ready to follow.</p>' +
+      (isBlock(t) ? '' : weekPickHtml(t.id, 'Every week') + '<div class="field-label" style="margin-top:14px"><span>Just once</span></div>') +
       '<div class="cal">' + days.map(d => {
         const dt = L.parseDate(d);
         return '<button type="button" data-sched-day="' + d + '" aria-pressed="' + !!on(d) + '"><small>' + (d === today() ? 'Today' : dt.toLocaleDateString('en-US', { weekday: 'short' })) + '</small><b>' + dt.getDate() + '</b></button>';
@@ -1652,6 +1723,7 @@ function drawSchedule() {
     '</div>';
 }
 async function schedClick(b) {
+  if (b.dataset.weekDay != null) return toggleWeekDay(Number(b.dataset.weekDay), b, SD.id, drawSchedule);
   const d = b.dataset.schedDay || (b.id === 'schedAdd' ? $('schedDate').value : null);
   if (!d) return;
   const have = (S.wdays || []).find(x => x.template_id === SD.id && x.on_date === d);
@@ -1681,7 +1753,7 @@ async function copyRoutine(id, btn) {
     S.templates.push(t);
     const keepLinks = isMine(src) && !isBlock(src);
     await putItems((keepLinks ? rawItems(id) : routineItems(id)).map((it, i) => ({ template_id: t.id, exercise_id: it.block_id ? null : it.exercise_id, block_id: it.block_id || null,
-      position: Math.min(100, i + 1), sets: it.sets, reps: it.reps, load_mode: it.load_mode, load_value: it.load_value, unit: it.unit,
+      position: Math.min(100, i + 1), sets: it.sets, reps: it.reps, ...loadFor(it), unit: it.unit,
       rest_s: it.rest_s ?? null, note: it.note ?? null, with_next: !!it.with_next })).filter(r => r.exercise_id || r.block_id));
     toast('Copied. This one’s yours to change.');
     openDesigner(t.id);
@@ -1760,6 +1832,9 @@ function drawItems() {
   $('rtItems').innerHTML = list.length ? list.map((it, i) => (it.block_id ? linkRow(it) : itemRow(it, i === list.length - 1))).join('')
     : '<li class="empty-steps"><b>Nothing in it yet.</b><br>Add exercises from the library, or drop in a block you’ve already built. Sets, reps and weight start from what each person usually does.</li>';
   $('rtStart').disabled = !list.length;
+  // The big add tiles help an empty workout get going; after that the bar at the bottom does the job.
+  const tiles = inner.querySelector('.add-tiles');
+  if (tiles) tiles.hidden = !!list.length;
   drawWeek();
   if (D.wide) drawPanel();
   $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
@@ -1772,13 +1847,18 @@ function drawWeek() {
   const box = $('rtWeek'), t = tplById(D.id);
   if (!box) return;
   if (!t || isBlock(t)) { box.innerHTML = ''; return; }
-  const c = coreNow(), row = c ? planFor(c.id).find(p => p.template_id === t.id) : null, mask = row ? row.weekdays || 0 : 0;
-  const taken = d => c && planFor(c.id).find(p => p.template_id !== t.id && p.weekdays & (1 << d) && tplById(p.template_id));
-  box.innerHTML = '<div class="week-pick"><span class="field-label" style="margin:0"><span>On my week</span></span><div class="week-days" role="group" aria-label="Days this workout is on">' +
+  box.innerHTML = weekPickHtml(t.id, 'On my week');
+}
+// Mo Tu We… buttons for the weekly days a workout is on (your week). A dot marks a day another
+// workout has; picking it moves that day to this one.
+function weekPickHtml(tid, label) {
+  const c = coreNow(), row = c ? planFor(c.id).find(p => p.template_id === tid) : null, mask = row ? row.weekdays || 0 : 0;
+  const taken = d => c && planFor(c.id).find(p => p.template_id !== tid && p.weekdays & (1 << d) && tplById(p.template_id));
+  return '<div class="week-pick"><span class="field-label" style="margin:0"><span>' + esc(label) + '</span></span><div class="week-days" role="group" aria-label="Days this workout is on every week">' +
     WEEK_ORDER.map(d => { const o = taken(d); return '<button type="button" data-week-day="' + d + '" aria-pressed="' + !!(mask & (1 << d)) + '" title="' + esc(DAY_NAMES[d] + (o ? ': now ' + tplById(o.template_id).name : '')) + '">' + DAY_NAMES[d].slice(0, 2) + (o && !(mask & (1 << d)) ? '<i></i>' : '') + '</button>'; }).join('') + '</div></div>';
 }
-async function toggleWeekDay(d, b) {
-  const t = tplById(D.id), bit = 1 << d;
+async function toggleWeekDay(d, b, tid = D.id, redraw = drawWeek) {
+  const t = tplById(tid), bit = 1 << d;
   b.disabled = true;
   try {
     const c = await ensureCore(), row = planFor(c.id).find(p => p.template_id === t.id);
@@ -1793,7 +1873,7 @@ async function toggleWeekDay(d, b) {
     }
     vibrate(5);
   } catch (x) { fail(x); }
-  drawWeek();
+  redraw();
 }
 // Wide screens: the library sits beside the workout. Click + to add to the end, or drag onto the list.
 function drawPanel() {
@@ -1809,7 +1889,7 @@ function drawPanel() {
       '<ul class="panel-list">' + (blocks.length ? blocks.map(t => '<li draggable="true" data-drag-block="' + esc(t.id) + '"><span class="lib-name"><b>⛓ ' + esc(t.name) + '</b><small class="lib-sub">' +
         esc(routineItems(t.id).map(it => shortName(it.exercise_id)).slice(0, 3).join(', ') + (isMine(t) ? '' : ' · by ' + ownerName(t))) + '</small></span>' +
         '<button type="button" class="iconbtn sm" data-panel-link="' + esc(t.id) + '" aria-label="Add ' + esc(t.name) + '">＋</button></li>').join('')
-        : '<li class="muted">No blocks yet. Select steps in a workout and save them as a block, or make one on Rites.</li>') + '</ul>';
+        : '<li class="muted">No blocks yet. Select steps in a workout and save them as a block, or make one on the Routines tab.</li>') + '</ul>';
     return;
   }
   const list = libList({ ...f, sort: 'used' }).slice(0, 120);
@@ -1875,7 +1955,7 @@ inner.addEventListener('drop', async e => {
 // One line per step; tap it to open big controls for that step (one open at a time).
 function itemSummary(it) {
   const g = suggestFor(it);
-  return stepText(it) + (g.weight != null ? ' · you: ' + loadText(g) : '');
+  return stepText(it) + (g.weight != null && !(it.load_mode === 'fixed' && ownStep(it)) ? ' · you: ' + loadText(g) : '');
 }
 // A linked block in a workout: one row you can open to see its steps, edit the block, or unlink it.
 function linkRow(it) {
@@ -1902,13 +1982,17 @@ function itemRow(it, last) {
     (open ?
       '<div class="item-edit">' +
         '<div class="two">' + bigStep('Sets', 'sets', it.sets) + bigStep('Reps', 'reps', it.reps) + '</div>' +
-        '<div class="field-label"><span>Weight</span><span class="seg" role="group" aria-label="Weight rule">' + [['last', 'Your last'], ['progress', '+ when hit'], ['pct', '% of best']].map(([k, l]) =>
-          '<button type="button" data-loadmode="' + k + '" aria-pressed="' + ((it.load_mode === 'percent_1rm' ? 'pct' : it.load_mode) === k) + '">' + l + '</button>').join('') + '</span></div>' +
+        '<div class="field-label"><span>Weight</span></div><div class="seg seg-wrap" role="group" aria-label="Weight rule">' + [['last', 'Your last'], ['fixed', 'Set weight'], ['progress', 'Go up'], ['pct', '% of best']].map(([k, l]) =>
+          '<button type="button" data-loadmode="' + k + '" aria-pressed="' + ((it.load_mode === 'percent_1rm' ? 'pct' : it.load_mode) === k) + '">' + l + '</button>').join('') + '</div>' +
         (it.load_mode === 'percent_1rm' ? bigStep('% of each person’s best 1-rep max', 'load_value', L.fmtLoad(it.load_value), true)
-          : it.load_mode === 'progress' ? bigStep('Add (' + it.unit + ') after a session with every rep hit', 'load_value', L.fmtLoad(it.load_value), true) : '') +
+          : it.load_mode === 'progress' ? bigStep('Add (' + it.unit + ') after a session with every rep hit', 'load_value', L.fmtLoad(it.load_value), true)
+          : it.load_mode === 'fixed' ? bigStep('Weight (' + it.unit + ')', 'load_value', L.fmtLoad(it.load_value), true) : '') +
         '<p class="hint-line" data-pct-hint>' + esc(ruleHint(it)) + '</p>' +
         '<input class="plain-input step-note" data-note-for="' + esc(it.id) + '" maxlength="200" placeholder="Note for this step (optional)" value="' + esc(it.note || '') + '" aria-label="Note for this step">' +
-        bigStep('Rest between sets (seconds)', 'rest_s', it.rest_s == null ? '' : it.rest_s, true) +
+        '<div class="field-label"><span>Rest between sets</span><small>starts by itself after each set</small></div>' +
+        '<div class="seg seg-wrap" role="group" aria-label="Rest between sets">' + [[null, 'Off'], [60, '1:00'], [90, '1:30'], [120, '2:00'], [180, '3:00'], [240, '4:00']].map(([v, l]) =>
+          '<button type="button" data-rest-set="' + (v || '') + '" aria-pressed="' + ((it.rest_s || null) === v) + '">' + l + '</button>').join('') +
+          (it.rest_s && ![60, 90, 120, 180, 240].includes(Number(it.rest_s)) ? '<button type="button" aria-pressed="true" disabled>' + restLabel(Number(it.rest_s)) + '</button>' : '') + '</div>' +
         '<div class="item-actions"><button type="button" data-swap>⇄ Swap</button>' +
           (last ? '' : '<button type="button" data-pair aria-pressed="' + !!it.with_next + '">' + (it.with_next ? '✓ Superset with next' : '⇅ Superset with next') + '</button>') +
           '<button type="button" data-dup>⧉ Duplicate</button><button type="button" class="danger" data-remove-item="' + esc(it.id) + '">✕ Remove</button></div>' +
@@ -1919,6 +2003,7 @@ function ruleHint(it) {
   const g = suggestFor(it);
   const base = it.load_mode === 'percent_1rm' ? 'Each person gets this percent of their own best.'
     : it.load_mode === 'progress' ? 'Each person starts from their own last weight and adds this after a session where they hit every rep.'
+    : it.load_mode === 'fixed' ? 'This weight is for you. Anyone else following uses their own last weight.'
     : 'Each person uses their own last weight for this lift.';
   return base + ' You: ' + (g.weight != null ? loadText(g) + ' (' + g.why + ').' : g.why + '.');
 }
@@ -1930,7 +2015,8 @@ function bigStep(label, field, value, wide) {
 }
 const ITEM_BOUNDS = { sets: [1, 20], reps: [1, 100], rest_s: [0, 900] };
 function clampItem(it, field, v) {
-  if (field === 'load_value') return it.load_mode === 'percent_1rm' ? Math.min(150, Math.max(1, v)) : it.load_mode === 'progress' ? Math.min(50, Math.max(0.5, v)) : 0;
+  if (field === 'load_value') return it.load_mode === 'percent_1rm' ? Math.min(150, Math.max(1, v)) : it.load_mode === 'progress' ? Math.min(50, Math.max(0.5, v))
+    : it.load_mode === 'fixed' ? Math.min(2000, Math.max(0, v)) : 0;
   const [lo, hi] = ITEM_BOUNDS[field];
   return Math.min(hi, Math.max(lo, Math.round(v)));
 }
@@ -2190,7 +2276,7 @@ async function designerClick(b) {
   }
   if (b.dataset.stepField) {
     const f = b.dataset.stepField, d = Number(b.dataset.d);
-    const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' ? 5 : 2.5) : f === 'rest_s' ? 15 : 1;
+    const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' || (it.load_mode === 'fixed' && it.unit === 'lb') ? 5 : 2.5) : f === 'rest_s' ? 15 : 1;
     queueItem(id, { [f]: clampItem(it, f, Number(it[f]) + d * step) });
     refreshItemView(id); vibrate(5);
     return;
@@ -2199,8 +2285,14 @@ async function designerClick(b) {
     const k = b.dataset.loadmode;
     if (k === 'pct') queueItem(id, { load_mode: 'percent_1rm', load_value: it.load_mode === 'percent_1rm' ? it.load_value : 75 });
     else if (k === 'progress') queueItem(id, { load_mode: 'progress', load_value: it.load_mode === 'progress' ? it.load_value : (it.unit === 'kg' ? 2.5 : 5) });
+    else if (k === 'fixed') { const g = suggestFor(it); queueItem(id, { load_mode: 'fixed', load_value: it.load_mode === 'fixed' ? it.load_value : g.weight != null ? Math.min(2000, g.weight) : 0, unit: g.unit || it.unit }); }
     else queueItem(id, { load_mode: 'last', load_value: 0 });
     redrawItem(id);
+    return;
+  }
+  if (b.dataset.restSet != null) {
+    queueItem(id, { rest_s: b.dataset.restSet ? Number(b.dataset.restSet) : null });
+    redrawItem(id); vibrate(5);
   }
 }
 
@@ -2463,14 +2555,18 @@ function goalsCard() {
     (goals.length ? goals.map(g => goalLine(g, m, { season: c })).join('')
       : '<p class="muted" style="margin:0">Set a goal for the year: show up 150 times, move 2 million lb, or hit a number on a lift.</p>') + '</section>';
 }
+// The one home for your week, at the top of Routines: today, the coming days, and what repeats.
+// Each routine's More › Schedule changes it too, as does the calendar and the builder's week days.
 function weekCard() {
   const c = coreNow(), plan = c ? planFor(c.id).filter(p => tplById(p.template_id)) : [];
   const days = p => (p.weekdays ? [1, 2, 3, 4, 5, 6, 0].filter(d => p.weekdays & (1 << d)).map(d => DAY_NAMES[d].slice(0, 3)).join(' · ') : 'takes turns');
-  return '<section class="card"><div class="card-head"><h3 class="card-title">Your week</h3>' +
+  const now = todayList().map(todayRow).join(''), ahead = comingRows();
+  return '<section class="card week-home"><div class="card-head"><h3 class="card-title">Your week</h3>' +
       '<button class="btn sm" data-core-edit>' + (plan.length ? 'Edit' : '+ Plan it') + '</button></div>' +
-    (plan.length ? '<div class="week-list">' + plan.map(p => '<div class="row"><b>' + esc(tplById(p.template_id).name) + '</b><span class="muted">' + esc(days(p)) + '</span></div>').join('') + '</div>' +
-        '<p class="hint-line">The Log tab suggests today’s.</p>'
-      : '<p class="muted" style="margin:0">Put routines on days (Push on Mondays) or let them take turns, and the Log tab suggests today’s.</p>') + '</section>';
+    now + ahead +
+    (plan.length ? (now || ahead ? '<div class="field-label" style="margin-top:12px"><span>Every week</span></div>' : '') +
+        '<div class="week-list">' + plan.map(p => '<div class="row"><b>' + esc(tplById(p.template_id).name) + '</b><span class="muted">' + esc(days(p)) + '</span></div>').join('') + '</div>'
+      : '<p class="muted" style="margin:' + (now || ahead ? '10px' : '0') + ' 0 0">Put routines on days (Push on Mondays) or let them take turns, and the Log tab suggests today’s. Or use <b>More › Schedule</b> on any routine.</p>') + '</section>';
 }
 
 function openSeasonSheet(id) {
@@ -2630,10 +2726,10 @@ function calendarCard() {
   const cardio = new Set((S.cardio || []).map(r => r.performed_on));
   const prs = new Set((S.bestRows || []).map(r => r.first_lifted_on));   // a day with a new best goes gold
   const cells = [];
-  for (let i = 0; i < first.getDay(); i++) cells.push('<span></span>');
+  for (let i = 0; i < (first.getDay() + 6) % 7; i++) cells.push('<span></span>');   // weeks start on Monday
   for (let d = 1; d <= daysIn; d++) {
     const iso = y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-    const sched = (S.wdays || []).some(w => w.on_date === iso), plan = iso >= today() && planOn(iso).length;
+    const sched = (S.wdays || []).some(w => w.on_date === iso), plan = iso === today() ? todayList().length : iso > today() && planOn(iso).length;
     const lift = logged.has(iso), run = cardio.has(iso), pr = lift && prs.has(iso);
     const cls = [lift || run ? 'done' : '', pr ? 'pr' : '', sched || plan ? 'planned' : '', iso === today() ? 'today' : '', iso === S.cal.day ? 'sel' : ''].filter(Boolean).join(' ');
     cells.push('<button class="' + cls + '" data-cal-day="' + iso + '" aria-pressed="' + (iso === S.cal.day) + '" aria-label="' + esc(fmtDay(iso, { weekday: 'long', month: 'long', day: 'numeric' })) +
@@ -2642,7 +2738,7 @@ function calendarCard() {
   }
   return '<section class="card cal-card"><div class="row"><button class="iconbtn" data-cal-move="-1" aria-label="Previous month">‹</button>' +
     '<h2>' + esc(first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })) + '</h2><button class="iconbtn" data-cal-move="1" aria-label="Next month">›</button></div>' +
-    '<div class="cal-grid cal-head">' + ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => '<span>' + x + '</span>').join('') + '</div>' +
+    '<div class="cal-grid cal-head">' + ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => '<span>' + x + '</span>').join('') + '</div>' +
     '<div class="cal-grid">' + cells.join('') + '</div>' +
     '<p class="cal-key"><span>🏋️ lifted</span><span>🏃 cardio</span><span><i class="k-pr"></i> PR</span><span><i class="k-plan"></i> planned</span></p></section>' + calDayDetail();
 }
@@ -2651,7 +2747,13 @@ function calDayDetail() {
   const sched = (S.wdays || []).filter(w => w.on_date === d && tplById(w.template_id));
   const plan = d >= today() ? planOn(d).filter(p => !sched.some(w => w.template_id === p.template_id)) : [];
   let html = '<section class="card cal-day"><h3>' + esc(d === today() ? 'Today' : fmtDay(d, { weekday: 'long', month: 'long', day: 'numeric' })) + '</h3>';
-  if (row) html += '<p class="hint-line">' + row.sets + ' sets · ' + esc(volText({ lb: Number(row.volume_lb), kg: Number(row.volume_kg) })) + '</p>' + dayBody(d);
+  if (row) html += '<p class="hint-line">' + row.sets + ' sets · ' + esc(volLabel(row)) + '</p>' + dayBody(d);
+  if (d === today()) {   // today: the same list the Log tab and Routines show
+    const now = todayList();
+    html += now.map(todayRow).join('');
+    if (!row && !now.length) html += '<p class="muted" style="margin:6px 0 0">Nothing planned yet.</p>';
+    return html + '<button class="btn" style="margin-top:12px" data-cal-schedule="' + d + '">📅 Put a workout on this day</button></section>';
+  }
   for (const w of sched) html += '<div class="row day-row"><span>📅 ' + esc(tplById(w.template_id).name) + '</span><span>' +
     (d === today() ? '<button class="btn primary sm" data-start="' + esc(w.template_id) + '">Start</button>' : '') +
     '<button class="iconbtn sm" data-unday="' + esc(w.id) + '" aria-label="Take it off this day">✕</button></span></div>';
@@ -2699,14 +2801,23 @@ function renderHistory() {
   if (!S.cal) S.cal = { month: today().slice(0, 7), day: today() };
   const days = S.days.filter(d => d.sets > 0);
   let html = calendarCard() + '<h2 class="month" style="margin-top:26px">Recent days</h2>', month = '';
+  // Which of your workouts each recent day was (the one its lifts cover best), so the list reads "Push day".
+  const rot = S.templates.filter(t => !isBlock(t) && (isMine(t) || subFor(t.id)) && routineItems(t.id).length).map(t => ({ template_id: t.id }));
+  const wk = {};
+  for (const d of days.slice(0, S.historyLimit)) {
+    if (d.performed_on < L.addDays(today(), -RECENT_DAYS)) break;
+    const i = matchRoutine(rot, d.performed_on);
+    if (i >= 0) wk[d.performed_on] = tplById(rot[i].template_id).name;
+  }
   if (!days.length) html += '<section class="card empty"><p class="muted" style="margin:0">Your days show up here once you’ve logged a set.</p></section>';
   for (const d of days.slice(0, S.historyLimit)) {
     const m = fmtDay(d.performed_on, { month: 'long', year: 'numeric' });
     if (m !== month) { html += '<h3 class="section-title">' + esc(m) + '</h3>'; month = m; }
     const open = S.open.has(d.performed_on);
     html += '<section class="card day"><button data-day="' + d.performed_on + '" aria-expanded="' + open + '">' +
-      '<span><span class="when">' + esc(d.performed_on === today() ? 'Today' : fmtDay(d.performed_on)) + '</span><br><span class="meta">' + d.sets + ' sets · ' + d.exercises + ' exercise' + (d.exercises == 1 ? '' : 's') + '</span></span>' +
-      '<span class="vol">' + esc(volText({ lb: Number(d.volume_lb), kg: Number(d.volume_kg) })) + '</span></button>' +
+      '<span><span class="when">' + esc(d.performed_on === today() ? 'Today' : fmtDay(d.performed_on)) + '</span>' + (wk[d.performed_on] ? ' <span class="day-wk">· ' + esc(wk[d.performed_on]) + '</span>' : '') +
+        '<br><span class="meta">' + d.sets + ' sets · ' + d.exercises + ' exercise' + (d.exercises == 1 ? '' : 's') + '</span></span>' +
+      '<span class="vol">' + esc(volLabel(d)) + '</span></button>' +
       (open ? '<div class="body">' + dayBody(d.performed_on) + '</div>' : '') + '</section>';
   }
   if (days.length > S.historyLimit) html += '<button class="btn block" style="margin-top:14px" id="moreDays">Show older days</button>';
@@ -3088,7 +3199,7 @@ const progWorkoutText = w => w.steps.map(s => exName(s.exercise_id) + ' ' + s.se
 // Snapshot a routine as a program workout.
 function snapRoutine(t) {
   return { key: 'w' + Math.random().toString(36).slice(2, 8), name: t.name.slice(0, 60),
-    steps: routineItems(t.id).map(it => ({ exercise_id: it.exercise_id, sets: it.sets, reps: it.reps, load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s, note: it.note || null })) };
+    steps: routineItems(t.id).map(it => ({ exercise_id: it.exercise_id, sets: it.sets, reps: it.reps, ...loadFor(it, true), unit: it.unit, rest_s: it.rest_s, note: it.note || null })) };
 }
 // About how long a session takes, and how many working sets: for the "is this sensible?" line.
 function sessionSize(w) {
@@ -3377,6 +3488,16 @@ function tickRest() {
   el.querySelector('#restTime').textContent = 'Rest ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
 }
 function stopRest() { clearInterval(REST.timer); if (REST.el) REST.el.hidden = true; }
+// After a set from a routine step: start the step's own rest, unless the routine is all done.
+// Steps without a rest time leave it to you. Returns whether a timer started.
+function restAfterStep(it) {
+  const f = following();
+  if (!it || !(Number(it.rest_s) > 0) || !f || !nextItemOf(f.items)) return false;
+  // In a superset you go straight to the partner lift; the rest comes after the last one in the run.
+  if (it.with_next) return false;
+  startRest(Number(it.rest_s));
+  return true;
+}
 
 // ===========================================================================
 // Seasons: achievements and head-to-heads inside a stretch of dates
@@ -4065,7 +4186,7 @@ function openNewChooser() {
   const opt = (key, icon, title, sub) => '<li><button data-new-kind="' + key + '" class="new-opt"><span class="new-icon">' + icon + '</span><span><b>' + title + '</b><small>' + sub + '</small></span></button></li>';
   inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">What are you making?</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><ul class="results new-list">' +
-      opt('workout', '🏋️', 'A workout', 'What you do on a day. Type it, tick exercises, or stack blocks.') +
+      opt('workout', '🏋️', 'A workout', 'What you do on a day. Pick exercises from the library, or drop in blocks.') +
       opt('generate', '🎲', 'Generate a workout', 'Pick push, pull, legs, upper, lower or full body; it builds one from your lifts.') +
       opt('season', '🏆', 'A season', 'Some dates and some people. Everyone picks their own program, or none.') +
       opt('program', '📚', 'A program', 'Workouts on a weekly schedule. Share it, and the crew can add it to their week.') +

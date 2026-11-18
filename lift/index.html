@@ -105,6 +105,12 @@
   .hero { padding: 18px; }
   .hero .date { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
   .hero h1 { font-size: 40px; font-weight: 800; margin-top: 4px; }
+  .hero.compact { padding: 20px 16px 12px; }
+  .hero.compact .date { font-size: 12px; }
+  .hero-line { margin: 4px 0 0; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hero-line b { color: var(--ink); font-weight: 700; }
+  .hero.compact .counts, .hero.compact .sess-clock { margin-top: 4px; font-size: 13.5px; }
+  .hero.compact .finish-btn { margin-top: 10px; padding: 10px 14px; }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
   .stat b { display: block; font-family: var(--display); font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .stat small { color: var(--muted); font-size: 12.5px; font-weight: 600; letter-spacing: .02em; }
@@ -784,6 +790,8 @@
     #view > .hero { grid-column: span 7; }
     #view > .hero:only-of-type, #view > .seg + .hero { grid-column: 1 / -1; }
     #view > .hero + .plan-card, #view > .hero + .follow, #view > .hero + .card.empty, #view > .hero + .weekly { grid-column: span 5; }
+    /* Following a routine: the short day line runs across the top and the steps get the width. */
+    #view > .hero.compact, #view > .hero.compact + .follow { grid-column: 1 / -1; }
     #view > .wins { grid-column: span 7; }
     #view > .quests { grid-column: span 5; }
     #view > .plan-card + .plan-card { grid-column: span 5; }
@@ -846,8 +854,13 @@
   #toast { position: fixed; z-index: 20; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s; background: var(--ink); color: var(--bg); border-radius: 14px; padding: 11px 12px 11px 16px; display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow); width: max-content; max-width: calc(100vw - 32px); font-weight: 600; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
   #toast button { border: 0; background: color-mix(in srgb, var(--bg) 18%, transparent); color: var(--bg); border-radius: 10px; padding: 6px 12px; font-weight: 700; }
-  dialog #toast { top: calc(16px + env(safe-area-inset-top)); bottom: auto; transform: translate(-50%, -20px); }
-  dialog #toast.show { transform: translate(-50%, 0); }
+  /* In a sheet the toast sits above the sheet's bottom bar, clear of its title. */
+  dialog #toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .add-tiles[hidden] { display: none; }
+  .seg.seg-wrap { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; margin: 6px 0 4px; }
+  .seg.seg-wrap button { padding: 8px 4px; font-size: 13.5px; white-space: nowrap; }
+  .day-wk { color: var(--muted); font-weight: 600; }
+  .week-home .day-row + .field-label { margin-top: 12px; }
 
   /* ---------- sign in ---------- */
   .gate { max-width: 400px; margin: 0 auto; padding: calc(48px + env(safe-area-inset-top)) 20px 40px; }
