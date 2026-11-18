@@ -898,6 +898,7 @@ const LG = { mode: 'pick', exId: null, editing: null };
 // Sheets with something to type in (search, routine editor, seasons) open full height,
 // so the text box sits at the top instead of down where the phone keyboard pops up.
 function openSheet() {
+  if (LG.mode !== 'design') sheet.querySelector('.sheet').classList.remove('wide');
   sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk', 'wizard', 'progdesign', 'seasonstart', 'seasonprog'].includes(LG.mode));
   if (!sheet.open) sheet.showModal();
 }
@@ -1167,7 +1168,7 @@ function refreshLoggerList() {
   LG.next = null;
   if (f && LG.item) {
     const working = sets.filter(s => s.is_warmup !== true).length;
-    const nextItem = f.items.find(it => it.id !== LG.item.id && stepDone(it) < it.sets);
+    const nextItem = nextItemOf(f.items, LG.item.id);
     // Step done: the big button moves on (to the next step, or to finishing), and one more set is a small link.
     if (working >= LG.item.sets) {
       LG.next = nextItem ? { id: nextItem.id, label: 'Next: ' + exName(nextItem.exercise_id) + ' →' } : { finish: true, label: T.finish };
@@ -1311,9 +1312,57 @@ async function addExercise(name, btn) {
 // ===========================================================================
 function setRoutines(r) {
   S.templates = r.templates; S.items = r.items; S.subs = r.subs;
-  S.itemsById = new Map(r.items.map(i => [i.id, i]));
+  S.itemsById = new ItemMap(r.items.map(i => [i.id, i]));
 }
-const routineItems = id => S.items.filter(i => i.template_id === id).sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)));
+// A routine's rows, as stored. A row is an exercise, or (in a workout) a link to a block.
+const rawItems = id => S.items.filter(i => i.template_id === id).sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)));
+// A linked block's steps, standing in for the link: ids are "<link id>~<block step id>", so
+// following, logging and counting work as if they were the workout's own. Edits go to the block.
+function linkedSteps(ref) {
+  if (!tplById(ref.block_id)) return [];   // deleted, or no longer shared with you
+  const list = rawItems(ref.block_id).filter(b => !b.block_id);
+  return list.map((b, k) => ({ ...b, id: ref.id + '~' + b.id, template_id: ref.template_id, position: ref.position, _ref: ref.id, _block: ref.block_id, with_next: !!b.with_next && k < list.length - 1 }));
+}
+// The steps you do, in order, with linked blocks opened out.
+const routineItems = id => rawItems(id).flatMap(it => (it.block_id ? linkedSteps(it) : [it]));
+// itemsById also finds a linked block's steps by their "<link>~<step>" id.
+class ItemMap extends Map {
+  get(id) {
+    const v = super.get(id);
+    if (v || typeof id !== 'string' || !id.includes('~')) return v;
+    const ref = super.get(id.split('~')[0]);
+    return ref && ref.block_id ? linkedSteps(ref).find(x => x.id === id) : undefined;
+  }
+}
+const linksTo = blockId => S.items.filter(i => i.block_id === blockId);
+const usedInCount = blockId => new Set(linksTo(blockId).map(i => i.template_id)).size;
+// Supersets: a step with with_next is done back and forth with the step after it (in the same
+// routine part). groupOf gives the run a step belongs to; ssLabels names the runs A1, A2, B1…
+function groupRuns(items) {
+  const runs = [];
+  for (let i = 0; i < items.length; i++) {
+    const run = [items[i]];
+    while (items[i].with_next && i + 1 < items.length && !items[i].block_id && !items[i + 1].block_id &&
+      items[i + 1].template_id === items[i].template_id && (items[i + 1]._ref || null) === (items[i]._ref || null)) run.push(items[++i]);
+    runs.push(run);
+  }
+  return runs;
+}
+function ssLabels(items) {
+  const out = new Map();
+  let letter = 0;
+  for (const run of groupRuns(items)) if (run.length > 1) { const L1 = String.fromCharCode(65 + (letter++ % 26)); run.forEach((it, k) => out.set(it.id, L1 + (k + 1))); }
+  return out;
+}
+// The step to do next: the first unfinished one, and inside a superset whichever has the fewest
+// sets done (so you go back and forth). skip: a step to leave out (the one you just finished).
+function nextItemOf(items, skip) {
+  const left = it => stepDone(it) < it.sets && (!skip || it.id !== skip);
+  const first = items.find(left);
+  if (!first) return null;
+  const run = groupRuns(items).find(r => r.includes(first)).filter(left);
+  return run.reduce((a, b) => (stepDone(b) < stepDone(a) ? b : a), run[0]);
+}
 const isMine = t => t.created_by === S.myId;
 const isBlock = t => t.kind === 'block';
 const ownerName = t => (isMine(t) ? 'you' : S.names.get(t.created_by) || 'a friend');
@@ -1382,7 +1431,7 @@ function followCard() {
   const f = following();
   if (!f) return '';
   prefetchLast(f.items.map(it => it.exercise_id));
-  const nextIdx = f.items.findIndex(it => stepDone(it) < it.sets);
+  const nx = nextItemOf(f.items), nextIdx = nx ? f.items.indexOf(nx) : -1, labels = ssLabels(f.items);
   const done = f.items.filter(it => stepDone(it) >= it.sets).length;
   const multi = f.templates.length > 1, firstOf = new Map(f.templates.map(t => [routineItems(t.id)[0].id, t]));
   return '<section class="card follow"><div class="row"><div><div class="date">Today’s routine</div><h2>' + esc(f.template.name) + '</h2></div>' +
@@ -1395,8 +1444,9 @@ function followCard() {
       const d = stepDone(it), full = d >= it.sets;
       const tg = full ? null : suggestFor(it);
       const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log ' + (it.sets - d) + ' × ' + tg.reps + ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit + ', as planned">✓</button>' : '';
-      return head + '<li class="step-row"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
-        '<span class="tick" aria-hidden="true">' + (full ? '✓' : i + 1) + '</span>' +
+      const ss = labels.get(it.id);
+      return head + '<li class="step-row' + (ss ? ' ss' + (ss.endsWith('1') ? ' ss-first' : '') : '') + '"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
+        '<span class="tick" aria-hidden="true">' + (full ? '✓' : ss || i + 1) + '</span>' +
         '<span class="what"><b>' + esc(exName(it.exercise_id)) + '</b><small>' + esc(myStepText(it)) + '</small></span>' +
         '<span class="count num">' + Math.min(d, it.sets) + '/' + it.sets + '</span></button>' + quick + '</li>';
     }).join('') + '</ol>' +
@@ -1504,9 +1554,39 @@ async function newRoutine(btn, kind) {
   } catch (x) { fail(x); } finally { if (btn) btn.disabled = false; }
 }
 async function copySteps(fromIds, tid) {
-  let pos = Math.max(0, ...routineItems(tid).map(i => i.position));
+  let pos = Math.max(0, ...rawItems(tid).map(i => i.position));
   await putItems(fromIds.map(id => S.itemsById.get(id)).filter(Boolean).map(src => ({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
-    load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null })));
+    load_mode: src.load_mode, load_value: src.load_value, unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null, with_next: !!src.with_next })));
+}
+// Link a block into a workout (at the end, or at a position): it stays one block, so changing the
+// block changes it here too. Sharing the workout shares your block with it, so the crew can see it.
+async function linkBlock(blockId, tid, at) {
+  const w = tplById(tid), blk = tplById(blockId);
+  if (!w || !blk || isBlock(w)) return copySteps(routineItems(blockId).map(i => i.id), tid);
+  if (w.is_shared && isMine(blk) && !blk.is_shared) { await store.updateRoutine(blk.id, { is_shared: true }); blk.is_shared = true; }
+  const rows = rawItems(tid);
+  const pos = at == null ? Math.max(0, ...rows.map(i => i.position)) + 1 : at;
+  if (at != null) await shiftFrom(tid, at);
+  await putItems([{ template_id: tid, block_id: blockId, exercise_id: null, position: Math.min(100, pos), sets: 1, reps: 1, load_mode: 'last', load_value: 0, unit: 'lb' }]);
+}
+// Make room at a position: every row from there on moves down one.
+async function shiftFrom(tid, at) {
+  await Promise.all(rawItems(tid).filter(x => x.position >= at).map(later => store.updateItem(later.id, { position: Math.min(100, later.position + 1) }).then(r => Object.assign(later, r))));
+}
+// Unlink: the block's steps are copied into the workout where the link was, so you can change
+// them here without changing the block.
+async function unlinkBlock(refId) {
+  const ref = S.itemsById.get(refId);
+  if (!ref || !ref.block_id) return;
+  const steps = linkedSteps(ref), tid = ref.template_id;
+  const rows = rawItems(tid), after = rows.filter(x => x.position > ref.position);
+  if (rows.length - 1 + steps.length > 100) return toast('That would be more than 100 steps.');
+  // Renumber: everything after the link moves down to make room for the copied steps.
+  await Promise.all(after.map((x, k) => store.updateItem(x.id, { position: Math.min(100, ref.position + steps.length + k) }).then(r => Object.assign(x, r))));
+  await putItems(steps.map((b, k) => ({ template_id: tid, exercise_id: b.exercise_id, position: Math.min(100, ref.position + k), sets: b.sets, reps: b.reps,
+    load_mode: b.load_mode, load_value: b.load_value, unit: b.unit, rest_s: b.rest_s ?? null, note: b.note ?? null, with_next: !!b.with_next })));
+  await store.removeItem(ref.id);
+  S.items = S.items.filter(x => x.id !== ref.id);
 }
 async function workoutFromBlock(blockId, btn) {
   const b = S.templates.find(t => t.id === blockId);
@@ -1514,8 +1594,8 @@ async function workoutFromBlock(blockId, btn) {
   try {
     const t = await store.addRoutine({ name: (b.name + ' day').slice(0, 60), kind: 'workout' });
     S.templates.push(t);
-    await copySteps(routineItems(blockId).map(i => i.id), t.id);
-    toast('Started a workout from “' + b.name + '”. Add more blocks with + Blocks.');
+    await linkBlock(blockId, t.id);
+    toast('Started a workout from “' + b.name + '”. It stays linked: change the block and this changes too.');
     openDesigner(t.id, true);
   } catch (x) { fail(x); btn.disabled = false; }
 }
@@ -1599,8 +1679,10 @@ async function copyRoutine(id, btn) {
     const src = S.templates.find(t => t.id === id);
     const t = await store.addRoutine({ name: (src.name + (isMine(src) ? ' (copy)' : '')).slice(0, 60), notes: src.notes || null, kind: src.kind || 'workout' });
     S.templates.push(t);
-    await putItems(routineItems(id).map(it => ({ template_id: t.id, exercise_id: it.exercise_id, position: it.position, sets: it.sets, reps: it.reps,
-      load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null })));
+    const keepLinks = isMine(src) && !isBlock(src);
+    await putItems((keepLinks ? rawItems(id) : routineItems(id)).map((it, i) => ({ template_id: t.id, exercise_id: it.block_id ? null : it.exercise_id, block_id: it.block_id || null,
+      position: Math.min(100, i + 1), sets: it.sets, reps: it.reps, load_mode: it.load_mode, load_value: it.load_value, unit: it.unit,
+      rest_s: it.rest_s ?? null, note: it.note ?? null, with_next: !!it.with_next })).filter(r => r.exercise_id || r.block_id));
     toast('Copied. This one’s yours to change.');
     openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
@@ -1636,10 +1718,17 @@ function queueItem(id, patch) {
 function openDesigner(id, fresh) {
   const t = S.templates.find(x => x.id === id);
   if (!t || !isMine(t)) return;
-  if (D.id !== id) D.open = null;
+  if (D.id !== id) { D.open = null; if (D.back && D.back !== id && !tplById(D.back)) D.back = null; }
+  const back = D.back && D.back !== id && tplById(D.back) ? tplById(D.back) : null;
+  if (!back) D.back = null;
   D.id = id; LG.mode = 'design'; LG.pickFor = null; LG.multi = null;
+  D.wide = window.matchMedia('(min-width: 1100px)').matches;
+  D.pf = D.pf || { mus: null, eq: null, mine: false, q: '' }; D.panelTab = D.panelTab || 'ex';
   inner.innerHTML =
-    '<div class="sheet-head"><input class="title-input" id="rtName" maxlength="60" value="' + esc(t.name) + '" aria-label="Routine name" enterkeyhint="done"><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-head"><div class="design-title">' + (back ? '<button class="linkbtn" data-back-to="' + esc(back.id) + '">← ' + esc(back.name) + '</button>' : '') +
+      '<input class="title-input" id="rtName" maxlength="60" value="' + esc(t.name) + '" aria-label="Routine name" enterkeyhint="done"></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="design-cols' + (D.wide ? ' wide' : '') + '">' +
+    (D.wide ? '<aside class="design-panel" id="dPanel"></aside>' : '') +
     '<div class="sheet-body design-body">' +
       '<div class="design-meta">' +
         '<span class="seg" role="group" aria-label="This is a">' + [['workout', 'Workout'], ['block', 'Block']].map(([k, l]) =>
@@ -1648,14 +1737,16 @@ function openDesigner(id, fresh) {
         (t.notes ? '' : '<button type="button" class="toggle" id="rtNoteBtn">+ Add a note</button>') +
       '</div>' +
       '<textarea class="plain-input" id="rtNotes" rows="2" maxlength="500" placeholder="Notes: warm-up, rest times, anything" aria-label="Notes"' + (t.notes ? '' : ' hidden') + '>' + esc(t.notes || '') + '</textarea>' +
+      '<div id="rtWeek"></div>' +
       '<ol class="items" id="rtItems"></ol>' +
       '<div class="add-tiles"><button type="button" class="add-tile" data-design-add="ex"><b>＋ Exercises</b><small>Browse the library by muscle or equipment</small></button>' +
         '<button type="button" class="add-tile" data-design-add="block"><b>＋ A block</b><small>Reuse a chunk of another workout</small></button></div>' +
       '<p class="hint-line" id="rtHint"></p>' +
       '<button type="button" class="linkbtn danger" id="rtDelete">Delete this routine</button>' +
-    '</div>' +
+    '</div></div>' +
     '<div class="design-foot"><button class="btn" id="rtAdd">+ Exercises</button><button class="btn" id="rtFrom">+ Blocks</button>' + (followIds().length && !followIds().includes(id) ? '<button class="btn primary" data-add-today="' + esc(id) + '" id="rtStart">+ Today</button>' : '<button class="btn primary" data-start="' + esc(id) + '" id="rtStart">Start ▸</button>') + '</div>';
   openSheet();
+  sheet.querySelector('.sheet').classList.toggle('wide', D.wide);
   drawItems();
   const name = $('rtName'), notes = $('rtNotes');
   name.addEventListener('input', () => debounceSave('name', () => saveRoutine({ name: name.value.trim() || 'Untitled routine' })));
@@ -1664,23 +1755,148 @@ function openDesigner(id, fresh) {
   if (fresh) setTimeout(() => { name.focus(); name.select(); }, 60);
 }
 function drawItems() {
-  const list = routineItems(D.id), t = S.templates.find(x => x.id === D.id);
-  $('rtItems').innerHTML = list.length ? list.map(itemRow).join('')
+  const list = rawItems(D.id), t = S.templates.find(x => x.id === D.id);
+  D.labels = ssLabels(list);
+  $('rtItems').innerHTML = list.length ? list.map((it, i) => (it.block_id ? linkRow(it) : itemRow(it, i === list.length - 1))).join('')
     : '<li class="empty-steps"><b>Nothing in it yet.</b><br>Add exercises from the library, or drop in a block you’ve already built. Sets, reps and weight start from what each person usually does.</li>';
   $('rtStart').disabled = !list.length;
+  drawWeek();
+  if (D.wide) drawPanel();
   $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
     'Saves as you go.' + (t && t.is_shared ? ' Anyone subscribed sees changes straight away.' : '');
 }
+// Your week, from the workout: tap the days it's on. It's the same week as Rites → Your week, so
+// a day you give this workout is taken from whatever was on it before.
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+function drawWeek() {
+  const box = $('rtWeek'), t = tplById(D.id);
+  if (!box) return;
+  if (!t || isBlock(t)) { box.innerHTML = ''; return; }
+  const c = coreNow(), row = c ? planFor(c.id).find(p => p.template_id === t.id) : null, mask = row ? row.weekdays || 0 : 0;
+  const taken = d => c && planFor(c.id).find(p => p.template_id !== t.id && p.weekdays & (1 << d) && tplById(p.template_id));
+  box.innerHTML = '<div class="week-pick"><span class="field-label" style="margin:0"><span>On my week</span></span><div class="week-days" role="group" aria-label="Days this workout is on">' +
+    WEEK_ORDER.map(d => { const o = taken(d); return '<button type="button" data-week-day="' + d + '" aria-pressed="' + !!(mask & (1 << d)) + '" title="' + esc(DAY_NAMES[d] + (o ? ': now ' + tplById(o.template_id).name : '')) + '">' + DAY_NAMES[d].slice(0, 2) + (o && !(mask & (1 << d)) ? '<i></i>' : '') + '</button>'; }).join('') + '</div></div>';
+}
+async function toggleWeekDay(d, b) {
+  const t = tplById(D.id), bit = 1 << d;
+  b.disabled = true;
+  try {
+    const c = await ensureCore(), row = planFor(c.id).find(p => p.template_id === t.id);
+    if (row && row.weekdays & bit) {
+      const left = row.weekdays & ~bit;
+      if (left) Object.assign(row, await store.updatePlan(row.id, { weekdays: left }));
+      else { await store.removePlan(row.id); S.plan = S.plan.filter(p => p !== row); }
+    } else {
+      const before = planFor(c.id).find(p => p.template_id !== t.id && p.weekdays & bit && tplById(p.template_id));
+      await pinToWeek([[t.id, bit]]);
+      toast(t.name + ' is on ' + ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][d] + (before ? ' (instead of ' + tplById(before.template_id).name + ')' : '') + '.');
+    }
+    vibrate(5);
+  } catch (x) { fail(x); }
+  drawWeek();
+}
+// Wide screens: the library sits beside the workout. Click + to add to the end, or drag onto the list.
+function drawPanel() {
+  const box = $('dPanel');
+  if (!box) return;
+  const f = D.pf, here = tplById(D.id);
+  const tabs = '<div class="seg panel-tabs" role="group" aria-label="Show">' + [['ex', 'Exercises'], ['blocks', 'Blocks']].map(([k, l]) =>
+    '<button type="button" data-panel-tab="' + k + '" aria-pressed="' + (D.panelTab === k) + '">' + l + '</button>').join('') + '</div>';
+  if (D.panelTab === 'blocks') {
+    const blocks = S.templates.filter(t => isBlock(t) && t.id !== D.id && routineItems(t.id).length)
+      .sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
+    box.innerHTML = tabs + '<p class="hint-line">' + (here && !isBlock(here) ? 'Linked blocks stay in step: change the block and every workout using it changes.' : 'A block can’t hold blocks, so these are copied in.') + '</p>' +
+      '<ul class="panel-list">' + (blocks.length ? blocks.map(t => '<li draggable="true" data-drag-block="' + esc(t.id) + '"><span class="lib-name"><b>⛓ ' + esc(t.name) + '</b><small class="lib-sub">' +
+        esc(routineItems(t.id).map(it => shortName(it.exercise_id)).slice(0, 3).join(', ') + (isMine(t) ? '' : ' · by ' + ownerName(t))) + '</small></span>' +
+        '<button type="button" class="iconbtn sm" data-panel-link="' + esc(t.id) + '" aria-label="Add ' + esc(t.name) + '">＋</button></li>').join('')
+        : '<li class="muted">No blocks yet. Select steps in a workout and save them as a block, or make one on Rites.</li>') + '</ul>';
+    return;
+  }
+  const list = libList({ ...f, sort: 'used' }).slice(0, 120);
+  box.innerHTML = tabs + '<input class="search" id="panelSearch" type="search" placeholder="Search the library" autocomplete="off" value="' + esc(f.q || '') + '" aria-label="Search the library">' +
+    '<div id="panelFilters">' + libChips(f, 'panel') + '</div>' +
+    '<ul class="panel-list" id="panelList">' + panelRows(list) + '</ul>';
+}
+function panelRows(list) {
+  return list.length ? list.map(e => '<li draggable="true" data-drag-ex="' + esc(e.id) + '"><span class="lib-name"><b>' + esc(e.name) + '</b><small class="lib-sub">' + esc(libTag(e)) + '</small></span>' +
+    '<button type="button" class="iconbtn sm" data-panel-add="' + esc(e.id) + '" aria-label="Add ' + esc(e.name) + '">＋</button></li>').join('') : '<li class="muted">Nothing matches.</li>';
+}
+inner.addEventListener('input', e => {
+  if (e.target.id !== 'panelSearch' || LG.mode !== 'design') return;
+  D.pf.q = e.target.value.trim();
+  $('panelList').innerHTML = panelRows(libList({ ...D.pf, sort: 'used' }).slice(0, 120));
+});
+// Drag from the library panel onto the steps: it goes in where you drop it.
+inner.addEventListener('dragstart', e => {
+  const li = e.target.closest && e.target.closest('[data-drag-ex], [data-drag-block]');
+  if (!li) return;
+  e.dataTransfer.setData('text/plain', (li.dataset.dragEx ? 'ex:' + li.dataset.dragEx : 'block:' + li.dataset.dragBlock));
+  e.dataTransfer.effectAllowed = 'copy';
+});
+function dropIndex(e) {
+  const rows = [...$('rtItems').querySelectorAll('.item')];
+  const i = rows.findIndex(r => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; });
+  return i < 0 ? rows.length : i;
+}
+inner.addEventListener('dragover', e => {
+  const ol = e.target.closest && e.target.closest('#rtItems, .design-body');
+  if (!ol || LG.mode !== 'design') return;
+  e.preventDefault();
+  const rows = [...$('rtItems').querySelectorAll('.item')], i = dropIndex(e);
+  rows.forEach((r, k) => r.classList.toggle('drop-before', k === i));
+  $('rtItems').classList.toggle('drop-end', i === rows.length);
+});
+inner.addEventListener('dragleave', e => { if (e.target.id === 'rtItems') $('rtItems').classList.remove('drop-end'); });
+inner.addEventListener('drop', async e => {
+  const ol = e.target.closest && e.target.closest('#rtItems, .design-body');
+  const data = e.dataTransfer && e.dataTransfer.getData('text/plain');
+  if (!ol || !data || LG.mode !== 'design') return;
+  e.preventDefault();
+  const rows = rawItems(D.id), i = dropIndex(e), at = i < rows.length ? rows[i].position : null;
+  const [kind, id] = data.split(':'), tid = D.id;
+  if (rows.length >= 100) return toast('That’s the most steps a routine can have.');
+  flushSaves();
+  try {
+    if (kind === 'block') await linkBlock(id, tid, at);
+    else if (at == null) return addItemsTo(tid, [id]);
+    else {
+      // Dropped inside a superset (the step above pairs with the next): it joins the superset.
+      const above = rows[i - 1], join = !!(above && above.with_next && !above.block_id);
+      await shiftFrom(tid, at);
+      const u = usualFor(id);
+      const [made] = await putItems([{ template_id: tid, exercise_id: id, position: at, sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit, with_next: join }]);
+      D.open = made.id;
+    }
+    await autoName(tid);
+  } catch (x) { fail(x); }
+  openDesigner(tid);
+});
+
 // One line per step; tap it to open big controls for that step (one open at a time).
 function itemSummary(it) {
   const g = suggestFor(it);
   return stepText(it) + (g.weight != null ? ' · you: ' + loadText(g) : '');
 }
-function itemRow(it) {
-  const open = D.open === it.id;
-  return '<li class="item' + (open ? ' open' : '') + '" data-item="' + esc(it.id) + '">' +
+// A linked block in a workout: one row you can open to see its steps, edit the block, or unlink it.
+function linkRow(it) {
+  const open = D.open === it.id, blk = tplById(it.block_id), steps = linkedSteps(it), n = usedInCount(it.block_id);
+  const name = blk ? blk.name : 'A block you can’t see any more';
+  return '<li class="item link-row' + (open ? ' open' : '') + '" data-item="' + esc(it.id) + '">' +
+    '<div class="item-head"><button type="button" class="handle" data-handle aria-label="Move ' + esc(name) + ' (drag, or use the arrow keys)">⠿</button>' +
+      '<button type="button" class="item-sum" data-toggle-item aria-expanded="' + open + '"><b>⛓ ' + esc(name) + '</b>' +
+        '<span class="sum">' + esc(steps.length + ' step' + (steps.length === 1 ? '' : 's') + (n > 1 ? ' · in ' + n + ' workouts' : '') + ' · ' + steps.slice(0, 3).map(x => shortName(x.exercise_id)).join(', ') + (steps.length > 3 ? '…' : '')) + '</span></button>' +
+      '<span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></div>' +
+    (open ? '<div class="item-edit"><ol class="link-steps">' + steps.map(x => '<li><b>' + esc(exName(x.exercise_id)) + '</b><span>' + esc(stepText(x)) + '</span></li>').join('') + '</ol>' +
+      '<p class="hint-line" style="margin:0">Linked: changes to the block show up here' + (n > 1 ? ' and in its other workouts' : '') + '.</p>' +
+      '<div class="item-actions">' + (blk && isMine(blk) ? '<button type="button" data-edit-block="' + esc(blk.id) + '">✎ Edit block</button>' : '') +
+        '<button type="button" data-unlink>⛓̸ Unlink to change here</button><button type="button" class="danger" data-remove-item="' + esc(it.id) + '">✕ Remove</button></div></div>' : '') +
+  '</li>';
+}
+function itemRow(it, last) {
+  const open = D.open === it.id, ss = D.labels && D.labels.get(it.id);
+  return '<li class="item' + (open ? ' open' : '') + (ss ? ' ss' + (ss.endsWith('1') ? ' ss-first' : '') : '') + '" data-item="' + esc(it.id) + '">' +
     '<div class="item-head"><button type="button" class="handle" data-handle aria-label="Move ' + esc(exName(it.exercise_id)) + ' (drag, or use the arrow keys)">⠿</button>' +
-      '<button type="button" class="item-sum" data-toggle-item aria-expanded="' + open + '"><b>' + esc(exName(it.exercise_id)) + '</b>' +
+      '<button type="button" class="item-sum" data-toggle-item aria-expanded="' + open + '"><b>' + (ss ? '<span class="ss-tag">' + ss + '</span> ' : '') + esc(exName(it.exercise_id)) + '</b>' +
         '<span class="sum">' + esc(itemSummary(it)) + '</span></button>' +
       '<span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></div>' +
     (open ?
@@ -1693,7 +1909,9 @@ function itemRow(it) {
         '<p class="hint-line" data-pct-hint>' + esc(ruleHint(it)) + '</p>' +
         '<input class="plain-input step-note" data-note-for="' + esc(it.id) + '" maxlength="200" placeholder="Note for this step (optional)" value="' + esc(it.note || '') + '" aria-label="Note for this step">' +
         bigStep('Rest between sets (seconds)', 'rest_s', it.rest_s == null ? '' : it.rest_s, true) +
-        '<div class="item-actions"><button type="button" data-swap>⇄ Swap</button><button type="button" data-dup>⧉ Duplicate</button><button type="button" class="danger" data-remove-item="' + esc(it.id) + '">✕ Remove</button></div>' +
+        '<div class="item-actions"><button type="button" data-swap>⇄ Swap</button>' +
+          (last ? '' : '<button type="button" data-pair aria-pressed="' + !!it.with_next + '">' + (it.with_next ? '✓ Superset with next' : '⇅ Superset with next') + '</button>') +
+          '<button type="button" data-dup>⧉ Duplicate</button><button type="button" class="danger" data-remove-item="' + esc(it.id) + '">✕ Remove</button></div>' +
       '</div>' : '') +
   '</li>';
 }
@@ -1733,7 +1951,7 @@ function refreshItemView(id) {
 async function addItemsTo(tid, exIds) {
   try {
     const list = routineItems(tid);
-    let pos = list.length ? Math.max(...list.map(i => i.position)) : 0;
+    let pos = Math.max(0, ...rawItems(tid).map(i => i.position));
     const made = await putItems(exIds.map(exId => {
       const u = usualFor(exId);
       return { template_id: tid, exercise_id: exId, position: Math.min(100, ++pos), sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
@@ -1810,16 +2028,16 @@ const CH = { picked: [] };
 function openChunkPicker() {
   LG.mode = 'chunk'; CH.picked = [];
   const here = S.templates.find(x => x.id === D.id);
-  const others = S.templates.filter(t => t.id !== D.id && routineItems(t.id).length)
+  const others = S.templates.filter(t => t.id !== D.id && routineItems(t.id).length && !(isBlock(t) && rawItems(D.id).some(r => r.block_id === t.id)))
     .sort((a, b) => Number(isBlock(b)) - Number(isBlock(a)) || Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
   inner.innerHTML =
     '<div class="sheet-head"><div><button class="btn ghost" style="padding:2px 0;border:0;color:var(--muted);font-size:14px" data-chunk-back>← Back to ' + esc(here ? here.name : 'the routine') + '</button>' +
       '<h2 id="sheetTitle">Add blocks</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body">' +
-      (others.length ? '<p class="hint-line" style="margin-top:0">Add a whole block with one tap, or tick just the steps you want, in the order you’ll do them. Sets, reps and load come too.</p>' +
+      (others.length ? '<p class="hint-line" style="margin-top:0">' + (here && !isBlock(here) ? 'Link a whole block with one tap: it stays in step with the block when that changes. Or tick just the steps you want to copy in.' : 'Add a whole block with one tap, or tick just the steps you want, in the order you’ll do them.') + ' Sets, reps and load come too.</p>' +
         others.map((t, i) => (isBlock(t) !== isBlock(others[i - 1] || {}) || i === 0 ? '<div class="section-title">' + (isBlock(t) ? 'Blocks' : 'Workouts') + '</div>' : '') +
           '<section class="chunk"><div class="row"><h3>' + esc(t.name) + (isMine(t) ? '' : ' <small class="muted">by ' + esc(ownerName(t)) + '</small>') + '</h3>' +
-          '<button type="button" class="btn sm primary" data-chunk-all="' + esc(t.id) + '">' + (isBlock(t) ? '+ Add block' : '+ Add all') + '</button></div><ul class="results">' +
+          '<button type="button" class="btn sm primary" data-chunk-all="' + esc(t.id) + '">' + (isBlock(t) ? (here && !isBlock(here) ? '⛓ Link block' : '+ Add block') : '+ Add all') + '</button></div><ul class="results">' +
           routineItems(t.id).map(it => '<li><button data-chunk="' + esc(it.id) + '" aria-pressed="false"><span><i class="tickbox" aria-hidden="true"></i>' + esc(exName(it.exercise_id)) + '</span>' +
             '<small>' + esc(stepText(it)) + '</small></button></li>').join('') + '</ul></section>').join('')
         : '<p class="muted">No other routines with steps yet. Make one, or subscribe to one the crew shares.</p>') +
@@ -1849,9 +2067,17 @@ async function chunkClick(b) {
     const ids = src ? routineItems(src.id).map(it => it.id) : CH.picked.slice();
     b.disabled = true;
     const tid = D.id;
-    if (routineItems(tid).length + ids.length > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
+    if (rawItems(tid).length + (src && isBlock(src) ? 1 : ids.length) > 100) { b.disabled = false; return toast('That would be more than 100 steps.'); }
     try {
-      await copySteps(ids, tid);
+      if (src && isBlock(src) && !isBlock(tplById(tid))) await linkBlock(src.id, tid);
+      else if (src && !isBlock(src) && !isBlock(tplById(tid))) {
+        let pos = Math.max(0, ...rawItems(tid).map(i => i.position));
+        for (const r of rawItems(src.id)) {
+          if (r.block_id) await linkBlock(r.block_id, tid);
+          else await copySteps([r.id], tid);
+          pos++;
+        }
+      } else await copySteps(ids, tid);
       await autoName(tid);
       toast(src ? 'Added ' + src.name + '.' : 'Added ' + ids.length + ' step' + (ids.length === 1 ? '' : 's') + '.');
     } catch (x) { fail(x); }
@@ -1859,11 +2085,14 @@ async function chunkClick(b) {
   }
 }
 async function designerClick(b) {
+  if (b.dataset.backTo) { flushSaves(); const to = b.dataset.backTo; D.back = null; return openDesigner(to); }
   if (b.id === 'rtAdd' || b.dataset.designAdd === 'ex') { flushSaves(); return openPicker('Add to ' + (S.templates.find(x => x.id === D.id) || {}).name, ids => addItemsTo(D.id, ids), true); }
   if (b.id === 'rtFrom' || b.dataset.designAdd === 'block') { flushSaves(); return openChunkPicker(); }
   if (b.dataset.kind) {
     const t = S.templates.find(x => x.id === D.id);
     if ((t.kind || 'workout') === b.dataset.kind) return;
+    if (b.dataset.kind === 'workout' && linksTo(t.id).length) return toast('Workouts link to this block, so it stays a block. Unlink it there first.');
+    if (b.dataset.kind === 'block' && rawItems(t.id).some(r => r.block_id)) return toast('A block can’t hold other blocks. Unlink them first.');
     try { await saveRoutine({ kind: b.dataset.kind }); } catch (x) { return fail(x); }
     inner.querySelectorAll('[data-kind]').forEach(x => x.setAttribute('aria-pressed', x.dataset.kind === t.kind));
     toast(t.kind === 'block' ? 'Now a block: a chunk to build workouts from.' : 'Now a workout.');
@@ -1872,23 +2101,51 @@ async function designerClick(b) {
   if (b.id === 'rtNoteBtn') { b.remove(); const n = $('rtNotes'); n.hidden = false; n.focus(); return; }
   if (b.id === 'rtShare') {
     const t = S.templates.find(x => x.id === D.id);
-    try { await saveRoutine({ is_shared: !t.is_shared }); } catch (x) { return fail(x); }
+    try {
+      await saveRoutine({ is_shared: !t.is_shared });
+      if (t.is_shared) for (const r of rawItems(t.id)) {
+        const blk = r.block_id && tplById(r.block_id);
+        if (blk && isMine(blk) && !blk.is_shared) { await store.updateRoutine(blk.id, { is_shared: true }); blk.is_shared = true; }
+      }
+    } catch (x) { return fail(x); }
     b.setAttribute('aria-pressed', t.is_shared); b.textContent = t.is_shared ? '✓ Shared with the crew' : 'Share with the crew';
     drawItems(); toast(t.is_shared ? 'Shared. The crew can follow or subscribe to it.' : 'Not shared any more.');
     return;
   }
   if (b.id === 'rtDelete') {
     const t = S.templates.find(x => x.id === D.id);
-    if (!confirm('Delete “' + t.name + '”?' + (t.is_shared ? ' Anyone subscribed loses it too.' : ''))) return;
-    try { await store.deleteRoutine(t.id); } catch (x) { return fail(x); }
+    const links = linksTo(t.id);
+    if (!confirm('Delete “' + t.name + '”?' + (links.length ? ' Your workouts that use it keep a copy of its steps.' : '') + (t.is_shared ? ' Anyone subscribed loses it too.' : ''))) return;
+    try {
+      for (const r of links.filter(r => isMine(tplById(r.template_id) || {}))) await unlinkBlock(r.id);
+      await store.deleteRoutine(t.id);
+    } catch (x) { return fail(x); }
     S.templates = S.templates.filter(x => x.id !== t.id);
     if (followIds().includes(t.id)) saveFollow(followIds().filter(x => x !== t.id));
     sheet.close(); render(); toast('Routine deleted');
     return;
   }
+  if (b.dataset.weekDay != null) return toggleWeekDay(Number(b.dataset.weekDay), b);
+  if (b.dataset.panelAdd) { flushSaves(); return addItemsTo(D.id, [b.dataset.panelAdd]); }
+  if (b.dataset.panelLink) { flushSaves(); try { await linkBlock(b.dataset.panelLink, D.id); await autoName(D.id); } catch (x) { fail(x); } return openDesigner(D.id); }
+  if (b.dataset.panelMus != null || b.dataset.panelEq || b.dataset.panelMine != null || b.dataset.panelTab) {
+    const f = D.pf;
+    if (b.dataset.panelTab) D.panelTab = b.dataset.panelTab;
+    else if (b.dataset.panelMus != null) f.mus = b.dataset.panelMus || null;
+    else if (b.dataset.panelEq) f.eq = f.eq === b.dataset.panelEq ? null : b.dataset.panelEq;
+    else f.mine = !f.mine;
+    return drawPanel();
+  }
   const li = b.closest('.item');
   if (!li) return;
   const id = li.dataset.item, it = S.itemsById.get(id);
+  if (b.hasAttribute('data-pair')) { queueItem(id, { with_next: !it.with_next }); vibrate(5); return drawItems(); }
+  if (b.dataset.editBlock) { flushSaves(); D.back = D.id; return openDesigner(b.dataset.editBlock); }
+  if (b.hasAttribute('data-unlink')) {
+    flushSaves();
+    try { await unlinkBlock(id); toast('Unlinked. These steps are this workout’s own now.'); } catch (x) { fail(x); }
+    D.open = null; return openDesigner(D.id);
+  }
   if (b.hasAttribute('data-toggle-item')) {
     flushSaves();
     D.open = D.open === id ? null : id;
@@ -1910,12 +2167,12 @@ async function designerClick(b) {
   if (b.hasAttribute('data-dup')) {
     // Copy the step right after itself, shuffling the later steps down one.
     flushSaves();
-    const list = routineItems(D.id);
+    const list = rawItems(D.id);
     if (list.length >= 100) return toast('That’s the most steps a routine can have.');
     try {
       await Promise.all(list.filter(x => x.position > it.position).map(later => store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s))));
       const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
-        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null });
+        load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null, with_next: !!it.with_next });
       S.items.push(copy); S.itemsById.set(copy.id, copy);
       D.open = copy.id;
       drawItems(); vibrate(8);
@@ -1926,7 +2183,7 @@ async function designerClick(b) {
     try { await store.removeItem(id); } catch (x) { return fail(x); }
     S.items = S.items.filter(x => x.id !== id);
     drawItems();
-    toast('Removed ' + exName(it.exercise_id), { label: 'Undo', run: async () => {
+    toast('Removed ' + (it.block_id ? (tplById(it.block_id) || { name: 'the block' }).name : exName(it.exercise_id)), { label: 'Undo', run: async () => {
       try { const back = await store.updateItem(id, { deleted_at: null }); S.items.push(back); S.itemsById.set(id, back); drawItems(); } catch (x) { fail(x); }
     } });
     return;
@@ -3882,7 +4139,7 @@ async function genClick(b) {
   try {
     let t = S.templates.find(x => isMine(x) && !isBlock(x) && x.name === name);
     if (t) {   // rewrite it: the old steps go in one request
-      const old = routineItems(t.id).map(it => it.id);
+      const old = rawItems(t.id).map(it => it.id);
       await store.removeItems(old);
       S.items = S.items.filter(x => !old.includes(x.id)); old.forEach(id => S.itemsById.delete(id));
     } else { t = await store.addRoutine({ name, kind: 'workout', notes: null }); S.templates.push(t); }
