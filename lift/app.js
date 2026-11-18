@@ -4,6 +4,7 @@ import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as G from './generate.js';
 import * as C from './charts.js';
+import { shareCard } from './share.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
 
@@ -492,6 +493,7 @@ view.addEventListener('click', async e => {
   else if (b.hasAttribute('data-week-seen')) { try { localStorage.setItem('lift.weekSeen', b.dataset.weekSeen); } catch (e) {} render(); }
   else if (b.hasAttribute('data-share-wins')) { prefs.shareWins = prefs.shareWins === false; savePrefs(); render(); toast(prefs.shareWins ? 'Your wins go to the crew again.' : 'Your wins stay private from now on.'); }
   else if (b.dataset.winDel) removeWin(b.dataset.winDel);
+  else if (b.dataset.winShare) { const src = SHARE_SRC.get(b.dataset.winShare); if (src) shareWorkout(src.w, src.extras, b); }
   else if (b.dataset.trend) { S.trendEx = b.dataset.trend; S.hist = S.hist || new Map(); location.hash = '#progress'; setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200); }
   else if (b.dataset.myGoals) openSeasonSheet(b.dataset.myGoals);
   else if (b.hasAttribute('data-starters')) openStarters();
@@ -3999,6 +4001,43 @@ function sessionCardHtml(w, extra) {
     (badges ? '<div class="ws-badges">' + badges + '</div>' : '') +
     (foot ? '<div class="ws-foot">' + esc(foot) + '</div>' : '') + '</div>';
 }
+// Share card: your finished workout as a picture in the current theme, for people outside the app.
+const SHARE_SRC = new Map();   // feed session id → { w, extras }, filled as the feed is drawn
+function sessionActs(w, extras, del) {
+  if (w.created_by !== S.myId) return '';
+  SHARE_SRC.set(w.id, { w, extras });
+  return '<span class="ws-acts"><button class="btn sm" data-win-share="' + esc(w.id) + '" aria-label="Share a picture of this workout">Share</button>' + del(w) + '</span>';
+}
+function shareCardFor(w, extras) {
+  const m = w.summary || {}, items = Array.isArray(m.items) ? m.items : [];
+  const n = x => Number(x).toLocaleString('en-US');
+  const names = new Set(items.map(it => String(it[0])));
+  const stats = [m.lb ? { v: C.compact(m.lb), u: 'lb moved' } : null, m.sets ? { v: n(m.sets), u: m.sets === 1 ? 'set' : 'sets' } : null,
+    m.minutes ? { v: n(m.minutes), u: 'minutes' } : null, m.prs ? { v: n(m.prs), u: m.prs === 1 ? T.pr : T.prs, gold: true } : null].filter(Boolean);
+  const bw = it => it[5] || !(Number(it[3]) > 0);
+  const lifts = items.map(it => ({ name: String(it[0]), pr: !!it[6],
+    rx: n(it[1]) + ' × ' + n(it[2]) + (bw(it) ? ' · bodyweight' : ' @ ' + L.fmtLoad(Number(it[3])) + ' ' + (it[4] || 'lb')) }));
+  const badges = extras.map(x =>
+    x.kind === 'club' ? T.icons.club + ' ' + x.title
+    : x.kind === 'goal' ? T.icons.goal + ' ' + x.title.split(' · ')[0]
+    : x.kind === 'quest' ? T.icons.quest + ' ' + x.title
+    : x.kind === 'stamp' ? T.icons.stamp + ' ' + x.title.split(' · ')[0]
+    : x.kind === 'record' ? T.icons.record + ' ' + x.title
+    : x.kind === 'pr' && !names.has(x.title.replace(/ PR$/, '')) ? T.icons.pr + ' ' + x.title
+    : '').filter(Boolean).concat(m.streak >= 2 ? [T.icons.streak + ' ' + m.streak + ' ' + T.streak] : []);
+  return { brand: T.brand, motto: T.motto, who: S.names.get(w.created_by) || '', title: w.title, icon: T.icons.session, prIcon: T.icons.pr,
+    date: fmtDay(w.performed_on, { weekday: 'long', month: 'long', day: 'numeric' }),
+    stats, lifts, more: Math.max(0, (m.lifts || 0) - items.length), badges,
+    foot: [m.where, m.nth ? ordinal(m.nth) + ' gym day this week' : ''].filter(Boolean).join(' · ') };
+}
+async function shareWorkout(w, extras, b) {
+  if (b) b.disabled = true;
+  try {
+    const how = await shareCard(shareCardFor(w, extras), 'workout-' + w.performed_on + '.png');
+    if (how === 'saved') toast('Saved the picture. Send it from your photos or downloads.');
+  } catch (x) { toast('Couldn’t make the picture.'); }
+  if (b) b.disabled = false;
+}
 function winList(wins, color, who, max) {
   // A finished session gathers that person's other wins from the same day into its card.
   const sessions = new Set(wins.filter(w => w.kind === 'session').map(w => w.created_by + '|' + w.performed_on));
@@ -4012,7 +4051,7 @@ function winList(wins, color, who, max) {
   const del = w => (w.created_by === S.myId ? '<button class="iconbtn sm" data-win-del="' + esc(w.id) + '" aria-label="Remove this from the feed">✕</button>' : '');
   const whoTag = w => '<b><i style="background:' + color(w.created_by) + '"></i>' + esc(who(w.created_by)) + '</b>';
   return '<ol class="win-list">' + list.map(w => (w.kind === 'session'
-    ? '<li class="win-session"><div class="ws-head">' + whoTag(w) + '<small>' + esc(when(w.performed_on)) + '</small>' + del(w) + '</div>' + sessionCardHtml(w, folded.get(w.created_by + '|' + w.performed_on) || []) + '</li>'
+    ? '<li class="win-session"><div class="ws-head">' + whoTag(w) + '<small>' + esc(when(w.performed_on)) + '</small>' + sessionActs(w, folded.get(w.created_by + '|' + w.performed_on) || [], del) + '</div>' + sessionCardHtml(w, folded.get(w.created_by + '|' + w.performed_on) || []) + '</li>'
     : '<li><span class="win-icon">' + (w.kind === 'cardio' ? '🏃' : WIN_ICON[w.kind] || '⭐') + '</span><span class="win-body">' + whoTag(w) + ' ' + esc(winText(w)) +
       '<small>' + esc(when(w.performed_on)) + '</small></span>' + del(w) + '</li>')).join('') + '</ol>';
 }
@@ -4092,10 +4131,17 @@ function openRecap() {
       '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
       '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + esc(shareOn() ? (posted ? T.updateFeed : T.finishFeed) : T.finishPrivate) + '</button>' +
       (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
+      '<button class="btn block" id="recapShare" style="margin-top:10px">Share a picture</button>' +
     '</div>';
   openSheet();
 }
 async function recapClick(b) {
+  if (b.id === 'recapShare') {
+    const r = sessionSummary();
+    if (!r) return;
+    const t = today(), extras = (S.wins || []).filter(x => x.created_by === S.myId && x.performed_on === t && x.kind !== 'session' && x.kind !== 'cardio');
+    return shareWorkout({ title: r.title, performed_on: t, created_by: S.myId, summary: sessionPost(r) }, extras, b);
+  }
   if (b.id !== 'recapFinish') return;
   const r = sessionSummary();
   b.disabled = true;
