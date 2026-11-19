@@ -76,9 +76,16 @@ const FILL = (x = '') => ['.bar', '.gt-bar', '.elapsed'].map(b => b + ' > i' + x
 const maskUrl = s => 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" ' + s + '</svg>') + '")';
 
 // The kaiju hero: a city skyline with something spiny rising behind it, head turned to the right.
-const SKYLINE = maskUrl('viewBox="0 0 400 92" preserveAspectRatio="none">' +
-  '<path d="M196 92 C196 70 205 52 222 40 L218 30 L230 35 L232 20 L242 30 L248 12 L256 27 L266 18 L268 31 C284 30 296 34 304 42 L322 40 L330 46 L318 52 C322 62 324 76 324 92 Z"/>' +
+// Two layers, so a wide card doesn't stretch the monster flat: the city repeats along the bottom,
+// and the monster keeps its shape (134 x 92) near the right edge. Its eye sits 118 px across and
+// 47 px up from the bottom of that box.
+const SKYLINE_BEAST = maskUrl('viewBox="196 0 134 92">' +
+  '<path d="M196 92 C196 70 205 52 222 40 L218 30 L230 35 L232 20 L242 30 L248 12 L256 27 L266 18 L268 31 C284 30 296 34 304 42 L322 40 L330 46 L318 52 C322 62 324 76 324 92 Z"/>');
+const SKYLINE_CITY = maskUrl('viewBox="0 0 400 92" preserveAspectRatio="none">' +
   '<path d="M0 92 V62 H18 V48 H34 V70 H44 V36 H58 V30 H66 V58 H80 V66 H96 V44 H112 V72 H122 V52 H140 V60 H150 V40 H158 V28 H164 V40 H172 V66 H190 V56 H210 V74 H226 V62 H246 V70 H262 V50 H278 V64 H296 V58 H314 V72 H326 V46 H340 V36 H352 V60 H366 V54 H382 V68 H400 V92 Z"/>');
+const skyline = h => { const w = Math.round(134 * h / 92); return SKYLINE_BEAST + ' right 24px bottom 0 / ' + w + 'px ' + h + 'px no-repeat, ' + SKYLINE_CITY + ' left bottom / 400px ' + h + 'px repeat-x'; };
+const kaijuEye = h => { const k = h / 92, x = Math.round(24 + 134 * k - 118 * k), y = Math.round(47 * k);
+  return 'radial-gradient(4px 2.5px at calc(100% - ' + x + 'px) calc(100% - ' + y + 'px), var(--gold) 80%, transparent), radial-gradient(14px 9px at calc(100% - ' + x + 'px) calc(100% - ' + y + 'px), color-mix(in srgb, var(--gold) 40%, transparent), transparent)'; };
 
 // The kaiju bar: a block of city, flattened behind the monster as it goes.
 const CITY = maskUrl('viewBox="0 0 90 22" preserveAspectRatio="none">' +
@@ -97,7 +104,7 @@ export const THEMES = {
     headFont: 'Cinzel, Georgia, "Times New Roman", serif', brandWeight: 400,
     logo: svg('<circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/>'),
     css: '.hero { border-radius: 160px 160px var(--radius) var(--radius) / 54px 54px var(--radius) var(--radius); padding-top: 26px; border-top: 3px solid var(--gold); }' +
-      '.hero.compact { border-radius: 160px 160px var(--radius) var(--radius) / 34px 34px var(--radius) var(--radius); padding-top: 26px; }' +
+      '.hero.compact { border-radius: 160px 160px var(--radius) var(--radius) / 34px 34px var(--radius) var(--radius); }' +
       '.hero .date::before, .hero .date::after { content: " ✠ "; color: var(--gold); }',
     titles: { log: 'Today’s Mass', routines: 'Rites', history: 'The Calendar', seasons: 'Liturgical Seasons' },
     tabs: { routines: 'Rites' },
@@ -232,12 +239,13 @@ export const THEMES = {
     // Three back spines rising over a loaded bar.
     logo: svg('<path d="M9 23 L12.5 11 L15 16 L20 3 L25 16 L27.5 11 L31 23 Z" fill="var(--accent)"/><rect x="2" y="22.6" width="36" height="3" rx="1.5" fill="var(--ink)"/><rect x="5" y="16" width="4.4" height="16" rx="1.4" fill="var(--ink)"/><rect x="30.6" y="16" width="4.4" height="16" rx="1.4" fill="var(--ink)"/><rect x="1" y="18.5" width="3" height="11" rx="1" fill="var(--gold)"/><rect x="36" y="18.5" width="3" height="11" rx="1" fill="var(--gold)"/>'),
     // Hazard tape across the top of the hero, the skyline along its bottom, and the monster's eye.
-    css: '.hero { position: relative; overflow: hidden; padding-top: 26px; padding-bottom: 74px;' +
-        ' background-image: radial-gradient(4px 2.5px at 78.5% calc(100% - 47px), var(--gold) 80%, transparent), radial-gradient(14px 9px at 78.5% calc(100% - 47px), color-mix(in srgb, var(--gold) 40%, transparent), transparent); }' +
+    css: '.hero { position: relative; overflow: hidden; padding-top: 26px; padding-bottom: 74px; background-image: ' + kaijuEye(92) + '; }' +
       '.hero > * { position: relative; z-index: 1; }' +
       '.hero::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px; background: repeating-linear-gradient(135deg, var(--gold) 0 10px, var(--ink) 10px 20px); }' +
-      '.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 92px; background: var(--beast);' +
-        ' -webkit-mask: ' + SKYLINE + ' bottom / 100% 100% no-repeat; mask: ' + SKYLINE + ' bottom / 100% 100% no-repeat; }' +
+      '.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 92px; background: var(--beast); -webkit-mask: ' + skyline(92) + '; mask: ' + skyline(92) + '; }' +
+      // The short day card (while following a routine): a lower skyline, with the eye moved down to match.
+      '.hero.compact { padding-bottom: 52px; background-image: ' + kaijuEye(64) + '; }' +
+      '.hero.compact::after { height: 64px; -webkit-mask: ' + skyline(64) + '; mask: ' + skyline(64) + '; }' +
       '.hero .date { color: var(--gold); } .hero .date::before { content: "⚠ "; }' +
       '.hero h1 { text-shadow: var(--glow); } .finish-btn, .fab { box-shadow: var(--glow), var(--shadow); }' +
       '.card-title, .section-title, .page-title, .hero h1, .sheet-head h2 { text-transform: uppercase; letter-spacing: .04em; }' +
