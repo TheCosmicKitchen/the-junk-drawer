@@ -517,11 +517,20 @@
   .results li button.sel { border-color: var(--accent); background: var(--accent-soft); }
   .tickbox { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 10px; border-radius: 7px; border: 2px solid var(--line); font-style: normal; font-size: 13px; font-weight: 800; vertical-align: -6px; }
   .sel .tickbox { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .results button.pk-all { color: var(--accent); font-weight: 700; }
   .pick-foot { position: sticky; bottom: 0; padding: 10px 0 4px; background: linear-gradient(transparent, var(--bg) 30%); }
   /* ---------- routine editor, phone-first ---------- */
   #sheetInner { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
   #sheetInner .sheet-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   .sheet.tall { height: 94dvh; max-height: 94dvh; }
+  /* A page (building a workout or program): the whole screen, ← Back at the top left. */
+  .sheet.page { top: 0; height: 100dvh; max-height: none; max-width: none; border-radius: 0; box-shadow: none; animation: page-in .2s ease-out; }
+  .sheet.page > .grab { display: none; }
+  .sheet.page .sheet-head { justify-content: flex-start; padding-top: calc(12px + env(safe-area-inset-top)); }
+  .sheet.page .sheet-head > :not([data-close]) { flex: 1; min-width: 0; }
+  .sheet.page .sheet-head [data-close] { order: -1; font-size: 20px; }
+  dialog:has(.sheet.page)::backdrop { background: transparent; backdrop-filter: none; }
+  @keyframes page-in { from { transform: translateX(28px); opacity: .5; } }
   .design-body { flex: 1; padding-bottom: 12px; }
   .design-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   #rtNotes { margin-bottom: 4px; resize: vertical; }
@@ -853,6 +862,10 @@
     .sheet-body { padding: 4px 22px 22px; }
     .design-foot { padding: 12px 22px 16px; border-radius: 0 0 22px 22px; }
     @keyframes pop-in { from { transform: scale(.97); opacity: 0; } }
+    /* A page on a wide screen: everything right of the sidebar, the content in a readable column. */
+    .sheet.page, .sheet.page.tall, .sheet.page.wide { left: var(--side); right: 0; top: 0; bottom: 0; margin: 0; width: auto; height: 100dvh; max-height: none; border-radius: 0; }
+    .sheet.page:not(.wide) #sheetInner > * { width: 100%; max-width: 820px; margin-inline: auto; }
+    .sheet.page .design-foot { border-radius: 0; }
 
     #toast { left: calc(50% + var(--side) / 2); bottom: 28px; }
     .rest-bar { left: calc(50% + var(--side) / 2); bottom: 28px; }
