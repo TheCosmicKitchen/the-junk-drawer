@@ -927,12 +927,43 @@ const sheet = $('sheet'), inner = $('sheetInner');
 const LG = { mode: 'pick', exId: null, editing: null };
 // Sheets with something to type in (search, routine editor, seasons) open full height,
 // so the text box sits at the top instead of down where the phone keyboard pops up.
+// Building a workout or a program opens as a page of its own (the whole screen, ← Back at the top),
+// not a sheet over the app; picking exercises or blocks for it stays on that page. The phone's back
+// gesture closes it too.
+const PAGE_MODES = ['design', 'progdesign'];
+// The page's history entry is marked { liftPage: 1 }; what's on top of the history decides, never a
+// remembered flag (which went stale when a page closed by moving to another tab).
+let pageHome = null;   // what the page was opened for
+const onPageEntry = () => !!(history.state && history.state.liftPage);
 function openSheet() {
-  if (LG.mode !== 'design') sheet.querySelector('.sheet').classList.remove('wide');
-  sheet.querySelector('.sheet').classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk', 'wizard', 'progdesign', 'seasonstart', 'seasonprog'].includes(LG.mode));
+  const el = sheet.querySelector('.sheet');
+  if (LG.mode !== 'design') el.classList.remove('wide');
+  const page = PAGE_MODES.includes(LG.mode) || (sheet.open && el.classList.contains('page') && ['pick', 'chunk'].includes(LG.mode));
+  el.classList.toggle('page', page);
+  if (PAGE_MODES.includes(LG.mode)) pageHome = LG.mode;
+  el.classList.toggle('tall', ['pick', 'design', 'season', 'chunk', 'starters', 'program', 'pickwk', 'wizard', 'progdesign', 'seasonstart', 'seasonprog'].includes(LG.mode));
+  const x = inner.querySelector('.sheet-head [data-close]');
+  if (x) { x.textContent = page ? '←' : '✕'; x.setAttribute('aria-label', page ? 'Back' : 'Close'); }
+  if (page && !onPageEntry()) history.pushState({ liftPage: 1 }, '');
   if (!sheet.open) sheet.showModal();
 }
-function closeSheet() { flushSaves(); if (sheet.open) sheet.close(); render(); }
+function closeSheet() {
+  flushSaves();
+  // A page put an entry in the history: going back removes it, and popstate below does the closing.
+  if (sheet.open && sheet.querySelector('.sheet').classList.contains('page') && onPageEntry()) return history.back();
+  if (sheet.open) sheet.close();
+  render();
+}
+// Back (the phone's gesture, or ← above) while a page is open: close it.
+window.addEventListener('popstate', () => {
+  if (!onPageEntry() && sheet.open && sheet.querySelector('.sheet').classList.contains('page')) { flushSaves(); sheet.close(); render(); }
+});
+// Closed some other way (finished, saved): drop the page's history entry if it's still on top.
+sheet.addEventListener('close', () => {
+  const wasPage = sheet.querySelector('.sheet').classList.contains('page');
+  sheet.querySelector('.sheet').classList.remove('page');
+  if (wasPage && onPageEntry()) history.back();
+});
 sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 sheet.addEventListener('cancel', e => { e.preventDefault(); closeSheet(); });
 
@@ -948,6 +979,7 @@ function openPicker(title, onPick, multi) {
   LG.pickFor = onPick;
   LG.multi = multi ? [] : null;
   LG.pf = { mus: null, eq: null, mine: false, sort: 'used' };
+  LG.pkAll = false;
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
@@ -958,9 +990,11 @@ function openPicker(title, onPick, multi) {
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
   const input = $('exSearch');
-  input.addEventListener('input', () => drawResults(input.value));
+  // Search after a short pause in typing, not on every key.
+  let typing;
+  input.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { LG.pkAll = false; drawResults(input.value); }, 120); });
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { const first = $('exResults').querySelector('button'); if (first) { e.preventDefault(); first.click(); } }
+    if (e.key === 'Enter') { clearTimeout(typing); drawResults(input.value); const first = $('exResults').querySelector('button'); if (first) { e.preventDefault(); first.click(); } }
   });
   drawResults('');
   setTimeout(() => input.focus(), 60);
@@ -978,8 +1012,10 @@ function drawResults(q) {
     : filtering ? (list.length ? list.length + ' ' + [f.mus && LIB.muscleName(f.mus), f.eq && LIB.equipmentName(f.eq)].filter(Boolean).join(' · ') + ' exercise' + (list.length === 1 ? '' : 's') : 'Nothing here yet')
     : LG.multi ? 'The library · yours first' : 'Recent';
   const picked = id => LG.multi && LG.multi.includes(id);
-  // While ticking, keep what's already ticked at the top so it's easy to see and untick.
-  const shown = LG.multi && !q.trim() ? LG.multi.map(id => S.byId.get(id)).filter(Boolean).concat(list.filter(e => !picked(e.id))) : list;
+  // What's already ticked comes first (easy to see and untick); ticking more updates rows in place.
+  const all = LG.multi && !q.trim() ? LG.multi.map(id => S.byId.get(id)).filter(Boolean).concat(list.filter(e => !picked(e.id))) : list;
+  // The first 40, then "Show all": drawing all ~250 rows on a phone is slow, and search finds the rest.
+  const shown = LG.pkAll ? all : all.slice(0, PICK_SHOW);
   let html = shown.map(e => '<li><button data-pick="' + esc(e.id) + '"' + (LG.multi ? ' class="' + (picked(e.id) ? 'sel' : '') + '" aria-pressed="' + picked(e.id) + '"' : '') + '><span>' +
     (LG.multi ? '<i class="tickbox" aria-hidden="true">' + (picked(e.id) ? LG.multi.indexOf(e.id) + 1 : '') + '</i>' : '') + '<span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small></span></span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
   const typed = q.trim();
@@ -991,7 +1027,19 @@ function drawResults(q) {
   }
   if (typed && !LG.pickFor && !LG.multi) html = (S.activities || []).filter(a => L.norm(a.name).includes(L.norm(typed)))
     .map(a => '<li><button data-cardio-new="' + esc(a.id) + '"><span>' + esc(a.name) + '</span><small>cardio</small></button></li>').join('') + html;
+  if (shown.length < all.length) html += '<li><button class="pk-all" data-pk-all><span>Show all ' + all.length + '</span><small>or search</small></button></li>';
   $('exResults').innerHTML = html;
+  syncPickFoot();
+}
+const PICK_SHOW = 40;
+// Ticking several: update the tapped rows' boxes and numbers without redrawing the list.
+function syncTicks() {
+  inner.querySelectorAll('#exResults [data-pick]').forEach(btn => {
+    const k = LG.multi.indexOf(btn.dataset.pick), on = k >= 0;
+    btn.classList.toggle('sel', on); btn.setAttribute('aria-pressed', on);
+    const box = btn.querySelector('.tickbox');
+    if (box) box.textContent = on ? k + 1 : '';
+  });
   syncPickFoot();
 }
 function syncPickFoot() {
@@ -1214,7 +1262,11 @@ function refreshLoggerList() {
 inner.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.hasAttribute('data-close')) return closeSheet();
+  if (b.hasAttribute('data-close')) {
+    // On a workout page, back from picking exercises or blocks goes back to the workout.
+    if (['pick', 'chunk'].includes(LG.mode) && sheet.querySelector('.sheet').classList.contains('page') && pageHome === 'design' && D.id && tplById(D.id)) return openDesigner(D.id);
+    return closeSheet();
+  }
   if (b.hasAttribute('data-change')) return openLogger();
   if (LG.mode === 'pick' && (b.dataset.pkMus != null || b.dataset.pkEq || b.dataset.pkMine != null)) {
     const f = LG.pf;
@@ -1222,6 +1274,7 @@ inner.addEventListener('click', async e => {
     else if (b.dataset.pkEq) f.eq = f.eq === b.dataset.pkEq ? null : b.dataset.pkEq;
     else f.mine = !f.mine;
     $('pkFilters').innerHTML = libChips(f, 'pk');
+    LG.pkAll = false;
     return drawResults($('exSearch').value);
   }
   if (LG.mode === 'exinfo' || LG.mode === 'libaddto' || LG.mode === 'newex') return libSheetClick(b);
@@ -1229,8 +1282,9 @@ inner.addEventListener('click', async e => {
     const id = b.dataset.pick, i = LG.multi.indexOf(id);
     if (i >= 0) LG.multi.splice(i, 1); else LG.multi.push(id);
     vibrate(5);
-    return drawResults($('exSearch').value);
+    return syncTicks();   // in place: redrawing the whole list on every tap is what made it chug
   }
+  if (b.hasAttribute('data-pk-all')) { LG.pkAll = true; return drawResults($('exSearch').value); }
   if (b.hasAttribute('data-add-selected')) { b.disabled = true; return LG.pickFor(LG.multi.slice()); }
   if (b.dataset.pick) return LG.pickFor ? LG.pickFor(b.dataset.pick) : openEntry(b.dataset.pick);
   if (b.dataset.nextItem) { const it = S.itemsById.get(b.dataset.nextItem); return it && openEntry(it.exercise_id, null, it); }
@@ -1840,7 +1894,7 @@ function drawItems() {
   const tiles = inner.querySelector('.add-tiles');
   if (tiles) tiles.hidden = !!list.length;
   drawWeek();
-  if (D.wide) drawPanel();
+  if (D.wide && !$('dPanel').childElementCount) drawPanel();   // the library panel doesn't change with the steps
   $('rtHint').textContent = (list.length > 1 ? 'Tap a step to change it. Drag ⠿ to reorder. ' : list.length ? 'Tap the step to change it. ' : '') +
     'Saves as you go.' + (t && t.is_shared ? ' Anyone subscribed sees changes straight away.' : '');
 }
@@ -1908,7 +1962,8 @@ function panelRows(list) {
 inner.addEventListener('input', e => {
   if (e.target.id !== 'panelSearch' || LG.mode !== 'design') return;
   D.pf.q = e.target.value.trim();
-  $('panelList').innerHTML = panelRows(libList({ ...D.pf, sort: 'used' }).slice(0, 120));
+  clearTimeout(D.panelTyping);
+  D.panelTyping = setTimeout(() => { if ($('panelList')) $('panelList').innerHTML = panelRows(libList({ ...D.pf, sort: 'used' }).slice(0, 120)); }, 120);
 });
 // Drag from the library panel onto the steps: it goes in where you drop it.
 inner.addEventListener('dragstart', e => {
@@ -4382,7 +4437,14 @@ function sessionCardHtml(w, extra) {
 // your own numbers. Open one to log it, add it to a workout or see its trend.
 // ===========================================================================
 S.lib = { q: '', mus: null, eq: null, mine: false, sort: 'used' };
-const libTag = e => [LIB.muscleName(LIB.muscleOf(e.name)), LIB.equipmentName(LIB.equipmentOf(e.name, e.supports_bodyweight) || '')].filter(Boolean).join(' · ');
+// "Chest · Barbell", worked out from the name once per exercise and kept.
+const TAGS = new Map();
+const libTag = e => {
+  const key = e.id + '|' + e.name;
+  let t = TAGS.get(key);
+  if (t == null) TAGS.set(key, t = [LIB.muscleName(LIB.muscleOf(e.name)), LIB.equipmentName(LIB.equipmentOf(e.name, e.supports_bodyweight) || '')].filter(Boolean).join(' · '));
+  return t;
+};
 let LIBSTATS = null, LIBKEY = '';
 // Per exercise: days done in the last 120, the last day, and your best set by estimated 1-rep max.
 function libStats() {
