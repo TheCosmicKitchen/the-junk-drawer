@@ -97,6 +97,7 @@ export const THEMES = {
     headFont: 'Cinzel, Georgia, "Times New Roman", serif', brandWeight: 400,
     logo: svg('<circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/>'),
     css: '.hero { border-radius: 160px 160px var(--radius) var(--radius) / 54px 54px var(--radius) var(--radius); padding-top: 26px; border-top: 3px solid var(--gold); }' +
+      '.hero.compact { border-radius: 160px 160px var(--radius) var(--radius) / 34px 34px var(--radius) var(--radius); padding-top: 26px; }' +
       '.hero .date::before, .hero .date::after { content: " ✠ "; color: var(--gold); }',
     titles: { log: 'Today’s Mass', routines: 'Rites', history: 'The Calendar', seasons: 'Liturgical Seasons' },
     tabs: { routines: 'Rites' },
@@ -126,6 +127,11 @@ export const THEMES = {
       '<path d="M' + cx + ' 76 V69" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>' +
       (glow > 0.02 ? '<g opacity="' + glowOp(glow, next) + '" transform="translate(' + cx + ' 68) scale(' + (next ? (0.5 + glow * 0.5).toFixed(2) : 1) + ')">' +
         '<path d="M0 -24 C 8 -14, 9 -6, 0 0 C -9 -6, -8 -14, 0 -24 Z" fill="var(--gold)"/><path d="M0 -13 C 4 -8, 4 -4, 0 -1 C -4 -4, -4 -8, 0 -13 Z" fill="#fff" opacity=".7"/></g>' : ''),
+    // Candlelit stone and parchment, gold leaf for trim and wins, and liturgical red for what you tap.
+    colors: {
+      light: { bg: '#f5efe4', card: '#fffcf6', ink: '#231a15', muted: '#6c5e52', line: '#e5dacb', chip: '#efe6d8', accent: '#9e2a2b', 'accent-ink': '#ffffff', 'accent-soft': '#f4dcd8', good: '#2f7a45', gold: '#9a6a00', 'gold-soft': '#f6ead0', grid: '#ece3d5', axis: '#d4c6b2' },
+      dark: { bg: '#0f0c0b', card: '#191412', ink: '#f1e9dc', muted: '#a8998a', line: '#2e2520', chip: '#241d19', accent: '#df5b52', 'accent-ink': '#1a0806', 'accent-soft': '#3a1a17', good: '#7fc48f', gold: '#e8b84a', 'gold-soft': '#33280f', grid: '#262019', axis: '#3d332b' },
+    },
   }),
 
   trains: theme('trains', 'The Iron Line', 'Railway green, brass, timetables and stations', {
@@ -1002,8 +1008,18 @@ function favicon(t) {
 
 const decls = o => Object.entries(o).map(([k, v]) => '--' + k + ':' + v).join(';');
 
+// Chart colors from the theme's own palette, so a chart in the Kitchen is tomato and butter, not
+// the default blue and orange: the main series is the accent, then gold, then green, and the heat
+// map ramps from the card color up to the accent. A theme can still set s1… itself.
+function chartColors(c) {
+  if (!c.accent) return c;
+  const out = { s1: c.accent, s2: c.gold && c.gold !== c.good ? c.gold : '#e0913a', s3: c.good || '#2f9e6a' };
+  [2, 3, 4, 5].forEach((k, i) => { out['seq-' + k] = 'color-mix(in srgb, ' + c.accent + ' ' + [28, 52, 76, 100][i] + '%, ' + (c.card || 'transparent') + ')'; });
+  return { ...out, ...c };
+}
 export function applyTheme(id) {
-  const t = THEMES[id] || THEMES.church, v = t.colors, b = t.bar, root = document.documentElement, sel = ':root[data-skin="' + t.id + '"]';
+  const t0 = THEMES[id] || THEMES.church, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
+  const v = t.colors, b = t.bar, root = document.documentElement, sel = ':root[data-skin="' + t.id + '"]';
   const bar = { 'bar-h': b.height, 'bar-track': b.track, 'bar-fill': b.fill, 'bar-texture': b.texture, 'bar-end': b.end ? JSON.stringify(b.end) : 'none', 'bar-goal': b.goal ? JSON.stringify(b.goal) : 'none', 'bar-flip': b.flip ? -1 : 1 };
   root.dataset.skin = t.id;
   let style = document.getElementById('skinStyle');
