@@ -395,6 +395,9 @@ function renderLog() {
   loadWins();
   loadRecords();
   tickClock();
+  // Following a routine: the floating button would sit on the steps' ✓s, so it steps aside and the
+  // routine card carries "+ Other exercise" instead.
+  $('fab').classList.toggle('away', !!following());
 }
 // Save several routine steps in one request (not one per step) and keep them in memory.
 async function putItems(rows) {
@@ -479,6 +482,7 @@ view.addEventListener('click', async e => {
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
   else if (b.hasAttribute('data-add-today-pick')) openAddToday();
+  else if (b.hasAttribute('data-log-other')) openLogger();
   else if (b.dataset.unfollow) unfollow(b.dataset.unfollow);
   else if (b.dataset.addToday) startFollowing(b.dataset.addToday, true);
   else if (b.dataset.design) openDesigner(b.dataset.design);
@@ -1481,7 +1485,7 @@ function followCard() {
     }).join('') + '</ol>' +
     (nextIdx < 0 && f.items.length ? '<div class="pr-flag" style="animation:none">' + esc(T.routineDone) + '</div>' + (unfinished() ? '<button class="btn primary block" style="margin-top:10px" data-recap>' + esc(T.finish) + '</button>' : '')
       : '<p class="hint-line">Tap ✓ after each set to log it as planned, or tap the step to change the weight or reps first.</p>' + restRow()) +
-    '<div class="actions"><button class="btn" data-add-today-pick>+ Add a block or workout</button><button class="btn ghost" data-stop-follow>Stop</button></div></section>';
+    '<div class="actions"><button class="btn" data-log-other>+ Other exercise</button><button class="btn" data-add-today-pick>+ Block or workout</button><button class="btn ghost" data-stop-follow>Stop</button></div></section>';
 }
 
 // A routine's first five steps as chips, then "+N more", so a long routine stays one short card.

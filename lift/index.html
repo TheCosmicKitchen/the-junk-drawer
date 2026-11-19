@@ -99,6 +99,8 @@
 
   .fab { position: fixed; z-index: 7; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 17px; padding: 16px 28px; border-radius: 99px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; }
   .fab:active { transform: translateX(-50%) scale(.97); }
+  /* Following a routine: the routine card has its own + Other exercise, so the button steps aside. */
+  .fab.away { display: none; }
 
   /* ---------- cards & bits ---------- */
   .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-top: 14px; box-shadow: var(--lift); }
@@ -139,6 +141,7 @@
   .empty { text-align: center; padding: 28px 12px 8px; }
   .empty svg { width: 160px; height: auto; }
   .empty h2 { font-size: 22px; margin-top: 6px; }
+  .empty .actions { justify-content: center; }
   .section-title { font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 24px 4px 0; }
 
   /* ---------- history ---------- */
@@ -162,6 +165,8 @@
   .bar, .gt-bar, .elapsed { height: var(--bar-h); background: var(--bar-track); border-radius: 99px; position: relative; }
   .bar > i, .gt-bar > i, .elapsed > i { display: block; width: min(var(--p, 0%), 100%); height: 100%; background: var(--bar-texture), var(--bar-fill); border-radius: 99px; transition: width .6s; position: relative; }
   .bar > i::after, .gt-bar > i::after, .elapsed > i::after { content: var(--bar-end); position: absolute; left: max(0px, calc(100% - .9em)); top: 50%; transform: translateY(-50%) scaleX(var(--bar-flip)); font-size: calc(var(--bar-h) + 6px); line-height: 1; font-style: normal; pointer-events: none; z-index: 2; }
+  /* Nothing done yet: no traveller perched on the left edge of an empty bar. */
+  .bar:is([style*="--p:0%"], [style*="--p:0.0%"]) > i::after, .gt-bar:is([style*="--p:0%"], [style*="--p:0.0%"]) > i::after { content: none; }
   .bar::after, .gt-bar::after, .elapsed::after { content: var(--bar-goal); position: absolute; right: -2px; top: 50%; transform: translateY(-50%); font-size: calc(var(--bar-h) + 6px); line-height: 1; pointer-events: none; z-index: 1; }
   .chip[data-gen-type][aria-pressed="true"] { background: var(--accent); color: var(--accent-ink, #fff); }
   .rt-search { margin: 6px 0 4px; }
@@ -255,7 +260,9 @@
   .stepper.sm input { height: 54px; font-size: 26px; min-width: 0; padding: 0; }
   .btn.big { padding: 16px; font-size: 18px; margin-top: 4px; }
   li.step-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; }
-  .quick { width: 52px; border-radius: 14px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-size: 22px; font-weight: 800; touch-action: manipulation; }
+  /* The step's ✓: quiet on most steps, filled on the one you're on, so the names lead. */
+  .quick { width: 48px; border-radius: 14px; border: 0; background: var(--chip); color: var(--muted); font-size: 20px; font-weight: 800; touch-action: manipulation; transition: background .15s, color .15s; }
+  li.step-row:has(.step.next) .quick { background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent); }
   .quick:disabled { opacity: .5; }
   .nudges { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 8px; }
   .nudges button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 0; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; user-select: none; touch-action: manipulation; }
@@ -277,7 +284,7 @@
   .tag { font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 3px 10px; white-space: nowrap; }
   .routine h3 { font-size: 19px; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .follow { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .follow { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
   .follow h2 { font-size: 24px; margin-top: 2px; }
   .follow .date, .season .date, .plan-card .date { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
   ol.steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
@@ -542,6 +549,8 @@
   .item-edit .item-actions { margin-top: 12px; }
   .item-actions .danger, .linkbtn.danger { color: var(--accent); }
   .linkbtn { border: 0; background: none; padding: 10px 2px; font-weight: 600; font-size: 14px; }
+  /* A link inside a sentence sits in the sentence, with no gap before the punctuation after it. */
+  .hint-line .linkbtn, p .linkbtn { padding: 0; font-size: inherit; }
   .empty-steps { padding: 18px 8px; text-align: center; color: var(--muted); line-height: 1.6; }
   /* ---------- seasons ---------- */
   .season.on { border-color: var(--accent); }
@@ -579,9 +588,9 @@
   .kpi small { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .kpi b { font-family: var(--display); font-size: 34px; font-weight: 800; line-height: 1.05; margin-top: 4px; }
   .kpi .kpi-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
-  .kpis .kpi:first-child { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  .kpis .kpi:first-child small, .kpis .kpi:first-child .kpi-sub { color: inherit; opacity: .85; }
-  .kpis .kpi:first-child .spark polyline { stroke: currentColor; }
+  /* The lead number: tinted, not a solid slab of the accent, so it leads without shouting. */
+  .kpis .kpi:first-child { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .kpis .kpi:first-child small { color: var(--accent); }
   table.lifts { margin-top: 10px; }
   table.lifts td small { display: inline; }
   .rank { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--chip); font-size: 12px; font-weight: 800; margin-right: 8px; }
@@ -730,6 +739,8 @@
   .brand { font-family: var(--brandfont); font-weight: var(--brandweight); font-size: 27px; letter-spacing: 0; }
   .brand-logo { display: flex; flex: none; }
   .card-title, .section-title, .page-title, .sheet-head h2, .hero h1, .sbanner .band h1, .sbanner .band h2 { font-family: var(--headfont); letter-spacing: .02em; }
+  /* Names (pages, routines, days) are set in the theme's heading face too; the condensed face is kept for numbers. */
+  .page-actions h2, .follow h2, .plan-card h2, .card.routine h3, .cal-day h3, .sf-day h4, .month { font-family: var(--headfont); letter-spacing: .02em; }
   .card-title { font-size: 19px; }
   .section-title { font-size: 14px; color: var(--gold); }
   .card-head small.muted { display: block; font-size: 12.5px; }
@@ -888,7 +899,7 @@
 
 <nav class="tabs" id="tabs" hidden aria-label="Sections">
   <div class="brand nav-brand"><span class="brand-logo"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5" fill="none" stroke="var(--gold)" stroke-width="2.4"/><rect x="18.4" y="5" width="3.2" height="30" rx="1.6" fill="var(--accent)"/><rect x="7" y="13.4" width="26" height="3.2" rx="1.6" fill="var(--accent)"/><rect x="7.6" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><rect x="28.8" y="9.6" width="3.6" height="10.8" rx="1.4" fill="var(--ink)"/><circle cx="20" cy="15" r="2.2" fill="var(--gold)"/></svg></span><span class="brand-name">The Church of Iron</span></div>
-  <button class="nav-log" id="navLog" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Log a set</button>
+  <button class="nav-log" id="navLog" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="fab-label">Log a set</span></button>
   <div>
   <a href="#log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg><span class="tab-label">Log</span></a>
   <a href="#routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span class="tab-label">Routines</span></a>
@@ -898,7 +909,7 @@
   <a href="#progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg><span class="tab-label">Progress</span></a>
 </div></nav>
 
-<button class="fab" id="fab" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Log a set</button>
+<button class="fab" id="fab" aria-label="Log a set" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="fab-label">Log a set</span></button>
 
 <dialog id="sheet" aria-labelledby="sheetTitle"><div class="sheet"><div class="grab"></div><div id="sheetInner"></div></div></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
