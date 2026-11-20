@@ -103,10 +103,23 @@ const CHURCH_COLORS = { bg: '#f4f6fb', card: '#ffffff', ink: '#14203a', muted: '
 const KING_COLORS = { bg: '#120c0d', card: '#1c1315', ink: '#f3e8dc', muted: '#b3a196', line: '#33211f', chip: '#28191a', accent: '#c8323f', 'accent-ink': '#ffffff', 'accent-soft': '#3a1519',
   good: '#7cc79a', gold: '#e4b649', 'gold-soft': '#33280f', grid: '#2a1b1c', axis: '#46302f' };
 
+// The default: warm neutrals and a clay accent, plain words, no costume. Follows the phone's light or
+// dark mode. Every other theme is a choice you make in the menu.
+const PLAIN_LIGHT = { bg: '#f5f2ed', card: '#fffdfa', ink: '#24201b', muted: '#6e665c', line: '#e5dfd5', chip: '#eee9e1', accent: '#b0583a', 'accent-ink': '#ffffff', 'accent-soft': '#f5e3da',
+  good: '#3f7d52', gold: '#94690f', 'gold-soft': '#f3e9d2', grid: '#ece7df', axis: '#d3cbbf' };
+const PLAIN_DARK = { bg: '#171513', card: '#201d1a', ink: '#efe9e1', muted: '#a69d91', line: '#322d28', chip: '#2a2622', accent: '#e08a68', 'accent-ink': '#1b120d', 'accent-soft': '#3a2820',
+  good: '#86cf9c', gold: '#e2bd6a', 'gold-soft': '#30281a', grid: '#28241f', axis: '#3f3932' };
+
 export const THEMES = {
-  // The default. Royal crimson and gold on near-black (dark in light mode too), a gold crown for the
-  // crest, and a court to hold.
-  king: theme('king', 'The Iron King', 'Royal crimson and gold, a gold crown and a court to hold. The default', {
+  plain: theme('plain', 'Plain', 'Warm neutrals, a clay accent and plain words. The default', {
+    logo: svg('<rect x="3" y="18.6" width="34" height="2.8" rx="1.4" fill="var(--muted)"/><rect x="8" y="10" width="5" height="20" rx="1.6" fill="var(--accent)"/><rect x="27" y="10" width="5" height="20" rx="1.6" fill="var(--accent)"/><rect x="4" y="14" width="3.4" height="12" rx="1.2" fill="var(--ink)"/><rect x="32.6" y="14" width="3.4" height="12" rx="1.2" fill="var(--ink)"/>'),
+    bar: { fill: 'var(--accent)' },
+    colors: { light: PLAIN_LIGHT, dark: PLAIN_DARK },
+  }),
+
+  // Royal crimson and gold on near-black (dark in light mode too), a gold crown for the crest, and a
+  // court to hold.
+  king: theme('king', 'The Iron King', 'Royal crimson and gold, a gold crown and a court to hold', {
     seasonWord: 'Reign', seasonsWord: 'Reigns', eventWord: 'Tournament', eventsWord: 'Tournaments',
     stamp: 'Seal', stamps: 'Seals', stampBook: 'The royal seals', stampFrame: '50%', stampToast: 'A royal seal: ',
     brand: 'The Iron King', motto: 'LONG MAY YOU LIFT', tagline: 'Hold court. Log the set.',
@@ -1041,7 +1054,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['king', 'church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['plain', 'king','church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {
@@ -1069,7 +1082,7 @@ function chartColors(c) {
   return { ...out, ...c };
 }
 export function applyTheme(id) {
-  const t0 = THEMES[id] || THEMES.king, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
+  const t0 = THEMES[id] || THEMES.plain, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
   const v = t.colors, b = t.bar, root = document.documentElement, sel = ':root[data-skin="' + t.id + '"]';
   const bar = { 'bar-h': b.height, 'bar-track': b.track, 'bar-fill': b.fill, 'bar-texture': b.texture, 'bar-end': b.end ? JSON.stringify(b.end) : 'none', 'bar-goal': b.goal ? JSON.stringify(b.goal) : 'none', 'bar-flip': b.flip ? -1 : 1 };
   root.dataset.skin = t.id;

@@ -439,7 +439,7 @@ function renderLog() {
   clearTimeout(LOG_LATER); LOG_LATER = null;
   const sets = todaySets();
   const groups = groupByExercise(sets);
-  view.innerHTML = heroHtml(sets, groups) +
+  view.innerHTML = themeHint() + heroHtml(sets, groups) +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
@@ -455,6 +455,11 @@ function renderLog() {
   // routine card carries "+ Other exercise" instead.
   $('fab').classList.toggle('away', !!following());
 }
+// First time in: a one-off note that there are other looks. Gone once you pick a theme or dismiss it.
+const themeHint = () => prefs.theme || prefs.themeHint ? '' :
+  '<section class="card theme-hint"><p><b>Hey, there are color themes.</b> This is the plain one. There are ' + (ORDER.length - 1) +
+  ' more, from royal crimson to a neon arcade, each with its own look and words.</p>' +
+  '<div class="row"><button class="btn primary" data-theme-hint="open">See themes</button><button class="btn ghost" data-theme-hint="no">Keep it plain</button></div></section>';
 // After a ✓ on a routine step: the day line and the routine card change at once, and the rest of the
 // Log tab (exercise cards, bulletin, quests, season) catches up a moment later, so the tap answers
 // straight away instead of waiting for the whole tab to be rebuilt.
@@ -548,6 +553,11 @@ view.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
+  else if (b.dataset.themeHint) {
+    prefs.themeHint = 1; savePrefs();
+    const card = view.querySelector('.theme-hint'); if (card) card.remove();
+    if (b.dataset.themeHint === 'open') { openSettings(); const sk = inner.querySelector('.skins'); if (sk) sk.scrollIntoView({ block: 'start' }); }
+  }
   else if (b.dataset.libMus != null) { S.lib.mus = b.dataset.libMus || null; if (!S.lib.mus) { S.lib.eq = null; S.lib.mine = false; } S.libAll = false; drawLib(); }
   else if (b.dataset.libEq) { S.lib.eq = S.lib.eq === b.dataset.libEq ? null : b.dataset.libEq; S.libAll = false; drawLib(); }
   else if (b.dataset.libMine != null) { S.lib.mine = !S.lib.mine; S.libAll = false; drawLib(); }
