@@ -94,7 +94,50 @@ const CITY = maskUrl('viewBox="0 0 90 22" preserveAspectRatio="none">' +
 const COLUMNS = maskUrl('viewBox="0 0 120 20" preserveAspectRatio="none">' +
   Array.from({ length: 12 }, (_, k) => { const h = Math.round(5 + k * 15 / 11); return '<rect x="' + (k * 10 + 1) + '" y="' + (20 - h) + '" width="8" height="' + h + '"/>'; }).join(''));
 
+// The Iron King's crest: a gold crown, five points with pearls, a ruby and two garnets, on a band.
+// Colors: the gold, the shadow under the points, and the stones.
+const CROWN = (gold, shade, gem) =>
+  '<path d="M8 28.5 L5.6 13.6 L13.4 20.4 L20 9.4 L26.6 20.4 L34.4 13.6 L32 28.5 Z" fill="' + gold + '"/><path d="M8 28.5 L32 28.5 L31.6 31 L8.4 31 Z" fill="' + shade + '"/><rect x="7.4" y="31" width="25.2" height="3.6" rx="1.4" fill="' + gold + '"/><circle cx="5.6" cy="12.6" r="2.1" fill="' + gold + '"/><circle cx="20" cy="8.2" r="2.4" fill="' + gold + '"/><circle cx="34.4" cy="12.6" r="2.1" fill="' + gold + '"/><path d="M20 19.2 L22.4 23 L20 26.8 L17.6 23 Z" fill="' + gem + '"/><circle cx="12.2" cy="24.6" r="1.4" fill="' + gem + '"/><circle cx="27.8" cy="24.6" r="1.4" fill="' + gem + '"/>';
+const KING_COLORS = { bg: '#120c0d', card: '#1c1315', ink: '#f3e8dc', muted: '#b3a196', line: '#33211f', chip: '#28191a', accent: '#c8323f', 'accent-ink': '#ffffff', 'accent-soft': '#3a1519',
+  good: '#7cc79a', gold: '#e4b649', 'gold-soft': '#33280f', grid: '#2a1b1c', axis: '#46302f' };
+
 export const THEMES = {
+  // The default. Royal crimson and gold on near-black (dark in light mode too), a gold crown for the
+  // crest, and a court to hold.
+  king: theme('king', 'The Iron King', 'Royal crimson and gold, a gold crown and a court to hold. The default', {
+    seasonWord: 'Reign', seasonsWord: 'Reigns', eventWord: 'Tournament', eventsWord: 'Tournaments',
+    stamp: 'Seal', stamps: 'Seals', stampBook: 'The royal seals', stampFrame: '50%', stampToast: 'A royal seal: ',
+    brand: 'The Iron King', motto: 'LONG MAY YOU LIFT', tagline: 'Hold court. Log the set.',
+    fonts: 'family=Playfair+Display+SC:wght@700;900&family=Playfair+Display:wght@700;800',
+    brandFont: '"Playfair Display SC", Georgia, serif', headFont: '"Playfair Display", Georgia, serif', brandWeight: 900,
+    // The crest: a gold crown set with red stones.
+    logo: svg(CROWN('var(--gold)', 'color-mix(in srgb, var(--gold) 62%, var(--bg))', 'var(--accent)')),
+    css: '.hero { border-top: 2px solid var(--gold); background-image: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%); }' +
+      '.hero .date::before { content: "♛ "; color: var(--gold); }' +
+      '.hero h1, .card-title, .section-title { color: var(--gold); }',
+    titles: { log: 'The Throne Room', routines: 'Royal decrees', history: 'The Chronicle', seasons: 'Reigns', progress: 'The Treasury' },
+    helloBig: 'A royal feast.', helloSome: 'Court is in session.', helloNone: 'The throne awaits.',
+    finish: 'Dismiss the court · Finish ›', finishFeed: 'Dismiss the court · proclaim it', finishPrivate: 'Dismiss the court · finish', updateFeed: 'Update the proclamation',
+    ended: 'Court dismissed. Long may you lift.', endedFeed: 'Court dismissed. It’s been proclaimed.', endedClock: '✓ Court dismissed · ',
+    routineDone: '👑 Decree fulfilled.', routineBtn: 'Decree fulfilled 👑',
+    emptyH: 'The throne awaits.', emptyP: 'Log a set and court is in session.',
+    prToast: '👑 A royal record: ', clubToast: '🏰 A new keep: welcome to the ', goalToast: 'Edict fulfilled: ',
+    weekly: 'The royal report', streak: 'weeks on the throne', restWeek: 'A royal holiday',
+    rest: n => n + ' weeks on the throne in a row. Consider a royal holiday: same lifts at about 60% of the weight, then return to court.',
+    feed: 'Proclamations', feedSub: 'the court’s triumphs', feedEmpty: 'PRs, keeps, edicts, records and finished sessions from the court are proclaimed here.',
+    icons: { pr: '👑', club: '🏰', goal: '📜', session: '⚔️', record: '🐉', quest: '🗺️', holder: '🐉', questOpen: '🗺️', rest: '🛡️', dry: '🕸️' },
+    win: { club: 'Claimed a keep: the ', record: 'Slew the dragon: ', quest: 'Finished a quest: ', goal: 'Fulfilled an edict: ', session: 'Held court: ' },
+    records: 'The Dragon’s Hoard', holderCol: 'Keeper', recordsBlurb: 'Beat the keeper’s best and the hoard is yours.', recordToast: '🐉 The hoard is yours: the record on ',
+    quests: 'Quests', questsSub: 'this week’s quests, the same for the whole court', questDone: '🗺️ Quest complete: ',
+    goals: 'Edicts', goalsKept: 'Edicts fulfilled', plan: 'The royal plan',
+    bar: { height: '10px', fill: 'linear-gradient(90deg, var(--accent), var(--gold))', end: '👑' },
+    colors: {
+      // Dark either way: the light palette is the same, so the phone's light mode doesn't turn it white.
+      light: KING_COLORS,
+      dark: KING_COLORS,
+    },
+  }),
+
   church: theme('church', 'Church of Iron', 'Gothic lettering, gold, candles and saints', {
     seasonWord: 'Pilgrimage', seasonsWord: 'Pilgrimages', eventWord: 'Feast day', eventsWord: 'Feast days',
     stamp: 'Seal', stamps: 'Seals', stampBook: 'The Book of Seals', stampFrame: '8px', stampToast: 'A seal for your book: ',
@@ -998,7 +1041,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['king', 'church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {
@@ -1026,7 +1069,7 @@ function chartColors(c) {
   return { ...out, ...c };
 }
 export function applyTheme(id) {
-  const t0 = THEMES[id] || THEMES.church, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
+  const t0 = THEMES[id] || THEMES.king, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
   const v = t.colors, b = t.bar, root = document.documentElement, sel = ':root[data-skin="' + t.id + '"]';
   const bar = { 'bar-h': b.height, 'bar-track': b.track, 'bar-fill': b.fill, 'bar-texture': b.texture, 'bar-end': b.end ? JSON.stringify(b.end) : 'none', 'bar-goal': b.goal ? JSON.stringify(b.goal) : 'none', 'bar-flip': b.flip ? -1 : 1 };
   root.dataset.skin = t.id;
