@@ -1,5 +1,6 @@
 // Sisyfitness on the web: the interface. Storage lives in data.js, the maths in logic.js.
 import * as L from './logic.js';
+import * as TR from './tracking.js';
 import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as G from './generate.js';
@@ -43,9 +44,30 @@ const exName = id => (S.byId.get(id) || {}).name || 'Unknown exercise';
 const DAY_DEFAULT = { weekday: 'short', month: 'short', day: 'numeric' };
 const fmtDay = (iso, opts) => L.fmtDate(L.parseDate(iso), opts || DAY_DEFAULT);
 const unitTag = u => (u === prefs.unit ? '' : ' ' + u);
-function setText(s) {
-  const load = s.count_bodyweight ? (s.weight > 0 ? 'BW+' + L.fmtLoad(s.weight) : 'BW') : L.fmtLoad(s.weight);
-  return load + unitTag(s.unit) + ' × ' + s.reps;
+// What a set records and how it reads come from tracking.js: a set is read from the fields it holds,
+// an exercise's log type says which fields it asks for. TRO: the viewer's display choices.
+const carryUnit = () => prefs.carryUnit || (prefs.unit === 'kg' ? 'm' : 'yd');
+const TRO = () => ({ unitTag, carryUnit: carryUnit() });
+const exType = id => TR.typeOf(S.byId.get(id));
+const setText = s => TR.setText(s, TRO());
+// A step's measures, copied as they are (reps, time, distance: whichever it holds).
+const stepMeasures = src => ({ reps: src.reps ?? null, duration_s: src.duration_s ?? null, distance_m: src.distance_m ?? null });
+// A new step's target: its exercise's main measure at what you usually do, else the field's start.
+function stepTarget(exId, u) {
+  const f = TR.mainField(exType(exId)), F = TR.FIELDS[f], out = { reps: null, duration_s: null, distance_m: null };
+  out[f] = Math.min(F.stepMax || Infinity, F.clamp(u && u[f] != null ? u[f] : F.start));
+  return out;
+}
+// The main measure of a set, as text: "5", "0:45", "40 yd".
+const mainText = x => { const m = TR.mainOf(x); return m ? TR.FIELDS[m].text(x[m], TRO()) : ''; };
+// A PR line from a post's summary (any kind of set), with its unit.
+const prText = m => TR.setText({ weight: m.weight, reps: m.reps ?? null, duration_s: m.duration_s ?? null, distance_m: m.distance_m ?? null,
+  count_bodyweight: !!m.count_bodyweight, unit: m.unit || 'lb' }, { unitTag: u => ' ' + u, carryUnit: carryUnit() });
+// A feed item's sets line: [name, sets, reps (or a time or distance as text), weight, unit, bodyweight, pr].
+function itemLine(it, num) {
+  const measured = typeof it[2] === 'string', w = Number(it[3]);
+  const load = w > 0 ? L.fmtLoad(w) + ' ' + (it[4] || 'lb') : measured ? '' : 'bodyweight';
+  return num(it[1]) + ' × ' + (measured ? it[2] : num(it[2])) + (load ? (w > 0 ? ' @ ' : ' · ') + load : '');
 }
 // A day's pounds moved with its unit always shown: "25,275 lb".
 const volLabel = d => { const v = { lb: Number(d.volume_lb), kg: Number(d.volume_kg) }; return volText(v) + (v.kg ? '' : ' lb'); };
@@ -293,9 +315,10 @@ function fetchAll() {
     store.workoutDays(today()), store.bodyweights(),
     Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
     Promise.resolve().then(() => store.programs()).catch(() => []), Promise.resolve().then(() => store.cardio()).catch(() => []),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio }));
+    Promise.resolve().then(() => store.feats()).catch(() => []),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats }) {
   S.wdays = wdays;
   S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || []; S.cardio = cardio || [];
   S.bw = bw;
@@ -330,9 +353,11 @@ function applyData({ cat, recent, days, bests, routines, seasons, names, myId, w
   S.days = days;
   S.bestRows = bests;
   S.bests = L.bestsMap(bests);
+  S.feats = TR.featsMap(feats);   // longest, farthest and heaviest, for sets without reps
 }
 async function refreshBests() {
   try { S.bestRows = await store.bests(); S.bests = L.bestsMap(S.bestRows); } catch (e) {}
+  try { S.feats = TR.featsMap(await store.feats()); } catch (e) {}
 }
 
 function showApp() {
@@ -475,7 +500,7 @@ async function saveDayAsRoutine(day, btn) {
     await putItems(groups.slice(0, 100).map((g, i) => {
       const top = g.sets.reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a));
       return { template_id: t.id, exercise_id: g.exercise_id, position: i + 1,
-        sets: Math.min(20, g.sets.length), reps: Math.min(100, top.reps), load_mode: 'last', load_value: 0, unit: top.unit };
+        sets: Math.min(20, g.sets.length), ...stepMeasures({ ...top, reps: top.reps == null ? null : Math.min(100, top.reps) }), load_mode: 'last', load_value: 0, unit: top.unit };
     }));
     toast('Saved as “' + t.name + '”. Rename it or tweak away.');
     openDesigner(t.id);
@@ -483,7 +508,7 @@ async function saveDayAsRoutine(day, btn) {
 }
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
-  return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + '</h3><span class="muted num">' + esc(volText(v)) + '</span></div>' +
+  return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + '</h3><span class="muted num">' + (L.lbEquivalent(v) > 0 ? esc(volText(v)) : '') + '</span></div>' +   // holds and carries move no volume
     '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') +
       // One small button: log another set, the logger opening with your last one filled in.
       '<button class="chip dup" data-more="' + esc(g.exercise_id) + '" aria-label="Log another set of ' + esc(exName(g.exercise_id)) + ', filled in from your last">' +
@@ -621,18 +646,21 @@ const loadFor = (it, sharing) => (it.load_mode === 'fixed' && (sharing || !ownSt
 // Is this step in a routine of yours (a set weight only applies to the person who set it)?
 const ownStep = it => { const t = tplById(it.template_id); return !!t && isMine(t); };
 function suggestFor(it) {
-  const reps = it.reps;
+  // The step's main measure (reps, time or distance) and its target. Weight is worked out the same
+  // way for all of them; only a rep target converts your last weight between rep counts.
+  const ex = S.byId.get(it.exercise_id), field = TR.stepField(it, ex), target = TR.stepValue(it, ex);
+  const reps = field === 'reps' ? target : null;
   let mode = it.load_mode || 'last';
   // A set weight is the author's own number: it's for them, and anyone else following uses their last.
   if (mode === 'fixed') {
-    if (ownStep(it)) return { weight: Number(it.load_value), unit: it.unit || prefs.unit, reps, why: 'the set weight' };
+    if (ownStep(it)) return { weight: Number(it.load_value), unit: it.unit || prefs.unit, reps, field, target, why: 'the set weight' };
     mode = 'last';
   }
   if (mode === 'percent_1rm') {
     const ls = lastSession(it.exercise_id), unit = ls ? ls.sets[0].unit : it.unit || prefs.unit;
     const basis = L.bestE1rm(it.exercise_id, unit, S.bestRows);
-    return basis ? { weight: roundNear(basis * Number(it.load_value) / 100, unit), unit, reps, why: Number(it.load_value) + '% of your best' }
-      : { weight: null, unit, reps, why: Number(it.load_value) + '% of your best, once you’ve logged it' };
+    return basis ? { weight: roundNear(basis * Number(it.load_value) / 100, unit), unit, reps, field, target, why: Number(it.load_value) + '% of your best' }
+      : { weight: null, unit, reps, field, target, why: Number(it.load_value) + '% of your best, once you’ve logged it' };
   }
   const ls = lastSession(it.exercise_id);
   let ref = null;
@@ -641,28 +669,28 @@ function suggestFor(it) {
     const rows = S.bestRows.filter(r => r.exercise_id === it.exercise_id);
     if (rows.length) { const r = rows.reduce((m, x) => ((L.e1rm(Number(x.heaviest), x.reps) || Number(x.heaviest)) > (L.e1rm(Number(m.heaviest), m.reps) || Number(m.heaviest)) ? x : m)); ref = { weight: r.heaviest, reps: r.reps, unit: r.unit }; }
   }
-  if (!ref) return { weight: null, unit: it.unit || prefs.unit, reps, why: 'first time: enter a weight' };
+  if (!ref) return { weight: null, unit: it.unit || prefs.unit, reps, field, target, why: 'first time: enter a weight' };
   const unit = ref.unit, w0 = Number(ref.weight);
   let weight = w0, why = 'your last';
-  if (w0 > 0 && ref.reps !== reps) {
+  if (w0 > 0 && reps != null && ref.reps != null && ref.reps !== reps) {
     const e = L.e1rm(w0, ref.reps) || w0 * (1 + ref.reps / 30);
     weight = roundDown(e / (1 + reps / 30), unit);
     why = 'from your last ' + ref.reps + ' × ' + L.fmtLoad(w0);
   }
   if (mode === 'progress' && ls && w0 > 0) {
-    const hit = ls.sets.filter(x => Number(x.weight) >= w0 && x.reps >= reps).length >= it.sets;
+    const hit = ls.sets.filter(x => Number(x.weight) >= w0 && Number(x[field]) >= target).length >= it.sets;
     if (hit) { weight = w0 + Number(it.load_value); why = '+' + L.fmtLoad(Number(it.load_value)) + ': you hit every rep last time'; }
-    else if (ref.reps >= reps) { weight = w0; why = 'same again until you hit every rep'; }
+    else if (Number(ref[field]) >= target) { weight = w0; why = 'same again until you hit every rep'; }
   }
-  return { weight, unit, reps, why };
+  return { weight, unit, reps, field, target, why };
 }
 // "3 × 8", plus the rule when it isn't plain "your last".
 const ruleTag = it => (it.load_mode === 'progress' ? ' · +' + L.fmtLoad(Number(it.load_value)) : it.load_mode === 'percent_1rm' ? ' · ' + L.fmtNum(Number(it.load_value), 0) + '%'
   : it.load_mode === 'fixed' && ownStep(it) ? ' @ ' + (Number(it.load_value) > 0 ? L.fmtLoad(Number(it.load_value)) + ' ' + it.unit : 'bodyweight') : '');
-const stepText = it => it.sets + ' × ' + it.reps + ruleTag(it);
+const stepText = it => TR.stepText(it, S.byId.get(it.exercise_id), TRO()) + ruleTag(it);
 // For the person following: the step with their own weight.
 const loadText = g => (g.weight == null ? '' : g.weight > 0 ? L.fmtLoad(g.weight) + ' ' + g.unit : 'bodyweight');
-const myStepText = it => { const g = suggestFor(it); return it.sets + ' × ' + it.reps + (g.weight != null ? (g.weight > 0 ? ' @ ' : ' · ') + loadText(g) : ''); };
+const myStepText = it => { const g = suggestFor(it); return TR.stepText(it, S.byId.get(it.exercise_id), TRO()) + (g.weight != null ? (g.weight > 0 ? ' @ ' : ' · ') + loadText(g) : ''); };
 
 // Log the next set of a routine step at its planned reps and weight, in one tap: one tap per set,
 // the way you actually lift. The step's rest (if it has one) starts by itself.
@@ -676,7 +704,7 @@ async function quickStep(itemId, btn) {
   const last = todaySets().filter(s => s.exercise_id === it.exercise_id).pop();
   const bw = last ? !!last.count_bodyweight : false;
   try {
-    const saved = await logSets({ exercise_id: it.exercise_id, weight: tg.weight, reps: tg.reps, unit: tg.unit,
+    const saved = await logSets({ exercise_id: it.exercise_id, weight: tg.weight, ...TR.stepRecord(it, S.byId.get(it.exercise_id)), unit: tg.unit,
       count_bodyweight: bw, bodyweight: bw ? last.bodyweight : null, is_warmup: false }, 1);
     afterLogToast(saved);
     redrawAfterStep();
@@ -856,7 +884,8 @@ function landed(e, res) {
       if (!cur || cur._sync === 'gone') continue;   // deleted while it was on its way (the delete follows it out)
       for (const o of opsFor(real.id, true)) if (o.kind === 'edit') Object.assign(real, o.patch);   // edited while on its way
       show(real, cur);
-      if (cur._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, unit: real.unit });
+      if (cur._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, duration_s: real.duration_s ?? null,
+        distance_m: real.distance_m == null ? null : Number(real.distance_m), count_bodyweight: !!real.count_bodyweight, unit: real.unit });
       if (cur._crossed) postWin('club', cur._crossed.title, {});
       checkRecord(real);
     }
@@ -910,12 +939,12 @@ function restoreOutbox() {
 }
 // Everything a new set changes on screen, done straight away with the stand-in row.
 function applyNewSet(t) {
-  t._pr = L.isPr(t, S.bests);
+  t._pr = TR.isPr(t, S.bests, S.feats);
   const before = lbEqAll();
   syncCaches(t, false);
   bumpDay(t, +1);
-  const k = L.bestKey(t);
-  if (t.is_warmup !== true && !(S.bests.get(k) >= Number(t.weight))) S.bests.set(k, Number(t.weight));
+  if (t.reps == null) TR.raiseFeats(t, S.feats);
+  else { const k = L.bestKey(t); if (t.is_warmup !== true && !(S.bests.get(k) >= Number(t.weight))) S.bests.set(k, Number(t.weight)); }
   const after = lbEqAll();
   t._crossed = L.MILESTONES.filter(m => before < m.lb && after >= m.lb).pop();
   vibrate(t._pr || t._crossed ? [20, 40, 20] : 12);
@@ -1111,13 +1140,15 @@ function syncPickFoot() {
 }
 
 // "3 × 5 @ 235, 1 × 4 @ 235": runs of identical working sets collapsed.
+// "3 × 5 @ 235 lb, 1 × 4 @ 235 lb", "2 × 0:45", "2 × 40 yd @ 70 lb": runs of identical working sets.
 function summarizeSets(sets) {
   const runs = [];
   for (const x of sets.filter(y => y.is_warmup !== true)) {
-    const last = runs[runs.length - 1], key = x.reps + '|' + Number(x.weight) + '|' + x.unit;
+    const last = runs[runs.length - 1], key = TR.MEASURES.map(f => x[f]).join('|') + '|' + Number(x.weight) + '|' + x.unit + '|' + !!x.count_bodyweight;
     if (last && last.key === key) last.n++; else runs.push({ key, n: 1, x });
   }
-  return runs.map(r => r.n + ' × ' + r.x.reps + (Number(r.x.weight) > 0 ? ' @ ' + L.fmtLoad(Number(r.x.weight)) + ' ' + r.x.unit : '')).join(', ') || sets.map(setText).join(', ');
+  return runs.map(r => { const load = TR.loadText(r.x, u => ' ' + u, true); return r.n + ' × ' + mainText(r.x) + (load && load !== 'BW' ? ' @ ' + load : ''); }).join(', ')
+    || sets.map(setText).join(', ');
 }
 // Do you log a whole exercise at the end, or each set as you go? Judged from your own history: on past
 // days, were an exercise's sets logged within a few seconds of each other (one tap) or spread out?
@@ -1158,12 +1189,20 @@ async function openEntry(exId, editing, item) {
   LG.exId = exId;
   LG.editing = editing || null;
   LG.item = editing ? null : item || null;
+  // The box beside the weight is the exercise's main field (reps, time or distance); editing a set,
+  // it's whatever that set holds. Any other fields the type asks for go under More.
+  const TY = exType(exId);
+  LG.field = editing ? TR.mainOf(editing) || TR.mainField(TY) : TR.mainField(TY);
+  const FD = TR.FIELDS[LG.field];
   const base = editing || todaySets().filter(s => s.exercise_id === exId).pop();
   const atEnd = logsAtEnd();
   const unit = base ? base.unit : prefs.unit;
   const st = LG.st = {
-    weight: base ? Number(base.weight) : null,   // filled from your last time below; a lift you've never done starts empty
-    reps: base ? base.reps : 8, unit,
+    weight: base ? Math.abs(Number(base.weight)) : null,   // filled from your last time below; a lift you've never done starts empty
+    assist: base ? Number(base.weight) < 0 : false,   // assisted: the weight box is the help, saved as a negative load
+    amount: base && base[LG.field] != null ? Number(base[LG.field]) : FD.start, unit,
+    rpe: editing && editing.rpe != null ? Number(editing.rpe) : null,
+    extra: Object.fromEntries(TY.fields.filter(f => f !== LG.field).map(f => [f, editing ? editing[f] ?? null : null])),
     bw: base ? !!base.count_bodyweight : !!(S.byId.get(exId) || {}).supports_bodyweight,
     bodyweight: base && base.bodyweight != null ? Number(base.bodyweight) : prefs.bodyweight,
     warm: base ? base.is_warmup === true : false,
@@ -1176,7 +1215,7 @@ async function openEntry(exId, editing, item) {
   // Following a routine: the step's sets and reps, with your own weight for it (unless you're mid-way today).
   const target = LG.item ? suggestFor(LG.item) : null;
   if (target) {
-    st.reps = target.reps;
+    if (target.field === LG.field) st.amount = target.target;
     if (!base) { st.unit = target.unit; st.weight = target.weight; }
   }
   const planLine = LG.item
@@ -1194,22 +1233,25 @@ async function openEntry(exId, editing, item) {
       (editing ? '' : syncLine()) +
       '<p class="last-line" id="lastLine">' + (editing ? 'Editing a set from ' + esc(fmtDay(editing.performed_on)) : 'Looking up last time…') + '</p>' +
       '<div class="trio' + (editing ? ' two' : '') + '">' +
-        '<div class="boxwrap"><label class="box"><span>Weight <i id="wUnit">' + esc(st.unit) + '</i></span><input id="wIn" inputmode="decimal" enterkeyhint="done" placeholder="–" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"></label>' + steppers('w', 'weight') + '</div>' +
-        '<div class="boxwrap"><label class="box"><span>Reps</span><input id="rIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.reps) + '"></label>' + steppers('r', 'reps') + '</div>' +
+        '<div class="boxwrap"><label class="box"><span><span id="wLabel">' + (st.assist ? 'Assist' : 'Weight') + '</span> <i id="wUnit">' + esc(st.unit) + '</i></span><input id="wIn" inputmode="decimal" enterkeyhint="done" placeholder="–" value="' + esc(st.weight == null ? '' : L.fmtLoad(st.weight)) + '"></label>' + steppers('w', 'weight') + '</div>' +
+        '<div class="boxwrap"><label class="box"><span>' + esc(FD.label) + (FD.unitOf ? ' <i id="aUnit">' + esc(FD.unitOf(TRO())) + '</i>' : '') + '</span>' +
+          '<input id="aIn" inputmode="' + FD.inputmode + '" enterkeyhint="done" value="' + esc(FD.show(st.amount, TRO())) + '"></label>' + steppers('a', FD.label.toLowerCase()) + '</div>' +
         (editing ? '' : '<div class="boxwrap"><label class="box"><span>Sets</span><input id="nIn" inputmode="numeric" enterkeyhint="done" value="' + esc(st.sets) + '"></label>' + steppers('n', 'sets') + '</div>') +
       '</div>' +
       (editing ? '<div class="field-label"><span>Day</span></div><input class="plain-input" id="dateIn" type="date" value="' + esc(st.date) + '" max="' + today() + '">' : '') +
       '<div id="prFlag"></div><p class="warn" id="formErr" role="alert"></p>' +
       '<button class="btn primary block big" id="saveBtn">' + (editing ? 'Save changes' : 'Log set') + '</button>' +
-      '<details class="more" id="moreBox"' + (st.bw || st.warm || st.showNote ? ' open' : '') + '><summary>More: units, warm-up, bodyweight, note</summary>' +
+      '<details class="more" id="moreBox"' + (st.bw || st.warm || st.showNote || st.assist || st.rpe ? ' open' : '') + '><summary>More: units, warm-up, bodyweight, effort, note</summary>' +
         '<div class="more-body">' +
           '<div class="row"><span class="seg" role="group" aria-label="Unit">' + ['lb', 'kg'].map(u => '<button type="button" data-unit="' + u + '" aria-pressed="' + (u === st.unit) + '">' + u + '</button>').join('') + '</span>' +
             '<span class="muted" style="font-size:13px">Fine-tune</span></div>' +
           '<div class="nudges" id="nudges" role="group" aria-label="Fine-tune the weight"></div>' +
           '<div class="hint-line" id="plates"></div>' +
+          moreFields(TY, st) +
           '<div class="toggles">' +
             '<button type="button" class="toggle" data-t="warm" aria-pressed="' + st.warm + '">Warm-up</button>' +
             '<button type="button" class="toggle" data-t="bw" aria-pressed="' + st.bw + '">Count bodyweight</button>' +
+            '<button type="button" class="toggle" data-t="assist" aria-pressed="' + st.assist + '">Assisted</button>' +
             '<button type="button" class="toggle" data-t="note" aria-pressed="' + st.showNote + '">Note</button></div>' +
           '<div id="bwRow"' + (st.bw ? '' : ' hidden') + '><div class="field-label"><span>Bodyweight</span><small>added to the load for volume</small></div>' +
             '<input class="plain-input" id="bwIn" inputmode="decimal" aria-label="Bodyweight" value="' + esc(st.bodyweight != null ? L.fmtLoad(st.bodyweight) : '') + '" placeholder="e.g. 180"></div>' +
@@ -1235,7 +1277,7 @@ async function openEntry(exId, editing, item) {
     if (working && !base && (!LG.item || st.weight == null)) {
       const top = prev.filter(s => s.is_warmup !== true).reduce((a, s) => (Number(s.weight) > Number(a.weight) ? s : a), working);
       const same = prev.filter(s => s.is_warmup !== true && Number(s.weight) === Number(top.weight) && s.unit === top.unit).length;
-      Object.assign(st, { weight: Number(top.weight), reps: top.reps, unit: top.unit, bw: !!top.count_bodyweight,
+      Object.assign(st, { weight: Math.abs(Number(top.weight)), assist: Number(top.weight) < 0, amount: top[LG.field] != null ? Number(top[LG.field]) : st.amount, unit: top.unit, bw: !!top.count_bodyweight,
         bodyweight: top.bodyweight != null ? Number(top.bodyweight) : st.bodyweight, sets: atEnd ? Math.min(10, Math.max(1, same)) : 1 });
       syncInputs();
     }
@@ -1245,7 +1287,21 @@ async function openEntry(exId, editing, item) {
     updateLive();
   }
 }
-// − and + under each box: the weight moves by your usual jump (5 lb or 2.5 kg), reps and sets by one.
+// Under More: the type's other fields (a carry's time), the carry unit when a field has one, and
+// effort (RPE). All drawn from the field table, nothing per exercise.
+function moreFields(TY, st) {
+  const o = TRO(), extras = TY.fields.filter(f => f !== LG.field);
+  const box = f => { const F = TR.FIELDS[f], v = st.extra[f];
+    return '<div class="field-label"><span>' + esc(F.label) + '</span><small>optional</small></div>' +
+      '<input class="plain-input" id="x_' + f + '" inputmode="' + F.inputmode + '" aria-label="' + esc(F.label) + '" value="' + esc(v == null ? '' : F.show(v, o)) + '" placeholder="' + esc(F.show(F.start, o)) + '">'; };
+  const units = [LG.field, ...extras].some(f => TR.FIELDS[f].unitOf)
+    ? '<div class="row" style="margin-top:10px"><span class="seg" role="group" aria-label="Distance unit">' + Object.keys(TR.CARRY_UNITS).map(u =>
+      '<button type="button" data-carry="' + u + '" aria-pressed="' + (u === o.carryUnit) + '">' + u + '</button>').join('') + '</span><span class="muted" style="font-size:13px">Distance in</span></div>' : '';
+  return extras.map(box).join('') + units +
+    '<div class="field-label"><span>Effort</span><small>RPE: 10 is nothing left</small></div><div class="seg seg-wrap" role="group" aria-label="Effort">' +
+    [6, 7, 8, 9, 10].map(v => '<button type="button" data-rpe="' + v + '" aria-pressed="' + (st.rpe === v) + '">' + v + '</button>').join('') + '</div>';
+}
+// − and + under each box: the weight moves by your usual jump (5 lb or 2.5 kg), the main field by its own step, sets by one.
 const steppers = (k, what) => '<div class="nudge"><button type="button" data-' + k + '="-1" aria-label="Less ' + what + '">−</button><button type="button" data-' + k + '="1" aria-label="More ' + what + '">+</button></div>';
 // Small jumps for fine-tuning: micro plates in lb, and half that in kg.
 const NUDGES = { lb: [-10, -5, -2.5, 2.5, 5, 10], kg: [-5, -2.5, -1.25, 1.25, 2.5, 5] };
@@ -1256,7 +1312,12 @@ function drawNudges() {
 function syncInputs() {
   drawNudges();
   $('wIn').value = st().weight == null ? '' : L.fmtLoad(st().weight);
-  $('rIn').value = st().reps;
+  $('aIn').value = TR.FIELDS[LG.field].show(st().amount, TRO());
+  if ($('aUnit')) $('aUnit').textContent = carryUnit();
+  if ($('wLabel')) $('wLabel').textContent = st().assist ? 'Assist' : 'Weight';
+  inner.querySelectorAll('[data-t="assist"]').forEach(b => b.setAttribute('aria-pressed', st().assist));
+  inner.querySelectorAll('[data-rpe]').forEach(b => b.setAttribute('aria-pressed', Number(b.dataset.rpe) === st().rpe));
+  inner.querySelectorAll('[data-carry]').forEach(b => b.setAttribute('aria-pressed', b.dataset.carry === carryUnit()));
   if ($('nIn')) $('nIn').value = st().sets;
   inner.querySelectorAll('[data-unit]').forEach(b => b.setAttribute('aria-pressed', b.dataset.unit === st().unit));
   if ($('wUnit')) $('wUnit').textContent = st().unit;
@@ -1268,10 +1329,10 @@ const st = () => LG.st;
 function wireEntry() {
   inner.querySelectorAll('.trio input').forEach(i => i.addEventListener('input', () => { LG.next = null; }, true));
   $('wIn').addEventListener('input', () => { const v = L.parseLoad($('wIn').value); if (v != null) st().weight = v; updateLive(); });
-  $('rIn').addEventListener('input', () => { const v = parseInt($('rIn').value, 10); if (v > 0) st().reps = v; updateLive(); });
+  $('aIn').addEventListener('input', () => { const v = TR.FIELDS[LG.field].read($('aIn').value, TRO()); if (v != null) st().amount = v; updateLive(); });
   if ($('nIn')) { $('nIn').addEventListener('input', () => { const v = parseInt($('nIn').value, 10); if (v > 0) st().sets = Math.min(20, v); updateLive(); }); $('nIn').addEventListener('focus', () => $('nIn').select()); }
   $('bwIn').addEventListener('input', () => { st().bodyweight = L.parseLoad($('bwIn').value); });
-  [$('wIn'), $('rIn')].forEach(i => i.addEventListener('focus', () => i.select()));
+  [$('wIn'), $('aIn')].forEach(i => i.addEventListener('focus', () => i.select()));
   inner.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('saveBtn').click(); } }));
 }
 function updateLive() {
@@ -1279,8 +1340,9 @@ function updateLive() {
   const btn = $('saveBtn');
   if (btn && LG.mode === 'entry' && !btn.disabled && LG.next) btn.textContent = LG.next.label;
   else if (btn && LG.mode === 'entry' && !btn.disabled) {
-    const load = s.weight > 0 ? ' @ ' + L.fmtLoad(s.weight) + ' ' + s.unit : s.weight == null ? ' (enter a weight)' : '';
-    btn.textContent = s.sets > 1 ? 'Log ' + s.sets + ' × ' + s.reps + load : 'Log ' + s.reps + ' rep' + (s.reps === 1 ? '' : 's') + load;
+    const F = TR.FIELDS[LG.field];
+    const load = s.weight > 0 ? ' @ ' + (s.assist ? 'BW−' : '') + L.fmtLoad(s.weight) + ' ' + s.unit : s.weight == null && F.needsLoad ? ' (enter a weight)' : '';
+    btn.textContent = 'Log ' + (s.sets > 1 ? s.sets + ' × ' : '') + F.text(s.amount, TRO()) + (F.noun && s.sets === 1 ? ' ' + F.noun(s.amount) : '') + load;
   }
   // plates, for barbell-ish loads
   const pl = s.weight != null && s.weight >= L.BAR[s.unit] ? L.plateLoadout(s.weight, L.BAR[s.unit], L.PLATES[s.unit]) : null;
@@ -1288,14 +1350,22 @@ function updateLive() {
     ? 'Plates per side on a ' + L.BAR[s.unit] + ' ' + s.unit + ' bar: ' + pl.perSide.map(L.fmtLoad).join(' · ') + (Math.abs(pl.total - s.weight) > 1e-6 ? ' (= ' + L.fmtLoad(pl.total) + ')' : '')
     : '';
   // PR flag
-  const probe = { exercise_id: LG.exId, unit: s.unit, reps: s.reps, weight: s.weight, is_warmup: s.warm };
-  const prev = S.bests.get(L.bestKey(probe));
-  const flag = $('prFlag');
-  flag.innerHTML = LG.mode === 'entry' && !s.warm && prev != null && s.weight > prev
-    ? '<div class="pr-flag">' + T.icons.pr + ' ' + esc(T.prFlag(s.reps, L.fmtLoad(prev) + ' ' + s.unit)) + '</div>' : '';
-  const est = prev != null ? L.e1rm(prev, s.reps) : null;
-  if ($('bestLine')) $('bestLine').innerHTML = prev != null ? '<p class="hint-line">Best at ' + s.reps + ' reps: <b>' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</b>' +
-    (est ? ' · estimated 1-rep max ' + esc(L.fmtLoad(Math.round(est))) + ' ' + s.unit : '') + '</p>' : '';
+  // The set as it stands, read the same way it will be saved. Rep sets compare with your best at that
+  // rep count; others with your longest, farthest or heaviest.
+  const probe = { exercise_id: LG.exId, unit: s.unit, weight: (s.assist ? -1 : 1) * (s.weight || 0), count_bodyweight: s.bw, is_warmup: s.warm,
+    ...stepMeasures({}), [LG.field]: s.amount };
+  const flag = $('prFlag'), live = LG.mode === 'entry' && !s.warm;
+  if (probe.reps != null) {
+    const prev = S.bests.get(L.bestKey(probe)), est = prev != null ? L.e1rm(prev, probe.reps) : null;
+    flag.innerHTML = live && prev != null && probe.weight > prev ? '<div class="pr-flag">' + T.icons.pr + ' ' + esc(T.prFlag(probe.reps, L.fmtLoad(prev) + ' ' + s.unit)) + '</div>' : '';
+    if ($('bestLine')) $('bestLine').innerHTML = prev != null ? '<p class="hint-line">Best at ' + probe.reps + ' reps: <b>' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</b>' +
+      (est ? ' · estimated 1-rep max ' + esc(L.fmtLoad(Math.round(est))) + ' ' + s.unit : '') + '</p>' : '';
+  } else {
+    const beats = TR.featsOf(probe).some(([m, u, v]) => { const p = S.feats.get(TR.featKey(LG.exId, m, u)); return p != null && v > p; });
+    flag.innerHTML = live && beats ? '<div class="pr-flag">' + T.icons.pr + ' A new best</div>' : '';
+    const line = TR.featLine(LG.exId, S.feats, TRO());
+    if ($('bestLine')) $('bestLine').innerHTML = line ? '<p class="hint-line">Your bests: <b>' + esc(line) + '</b></p>' : '';
+  }
 }
 function refreshLoggerList() {
   const box = $('doneToday');
@@ -1382,11 +1452,18 @@ inner.addEventListener('click', async e => {
   }
   if (b.dataset.w) { LG.next = null; s.weight = Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.w) * (s.unit === 'kg' ? 2.5 : 5)) * 4) / 4); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.nudge) { LG.next = null; s.weight = Math.min(2000, Math.max(0, Math.round(((s.weight || 0) + Number(b.dataset.nudge)) * 4) / 4)); syncInputs(); updateLive(); vibrate(5); return; }
-  if (b.dataset.r) { LG.next = null; s.reps = Math.max(1, Math.min(1000, s.reps + Number(b.dataset.r))); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.a) { LG.next = null; const F = TR.FIELDS[LG.field]; s.amount = F.clamp(Number(s.amount) + Number(b.dataset.a) * F.step(TRO())); syncInputs(); updateLive(); vibrate(5); return; }
+  if (b.dataset.rpe) { const v = Number(b.dataset.rpe); s.rpe = s.rpe === v ? null : v; syncInputs(); return; }
+  if (b.dataset.carry) { prefs.carryUnit = b.dataset.carry; savePrefs(); syncInputs(); updateLive(); return; }
   if (b.dataset.n) { LG.next = null; s.sets = Math.max(1, Math.min(20, s.sets + Number(b.dataset.n))); syncInputs(); updateLive(); vibrate(5); return; }
   if (b.dataset.t) {
     const t = b.dataset.t;
-    if (t === 'bw') { s.bw = !s.bw; $('bwRow').hidden = !s.bw; if (s.bw && $('bwIn').value === '') $('bwIn').focus(); }
+    if (t === 'assist') {   // assisted is a bodyweight set with help taken off
+      s.assist = !s.assist;
+      if (s.assist && !s.bw) { s.bw = true; $('bwRow').hidden = false; inner.querySelector('[data-t="bw"]').setAttribute('aria-pressed', true); if ($('bwIn').value === '') $('bwIn').focus(); }
+      syncInputs(); updateLive(); return;
+    }
+    if (t === 'bw') { s.bw = !s.bw; $('bwRow').hidden = !s.bw; if (s.bw && $('bwIn').value === '') $('bwIn').focus(); if (!s.bw && s.assist) { s.assist = false; syncInputs(); updateLive(); } }
     if (t === 'warm') { s.warm = !s.warm; updateLive(); }
     if (t === 'note') { s.showNote = !s.showNote; $('noteRow').hidden = !s.showNote; if (s.showNote) $('noteIn').focus(); }
     b.setAttribute('aria-pressed', t === 'bw' ? s.bw : t === 'warm' ? s.warm : s.showNote);
@@ -1404,16 +1481,29 @@ inner.addEventListener('click', async e => {
   if (b.id === 'delBtn') { const s0 = LG.editing; sheet.close(); return removeSet(s0, false); }
 });
 
+// The whole record, read from the boxes the exercise's fields put on screen: the weight, the main
+// field, any other fields under More, and effort. Every measure is in the record (null if unused).
 function readForm() {
-  const s = st();
-  const weight = L.parseLoad($('wIn').value), reps = parseInt($('rIn').value, 10);
+  const s = st(), o = TRO(), F = TR.FIELDS[LG.field];
+  let weight = L.parseLoad($('wIn').value);
+  const amount = F.read($('aIn').value, o);
   const bodyweight = s.bw ? L.parseLoad($('bwIn').value) : null;
-  if (weight == null) throw new Error('Enter a weight. Use 0 for bodyweight moves.');
+  if (weight == null) { if (F.needsLoad) throw new Error('Enter a weight. Use 0 for bodyweight moves.'); weight = 0; }
   if (weight < 0 || weight > 2000) throw new Error('Enter a weight between 0 and 2000.');
-  if (!(reps >= 1 && reps <= 1000)) throw new Error('Reps must be at least 1.');
+  if (amount == null) throw new Error(F.error);
   if (s.bw && !(bodyweight >= 1 && bodyweight <= 1000)) throw new Error('Enter your bodyweight to count it.');
+  if (s.assist && weight > bodyweight) throw new Error('The help can’t be more than your bodyweight.');
+  const rec = { ...stepMeasures({}), [LG.field]: amount };
+  for (const f of Object.keys(s.extra)) {
+    const box = $('x_' + f), text = box ? box.value.trim() : '';
+    if (!text) continue;
+    const v = TR.FIELDS[f].read(text, o);
+    if (v == null) throw new Error(TR.FIELDS[f].error);
+    rec[f] = v;
+  }
   const note = $('noteIn') ? $('noteIn').value.trim() : '';
-  return { weight, reps, unit: s.unit, count_bodyweight: s.bw, bodyweight: s.bw ? bodyweight : null, is_warmup: s.warm, notes: s.showNote && note ? note : null };
+  return { weight: s.assist ? -weight : weight, ...rec, rpe: s.rpe, unit: s.unit, count_bodyweight: s.bw, bodyweight: s.bw ? bodyweight : null,
+    is_warmup: s.warm, notes: s.showNote && note ? note : null };
 }
 async function saveEntry(btn) {
   $('formErr').textContent = '';
@@ -1594,7 +1684,7 @@ function followCard() {
         '<button class="linkbtn" data-unfollow="' + esc(part.id) + '" aria-label="Take ' + esc(part.name) + ' out of today">Remove</button></li>' : '';
       const d = stepDone(it), full = d >= it.sets;
       const tg = full ? null : suggestFor(it);
-      const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log set ' + (d + 1) + ' of ' + it.sets + ': ' + tg.reps + ' reps' + (tg.weight > 0 ? ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit : ', bodyweight') + '">✓</button>' : '';
+      const quick = tg && tg.weight != null ? '<button class="quick" data-quick-item="' + esc(it.id) + '" aria-label="Log set ' + (d + 1) + ' of ' + it.sets + ': ' + TR.FIELDS[tg.field].text(tg.target, TRO()) + (TR.FIELDS[tg.field].noun ? ' ' + TR.FIELDS[tg.field].noun(tg.target) : '') + (tg.weight > 0 ? ' at ' + esc(L.fmtLoad(tg.weight)) + ' ' + tg.unit : ', bodyweight') + '">✓</button>' : '';
       const ss = labels.get(it.id);
       return head + '<li class="step-row' + (ss ? ' ss' + (ss.endsWith('1') ? ' ss-first' : '') : '') + '"><button class="step' + (full ? ' done' : i === nextIdx ? ' next' : '') + '" data-follow-item="' + esc(it.id) + '">' +
         '<span class="tick" aria-hidden="true">' + (full ? '✓' : ss || i + 1) + '</span>' +
@@ -1686,11 +1776,13 @@ async function autoName(tid) {
 // What you usually do for a lift: your typical number of working sets per session and most common reps.
 function usualFor(exId) {
   const sets = recentOf(exId).filter(x => x.is_warmup !== true);
-  if (!sets.length) return { sets: 3, reps: 8, unit: prefs.unit };
-  const perDay = new Map(), reps = new Map();
-  for (const x of sets) { perDay.set(x.performed_on, (perDay.get(x.performed_on) || 0) + 1); reps.set(x.reps, (reps.get(x.reps) || 0) + 1); }
+  if (!sets.length) return { sets: 3, unit: prefs.unit };
+  const perDay = new Map();
+  for (const x of sets) perDay.set(x.performed_on, (perDay.get(x.performed_on) || 0) + 1);
   const counts = [...perDay.values()].sort((a, b) => a - b);
-  return { sets: Math.min(10, Math.max(1, counts[Math.floor(counts.length / 2)])), reps: [...reps.entries()].sort((a, b) => b[1] - a[1])[0][0], unit: sets[0].unit };
+  // Your most common value of each measure (reps, time, distance), where you've logged it.
+  const common = f => { const c = new Map(); for (const x of sets) if (x[f] != null) c.set(Number(x[f]), (c.get(Number(x[f])) || 0) + 1); const top = [...c].sort((a, b) => b[1] - a[1])[0]; return top ? top[0] : null; };
+  return { sets: Math.min(10, Math.max(1, counts[Math.floor(counts.length / 2)])), ...Object.fromEntries(TR.MEASURES.map(f => [f, common(f)])), unit: sets[0].unit };
 }
 async function newRoutine(btn, kind) {
   if (btn) btn.disabled = true;
@@ -1703,7 +1795,7 @@ async function newRoutine(btn, kind) {
 }
 async function copySteps(fromIds, tid) {
   let pos = Math.max(0, ...rawItems(tid).map(i => i.position));
-  await putItems(fromIds.map(id => S.itemsById.get(id)).filter(Boolean).map(src => ({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, reps: src.reps,
+  await putItems(fromIds.map(id => S.itemsById.get(id)).filter(Boolean).map(src => ({ template_id: tid, exercise_id: src.exercise_id, position: ++pos, sets: src.sets, ...stepMeasures(src),
     ...loadFor(src), unit: src.unit, rest_s: src.rest_s ?? null, note: src.note ?? null, with_next: !!src.with_next })));
 }
 // Link a block into a workout (at the end, or at a position): it stays one block, so changing the
@@ -1731,7 +1823,7 @@ async function unlinkBlock(refId) {
   if (rows.length - 1 + steps.length > 100) return toast('That would be more than 100 steps.');
   // Renumber: everything after the link moves down to make room for the copied steps.
   await Promise.all(after.map((x, k) => store.updateItem(x.id, { position: Math.min(100, ref.position + steps.length + k) }).then(r => Object.assign(x, r))));
-  await putItems(steps.map((b, k) => ({ template_id: tid, exercise_id: b.exercise_id, position: Math.min(100, ref.position + k), sets: b.sets, reps: b.reps,
+  await putItems(steps.map((b, k) => ({ template_id: tid, exercise_id: b.exercise_id, position: Math.min(100, ref.position + k), sets: b.sets, ...stepMeasures(b),
     ...loadFor(b), unit: b.unit, rest_s: b.rest_s ?? null, note: b.note ?? null, with_next: !!b.with_next })));
   await store.removeItem(ref.id);
   S.items = S.items.filter(x => x.id !== ref.id);
@@ -1875,7 +1967,7 @@ async function copyRoutine(id, btn) {
     S.templates.push(t);
     const keepLinks = isMine(src) && !isBlock(src);
     await putItems((keepLinks ? rawItems(id) : routineItems(id)).map((it, i) => ({ template_id: t.id, exercise_id: it.block_id ? null : it.exercise_id, block_id: it.block_id || null,
-      position: Math.min(100, i + 1), sets: it.sets, reps: it.reps, ...loadFor(it), unit: it.unit,
+      position: Math.min(100, i + 1), sets: it.sets, ...stepMeasures(it), ...loadFor(it), unit: it.unit,
       rest_s: it.rest_s ?? null, note: it.note ?? null, with_next: !!it.with_next })).filter(r => r.exercise_id || r.block_id));
     toast('Copied. This one’s yours to change.');
     openDesigner(t.id);
@@ -2067,7 +2159,7 @@ inner.addEventListener('drop', async e => {
       const above = rows[i - 1], join = !!(above && above.with_next && !above.block_id);
       await shiftFrom(tid, at);
       const u = usualFor(id);
-      const [made] = await putItems([{ template_id: tid, exercise_id: id, position: at, sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit, with_next: join }]);
+      const [made] = await putItems([{ template_id: tid, exercise_id: id, position: at, sets: u.sets, ...stepTarget(id, u), load_mode: 'last', load_value: 0, unit: u.unit, with_next: join }]);
       D.open = made.id;
     }
     await autoName(tid);
@@ -2104,7 +2196,7 @@ function itemRow(it, last) {
       '<span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></div>' +
     (open ?
       '<div class="item-edit">' +
-        '<div class="two">' + bigStep('Sets', 'sets', it.sets) + bigStep('Reps', 'reps', it.reps) + '</div>' +
+        '<div class="two">' + bigStep('Sets', 'sets', it.sets) + measureStep(it) + '</div>' +
         '<div class="field-label"><span>Weight</span></div><div class="seg seg-wrap" role="group" aria-label="Weight rule">' + [['last', 'Your last'], ['fixed', 'Set weight'], ['progress', 'Go up'], ['pct', '% of best']].map(([k, l]) =>
           '<button type="button" data-loadmode="' + k + '" aria-pressed="' + ((it.load_mode === 'percent_1rm' ? 'pct' : it.load_mode) === k) + '">' + l + '</button>').join('') + '</div>' +
         (it.load_mode === 'percent_1rm' ? bigStep('% of each person’s best 1-rep max', 'load_value', L.fmtLoad(it.load_value), true)
@@ -2130,16 +2222,23 @@ function ruleHint(it) {
     : 'Each person uses their own last weight for this lift.';
   return base + ' You: ' + (g.weight != null ? loadText(g) + ' (' + g.why + ').' : g.why + '.');
 }
+// The step's main measure, as a stepper: reps, time or distance, from the field table.
+function measureStep(it) {
+  const ex = S.byId.get(it.exercise_id), f = TR.stepField(it, ex), F = TR.FIELDS[f];
+  return bigStep(F.label + (F.unitOf ? ' (' + F.unitOf(TRO()) + ')' : ''), f, F.show(TR.stepValue(it, ex), TRO()));
+}
 function bigStep(label, field, value, wide) {
   return '<label class="bs' + (wide ? ' wide' : '') + '"><small>' + esc(label) + '</small><span>' +
     '<button type="button" data-step-field="' + field + '" data-d="-1" aria-label="Less ' + esc(label) + '">−</button>' +
-    '<input data-field="' + field + '" inputmode="decimal" value="' + esc(value) + '" aria-label="' + esc(label) + '">' +
+    '<input data-field="' + field + '" inputmode="' + (TR.FIELDS[field] ? TR.FIELDS[field].inputmode : 'decimal') + '" value="' + esc(value) + '" aria-label="' + esc(label) + '">' +
     '<button type="button" data-step-field="' + field + '" data-d="1" aria-label="More ' + esc(label) + '">+</button></span></label>';
 }
 const ITEM_BOUNDS = { sets: [1, 20], reps: [1, 100], rest_s: [0, 900] };
 function clampItem(it, field, v) {
   if (field === 'load_value') return it.load_mode === 'percent_1rm' ? Math.min(150, Math.max(1, v)) : it.load_mode === 'progress' ? Math.min(50, Math.max(0.5, v))
     : it.load_mode === 'fixed' ? Math.min(2000, Math.max(0, v)) : 0;
+  const F = TR.FIELDS[field];
+  if (F) return Math.min(F.stepMax || Infinity, F.clamp(v));
   const [lo, hi] = ITEM_BOUNDS[field];
   return Math.min(hi, Math.max(lo, Math.round(v)));
 }
@@ -2151,7 +2250,7 @@ function redrawItem(id) {
 function refreshItemView(id) {
   const li = inner.querySelector('.item[data-item="' + id + '"]'), it = S.itemsById.get(id);
   if (!li || !it) return;
-  li.querySelectorAll('input[data-field]').forEach(inp => { if (document.activeElement !== inp) inp.value = inp.dataset.field === 'load_value' ? L.fmtLoad(it.load_value) : it[inp.dataset.field]; });
+  li.querySelectorAll('input[data-field]').forEach(inp => { if (document.activeElement !== inp) inp.value = inp.dataset.field === 'load_value' ? L.fmtLoad(it.load_value) : TR.FIELDS[inp.dataset.field] ? TR.FIELDS[inp.dataset.field].show(it[inp.dataset.field] ?? TR.FIELDS[inp.dataset.field].start, TRO()) : it[inp.dataset.field]; });
   li.querySelector('.sum').textContent = itemSummary(it);
   const hint = li.querySelector('[data-pct-hint]');
   if (hint) hint.textContent = ruleHint(it);
@@ -2163,7 +2262,7 @@ async function addItemsTo(tid, exIds) {
     let pos = Math.max(0, ...rawItems(tid).map(i => i.position));
     const made = await putItems(exIds.map(exId => {
       const u = usualFor(exId);
-      return { template_id: tid, exercise_id: exId, position: Math.min(100, ++pos), sets: u.sets, reps: Math.min(100, u.reps), load_mode: 'last', load_value: 0, unit: u.unit };
+      return { template_id: tid, exercise_id: exId, position: Math.min(100, ++pos), sets: u.sets, ...stepTarget(exId, u), load_mode: 'last', load_value: 0, unit: u.unit };
     }));
     if (made.length === 1) D.open = made[0].id;   // one added: open it, ready to set
     if (exIds.length > 1) toast('Added ' + exIds.length + ' exercises at your usual sets and reps.');
@@ -2227,7 +2326,7 @@ inner.addEventListener('input', e => {
   if (note && LG.mode === 'design') return queueItem(note.dataset.noteFor, { note: note.value.trim() || null });
   const inp = e.target.closest('[data-field]');
   if (!inp || LG.mode !== 'design') return;
-  const id = inp.closest('.item').dataset.item, it = S.itemsById.get(id), v = L.parseLoad(inp.value);
+  const id = inp.closest('.item').dataset.item, it = S.itemsById.get(id), F = TR.FIELDS[inp.dataset.field], v = F ? F.read(inp.value, TRO()) : L.parseLoad(inp.value);
   if (v == null) return;
   queueItem(id, { [inp.dataset.field]: clampItem(it, inp.dataset.field, v) });
 });
@@ -2380,7 +2479,7 @@ async function designerClick(b) {
     if (list.length >= 100) return toast('That’s the most steps a routine can have.');
     try {
       await Promise.all(list.filter(x => x.position > it.position).map(later => store.updateItem(later.id, { position: later.position + 1 }).then(s => Object.assign(later, s))));
-      const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, reps: it.reps,
+      const copy = await store.addItem({ template_id: D.id, exercise_id: it.exercise_id, position: it.position + 1, sets: it.sets, ...stepMeasures(it),
         load_mode: it.load_mode, load_value: it.load_value, unit: it.unit, rest_s: it.rest_s ?? null, note: it.note ?? null, with_next: !!it.with_next });
       S.items.push(copy); S.itemsById.set(copy.id, copy);
       D.open = copy.id;
@@ -2399,8 +2498,9 @@ async function designerClick(b) {
   }
   if (b.dataset.stepField) {
     const f = b.dataset.stepField, d = Number(b.dataset.d);
-    const step = f === 'load_value' ? (it.load_mode === 'percent_1rm' || (it.load_mode === 'fixed' && it.unit === 'lb') ? 5 : 2.5) : f === 'rest_s' ? 15 : 1;
-    queueItem(id, { [f]: clampItem(it, f, Number(it[f]) + d * step) });
+    const F = TR.FIELDS[f];
+    const step = F ? F.step(TRO()) : f === 'load_value' ? (it.load_mode === 'percent_1rm' || (it.load_mode === 'fixed' && it.unit === 'lb') ? 5 : 2.5) : f === 'rest_s' ? 15 : 1;
+    queueItem(id, { [f]: clampItem(it, f, Number(it[f] ?? (F ? F.start : 0)) + d * step) });
     refreshItemView(id); vibrate(5);
     return;
   }
@@ -3070,6 +3170,7 @@ function trendChoices() {
   const count = new Map();
   for (const r of S.recent) if (r.is_warmup !== true) count.set(r.exercise_id, (count.get(r.exercise_id) || 0) + 1);
   for (const r of S.bestRows) if (!count.has(r.exercise_id)) count.set(r.exercise_id, 0.5);
+  for (const k of (S.feats || new Map()).keys()) { const id = k.split('|')[0]; if (!count.has(id)) count.set(id, 0.5); }   // holds and carries too
   return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 40);
 }
 function drawTrend() {
@@ -3095,7 +3196,13 @@ function drawTrend() {
     }
     if (!src.length) { box.innerHTML = head + '<p class="muted">Loading…</p>'; return; }
   }
-  const rows = src.filter(r => r.is_warmup !== true && Number(r.weight) > 0);
+  // What this lift's sets measure decides the chart: a field with a chart (time, distance) plots its
+  // day's best; rep sets plot their load (top set and estimated 1-rep max), as before.
+  const counts = new Map();
+  for (const r of src) if (r.is_warmup !== true) { const m = TR.mainOf(r); if (m) counts.set(m, (counts.get(m) || 0) + 1); }
+  const main = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'reps';
+  if (TR.FIELDS[main].chart) return drawMeasureTrend(box, head, src, main);
+  const rows = src.filter(r => r.is_warmup !== true && Number(r.weight) > 0 && r.reps != null);
   const unit = rows.filter(r => r.unit === 'kg').length > rows.length / 2 ? 'kg' : 'lb';
   const byDay = new Map();
   for (const r of rows.filter(r => r.unit === unit)) {
@@ -3116,6 +3223,25 @@ function drawTrend() {
       (bestE ? ' · best est. 1-rep max <b>' + esc(L.fmtLoad(Math.round(bestE))) + ' ' + unit + '</b>' : '') +
       (change != null ? ' · ' + (change >= 0 ? '+' : '') + change + '% since ' + esc(fmtDay(days[0], { month: 'short', day: 'numeric' })) : '') + '</p>';
 }
+// A lift measured in time or distance: its day's best of that field, from the field's own chart
+// description, plus the heaviest load it's been done with.
+function drawMeasureTrend(box, head, src, main) {
+  const F = TR.FIELDS[main], o = TRO();
+  const rows = src.filter(r => r.is_warmup !== true && TR.mainOf(r) === main);
+  const byDay = new Map();
+  for (const r of rows) byDay.set(r.performed_on, Math.max(byDay.get(r.performed_on) || 0, Number(r[main])));
+  const days = [...byDay.keys()].sort().slice(-40);
+  if (days.length < 2) { box.innerHTML = head + '<p class="muted">Only one session of this so far. Do it again and the trend appears.</p>'; return; }
+  const raw = days.map(d => byDay.get(d)), best = Math.max(...raw), bestAt = days[raw.indexOf(best)];
+  const change = raw[0] ? Math.round((raw[raw.length - 1] - raw[0]) / raw[0] * 100) : null;
+  const heavy = rows.filter(r => Number(r.weight) > 0).reduce((m, r) => (!m || Number(r.weight) > Number(m.weight) ? r : m), null);
+  box.innerHTML = head +
+    C.lines({ labels: days.map(d => fmtDay(d, { month: 'short', day: 'numeric' })), series: [{ name: F.chart.name, values: raw.map(v => F.chart.value(v, o)) }],
+      zero: false, every: Math.ceil(days.length / 6), fmt: v => F.chart.fmt(v, o), label: exName(S.trendEx) + ', ' + F.chart.best + ' each day' }) +
+    '<p class="hint-line">' + esc(F.chart.name) + ': <b>' + esc(F.text(best, o)) + '</b> on ' + esc(fmtDay(bestAt, { month: 'short', day: 'numeric', year: 'numeric' })) +
+      (heavy ? ' · heaviest <b>' + esc(L.fmtLoad(Number(heavy.weight)) + ' ' + heavy.unit) + '</b>' : '') +
+      (change != null ? ' · ' + (change >= 0 ? '+' : '') + change + '% since ' + esc(fmtDay(days[0], { month: 'short', day: 'numeric' })) : '') + '</p>';
+}
 view.addEventListener('change', e => { if (e.target.id === 'trendEx') { S.trendEx = e.target.value; drawTrend(); } });
 function drawBests() {
   const q = L.norm(S.bestQuery);
@@ -3133,6 +3259,10 @@ function drawBests() {
       '<td class="num">' + esc(L.fmtLoad(r.heaviest)) + ' <small>' + r.unit + ' × ' + r.reps + '</small></td><td class="num"><b>' + (e1 ? esc(L.fmtLoad(Math.round(e1))) : '–') + '</b></td></tr>').join('') + '</tbody></table>' +
       (rows.length < all.length ? moreBtn('bests', all.length) : '')
     : '<p class="muted">' + (q ? 'No bests for that yet.' : 'Your bests show up here as you log.') + '</p>';
+  // Holds and carries have no 1-rep max to rank by: their bests (longest, farthest, heaviest) go below.
+  const featEx = [...new Set([...(S.feats || new Map()).keys()].map(k => k.split('|')[0]))].filter(id => !q || L.norm(exName(id)).includes(q));
+  if (featEx.length) $('bestsBox').innerHTML += '<div class="section-title" style="margin-top:14px">Holds and carries</div>' +
+    featEx.map(id => '<p class="hint-line" style="margin:6px 2px"><b>' + esc(exName(id)) + '</b> · ' + esc(TR.featLine(id, S.feats, TRO())) + '</p>').join('');
 }
 
 // ===========================================================================
@@ -3321,11 +3451,11 @@ const PDAYS = [1, 2, 3, 4, 5, 6, 0];   // Monday first
 const LETTERS = 'ABCDEFG';
 const PD = { id: null, name: '', weeks: 8, about: '', shared: false, workouts: [], days: {}, err: '' };
 const progById = id => (S.programs || []).find(p => p.id === id);
-const progWorkoutText = w => w.steps.map(s => exName(s.exercise_id) + ' ' + s.sets + '×' + s.reps).join(' · ');
+const progWorkoutText = w => w.steps.map(s => exName(s.exercise_id) + ' ' + TR.stepText(s, S.byId.get(s.exercise_id), TRO())).join(' · ');
 // Snapshot a routine as a program workout.
 function snapRoutine(t) {
   return { key: 'w' + Math.random().toString(36).slice(2, 8), name: t.name.slice(0, 60),
-    steps: routineItems(t.id).map(it => ({ exercise_id: it.exercise_id, sets: it.sets, reps: it.reps, ...loadFor(it, true), unit: it.unit, rest_s: it.rest_s, note: it.note || null })) };
+    steps: routineItems(t.id).map(it => ({ exercise_id: it.exercise_id, sets: it.sets, ...stepMeasures(it), ...loadFor(it, true), unit: it.unit, rest_s: it.rest_s, note: it.note || null })) };
 }
 // About how long a session takes, and how many working sets: for the "is this sensible?" line.
 function sessionSize(w) {
@@ -3429,7 +3559,7 @@ async function addProgramToWeek(p, b) {
         t = await store.addRoutine({ name, kind: 'workout', notes: null });
         S.templates.push(t);
         let pos = 0;
-        await putItems(w.steps.filter(s => S.byId.get(s.exercise_id)).map(s => ({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, reps: s.reps,
+        await putItems(w.steps.filter(s => S.byId.get(s.exercise_id)).map(s => ({ template_id: t.id, exercise_id: s.exercise_id, position: ++pos, sets: s.sets, ...stepMeasures(s),
           load_mode: s.load_mode || 'last', load_value: s.load_value ?? 0, unit: s.unit || lastLoad(s.exercise_id).unit, rest_s: s.rest_s ?? null, note: s.note || null })));
       }
       return [w.key, t];
@@ -4173,7 +4303,7 @@ function renderWrapped(sn) {
         (bestDay ? '<div class="wr-box"><h3>Best day</h3><b class="wr-big">' + esc(fmtDay(bestDay[0], { weekday: 'long' })) + '</b><p>' + esc((bestDay[1].who.size > 1 ? 'You all lifted. ' : '') + C.compact(bestDay[1].lb) + ' lb.') + '</p></div>' : '') +
         '<div class="wr-box"><h3>Lifts trained</h3><b class="wr-big">' + lifts + '</b><p>different exercises between you.</p></div></div>' +
       (prs.length ? '<div class="wr-box"><h3>Every best set</h3><ul class="wr-bests">' + prs.map(w => { const m = w.summary || {};
-        return '<li><i style="background:' + color(w.created_by) + '"></i><span>' + esc(w.title.replace(/ PR$/, '')) + '</span><b>' + esc(L.fmtLoad(Number(m.weight)) + ' × ' + m.reps) + '</b></li>'; }).join('') + '</ul></div>' : '') +
+        return '<li><i style="background:' + color(w.created_by) + '"></i><span>' + esc(w.title.replace(/ PR$/, '')) + '</span><b>' + esc(prText(m)) + '</b></li>'; }).join('') + '</ul></div>' : '') +
       (stamps ? '<div class="wr-box"><h3>' + esc(T.stamps) + '</h3><div class="stamp-grid">' + stamps + '</div></div>' : '') +
       (isMine(sn) ? '<button class="btn primary block" data-sz-again="' + esc(sn.id) + '">Start the next season</button>' : '') +
     '</section>';
@@ -4341,7 +4471,7 @@ function genUsage() {
   for (const x of S.recent || []) if (x.is_warmup !== true) n.set(x.exercise_id, (n.get(x.exercise_id) || 0) + 1);
   return n;
 }
-const genPool = () => S.exercises.filter(e => !e.deleted_at);
+const genPool = () => S.exercises.filter(e => !e.deleted_at && TR.mainField(TR.typeOf(e)) === 'reps');   // the generator writes rep schemes
 function openGenerator() {
   LG.mode = 'gen';
   GN.type = prefs.genType || 'push';
@@ -4459,7 +4589,7 @@ async function loadWins() {
 const WIN_ICON = new Proxy({}, { get: (_, k) => T.icons[k] });
 function winText(w) {
   const m = w.summary || {};
-  if (w.kind === 'pr') return T.winPr(w.title.replace(/ PR$/, '')) + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps;
+  if (w.kind === 'pr') return T.winPr(w.title.replace(/ PR$/, '')) + prText(m);
   if (w.kind === 'club') return T.win.club + w.title;
   if (w.kind === 'record') return T.win.record + w.title.replace(/ record$/, '') + ' record, ' + L.fmtLoad(Number(m.weight)) + ' ' + (m.unit || 'lb') + ' × ' + m.reps + (m.from ? ' (was ' + m.from + '’s)' : '');
   if (w.kind === 'quest') return T.win.quest + w.title;
@@ -4481,7 +4611,7 @@ function sessionCardHtml(w, extra) {
   const bw = it => it[5] || !(Number(it[3]) > 0);
   const load = it => (bw(it) ? 'bodyweight' : esc(L.fmtLoad(Number(it[3]))) + (it[4] && it[4] !== 'lb' ? ' ' + esc(it[4]) : ''));
   const rows = items.map(it => '<li' + (it[6] ? ' class="pr"' : '') + '><b>' + esc(it[0]) + '</b><span>' + (it[6] ? T.icons.pr + ' ' : '') +
-    n(it[1]) + ' × ' + n(it[2]) + (bw(it) ? ' · ' : ' @ ') + load(it) + '</span></li>').join('');
+    esc(itemLine(it, n)) + '</span></li>').join('');
   const badge = (icon, label, small, isNew) => '<span class="ws-badge' + (isNew ? ' new' : '') + '"><span class="m">' + icon + '</span>' + esc(label) + (small ? ' <small>' + esc(small) + '</small>' : '') + '</span>';
   const badges = extra.map(x =>
     x.kind === 'club' ? badge(T.icons.club, x.title, 'new', true)
@@ -4572,7 +4702,7 @@ function libListHtml() {
   return '<div class="row lib-count"><span class="muted">' + list.length + ' exercise' + (list.length === 1 ? '' : 's') + '</span>' + sort + '</div>' +
     '<ul class="results lib-list">' + shown.map(e => {
       const r = st.get(e.id);
-      const mine = r && r.best ? 'best ' + (r.best.w > 0 ? L.fmtLoad(r.best.w) + ' ' + r.best.unit + ' × ' + r.best.reps : r.best.reps + ' reps') : '';
+      const mine = r && r.best ? 'best ' + (r.best.w > 0 ? L.fmtLoad(r.best.w) + ' ' + r.best.unit + ' × ' + r.best.reps : r.best.reps + ' reps') : TR.featLine(e.id, S.feats, TRO());
       const when = r && r.last ? (r.days.size > 1 ? r.days.size + ' days lately · ' : '') + 'last ' + fmtDay(r.last, { month: 'short', day: 'numeric' }) : '';
       return '<li><button data-lib-ex="' + esc(e.id) + '"><span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small>' +
         (mine || when ? '<small class="lib-me">' + esc([mine, when].filter(Boolean).join(' · ')) + '</small>' : '') + '</span><span class="chev" aria-hidden="true">›</span></button></li>';
@@ -4594,6 +4724,8 @@ function openExInfo(id) {
         (r && r.days.size ? ' · ' + r.days.size + ' day' + (r.days.size === 1 ? '' : 's') + ' in the last 4 months' : '') : 'You haven’t logged this one yet.') + '</p>' +
       (bests.length ? '<div class="section-title" style="margin-top:14px">Your bests</div><div class="chips">' + bests.map(b =>
         '<span class="chip">' + b.reps + ' rep' + (b.reps === 1 ? '' : 's') + ': <b>&nbsp;' + esc(Number(b.heaviest) > 0 ? L.fmtLoad(Number(b.heaviest)) + ' ' + b.unit : 'bodyweight') + '</b></span>').join('') + '</div>' : '') +
+      (TR.featLine(id, S.feats, TRO()) ? '<p class="hint-line">Your bests: <b>' + esc(TR.featLine(id, S.feats, TRO())) + '</b></p>' : '') +
+      (me && me.is_admin ? typePicker('lib-type', TR.typeOf(e).id) : '') +
       (usedIn.length ? '<div class="section-title" style="margin-top:14px">In workouts</div><div class="chips">' + usedIn.slice(0, 12).map(t =>
         (isMine(t) ? '<button type="button" class="chip" data-lib-open-rt="' + esc(t.id) + '">' : '<span class="chip">') + esc(t.name) + (isMine(t) ? '</button>' : '</span>')).join('') + '</div>' : '') +
       '<div class="ex-actions"><button class="btn primary" data-lib-log="' + esc(id) + '">Log it</button>' +
@@ -4611,11 +4743,15 @@ function openAddTo(id) {
     '<div class="sheet-body"><ul class="results"><li><button data-lib-to="new"><span>＋ New workout with it</span><small>start one from this exercise</small></button></li>' + mine.map(row).join('') + '</ul></div>';
   openSheet();
 }
+// How an exercise is measured: one button per log type (admins set it; it decides the logger's boxes).
+const typePicker = (attr, on) => '<div class="field-label" style="margin-top:14px"><span>Measured by</span><small>sets the logger’s boxes</small></div><div class="seg seg-wrap" role="group" aria-label="Measured by">' +
+  TR.TYPE_ORDER.map(k => '<button type="button" data-' + attr + '="' + k + '" aria-pressed="' + (k === on) + '" title="' + esc(TR.TYPES[k].blurb) + '">' + esc(TR.TYPES[k].name) + '</button>').join('') + '</div>';
 function openNewExercise(name) {
-  LG.mode = 'newex';
+  LG.mode = 'newex'; LG.newType = 'reps';
   inner.innerHTML = '<div class="sheet-head"><h2 id="sheetTitle">Add to the library</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     '<div class="sheet-body"><p class="hint-line" style="margin-top:0">Everyone in the crew can use it straight away. Name it the way people say it at the gym; muscle and equipment come from the name.</p>' +
       '<input class="plain-input" id="newExName" maxlength="80" placeholder="e.g. Cable Y-raise" value="' + esc(name) + '" aria-label="Exercise name" autocomplete="off">' +
+      '<div id="newExType">' + typePicker('new-ex-type', 'reps') + '</div>' +
       '<p class="hint-line" id="newExHint"></p><p class="warn" id="newExWarn"></p>' +
       '<button class="btn primary block big" data-new-ex-save>Add it</button></div>';
   openSheet();
@@ -4647,13 +4783,20 @@ async function libSheetClick(b) {
       return addItemsTo(tid, [id]);   // opens the workout with it on the end
     } catch (x) { b.disabled = false; return fail(x); }
   }
+  if (b.dataset.newExType) { LG.newType = b.dataset.newExType; $('newExType').innerHTML = typePicker('new-ex-type', LG.newType); return; }
+  if (b.dataset.libType) {
+    b.disabled = true;
+    try { const e = await store.updateExercise(id, { log_type: b.dataset.libType }); Object.assign(S.byId.get(id), e); toast(exName(id) + ' is measured by ' + TR.TYPES[e.log_type].name.toLowerCase() + ' now.'); }
+    catch (x) { fail(x); }
+    return openExInfo(id);
+  }
   if (b.hasAttribute('data-new-ex-save')) {
     const name = $('newExName').value.trim().replace(/\s+/g, ' ');
     if (!name) return toast('Give it a name.');
     if (S.exercises.some(e => !e.deleted_at && L.norm(e.name) === L.norm(name))) return toast('“' + name + '” is already in the library.');
     b.disabled = true;
     try {
-      const e = await store.addExercise(name);
+      const e = await store.addExercise(name, { log_type: LG.newType || 'reps' });
       S.exercises.push(e); S.byId.set(e.id, e); LIBSTATS = null;
       toast('Added “' + e.name + '” to the library.');
       if (currentTab === 'library') { S.lib.q = ''; render(); }
@@ -4677,7 +4820,7 @@ function shareCardFor(w, extras) {
     m.minutes ? { v: n(m.minutes), u: 'minutes' } : null, m.prs ? { v: n(m.prs), u: m.prs === 1 ? T.pr : T.prs, gold: true } : null].filter(Boolean);
   const bw = it => it[5] || !(Number(it[3]) > 0);
   const lifts = items.map(it => ({ name: String(it[0]), pr: !!it[6],
-    rx: n(it[1]) + ' × ' + n(it[2]) + (bw(it) ? ' · bodyweight' : ' @ ' + L.fmtLoad(Number(it[3])) + ' ' + (it[4] || 'lb')) }));
+    rx: itemLine(it, n) }));
   const badges = extras.map(x =>
     x.kind === 'club' ? T.icons.club + ' ' + x.title
     : x.kind === 'goal' ? T.icons.goal + ' ' + x.title.split(' · ')[0]
@@ -4760,7 +4903,7 @@ function sessionPost(r) {
     if (Number(x.weight) > Number(g.top.weight) || (Number(x.weight) === Number(g.top.weight) && x.reps > g.top.reps)) g.top = x;
     by.set(x.exercise_id, g);
   }
-  const items = [...by].slice(0, 10).map(([id, g]) => [exName(id).slice(0, 40), g.n, g.top.reps, Number(g.top.weight), g.top.unit,
+  const items = [...by].slice(0, 10).map(([id, g]) => [exName(id).slice(0, 40), g.n, g.top.reps ?? mainText(g.top), Number(g.top.weight), g.top.unit,
     g.top.count_bodyweight && !(Number(g.top.weight) > 0) ? 1 : 0, prEx.has(id) ? 1 : 0]);
   const t = today(), sn = (S.seasons || []).find(x => inSeason(x) && !isCore(x) && x.starts_on <= t && t <= x.ends_on);
   const where = sn ? sn.name + ' · week ' + (Math.floor((Date.parse(t) - Date.parse(sn.starts_on)) / 864e5 / 7) + 1) : '';
@@ -4872,7 +5015,7 @@ function drawRecords() {
 }
 // After a set: did it take a record from someone else?
 function checkRecord(x) {
-  if (!S.records || x.is_warmup === true || !(Number(x.weight) > 0) || x.reps > 12) return;
+  if (!S.records || x.is_warmup === true || !(Number(x.weight) > 0) || x.reps == null || x.reps > 12) return;
   const e = e1lb(x.weight, x.reps, x.unit), rec = S.records.find(r => r.exercise_id === x.exercise_id);
   if (!rec || e <= Number(rec.e1rm_lb)) return;
   const from = rec.user_id !== S.myId ? rec.display_name : null;
@@ -4927,7 +5070,7 @@ const QUESTS = [
   { id: 'days3', name: 'Show up three times', need: () => 3, have: ws => new Set(ws.map(x => x.performed_on)).size },
   { id: 'newlift', name: 'Try a lift you haven’t done in a month', need: () => 1, have: ws => { const w = weekOf(today()), old = new Set(S.recent.filter(x => x.performed_on < w && x.performed_on >= L.addDays(w, -30)).map(x => x.exercise_id)); return new Set(ws.map(x => x.exercise_id).filter(id => !old.has(id))).size ? 1 : 0; } },
   { id: 'pr', name: 'Set a PR', need: () => 1, have: () => S.bestRows.filter(r => r.first_lifted_on >= weekOf(today())).length ? 1 : 0 },
-  { id: 'reps100', name: '100 reps of one lift', need: () => 100, have: ws => { const m = new Map(); for (const x of ws) m.set(x.exercise_id, (m.get(x.exercise_id) || 0) + x.reps); return Math.max(0, ...m.values()); } },
+  { id: 'reps100', name: '100 reps of one lift', need: () => 100, have: ws => { const m = new Map(); for (const x of ws) m.set(x.exercise_id, (m.get(x.exercise_id) || 0) + (x.reps || 0)); return Math.max(0, ...m.values()); } },
   { id: 'volume', name: 'Move a mountain', need: () => Math.max(10000, niceRound(weekly(9).slice(0, 8).reduce((a, w) => a + w.lb, 0) / 8 * 1.1)), have: ws => Math.round(L.lbEquivalent(L.volumeByUnit(ws))), fmt: v => C.compact(v) + ' lb' },
   { id: 'plan', name: 'Finish a planned workout', need: () => 1, have: () => { const w = weekOf(today()), days = [...new Set(S.recent.filter(x => x.performed_on >= w).map(x => x.performed_on))];
       const plans = [...new Set((S.plan || []).map(p => p.template_id))].map(id => ({ template_id: id })); return plans.length && days.some(dd => matchRoutine(plans, dd) >= 0) ? 1 : 0; } },

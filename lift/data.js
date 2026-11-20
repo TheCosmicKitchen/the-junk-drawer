@@ -3,8 +3,10 @@
 //   DemoStore  in-memory sample data for trying the app (?demo). Nothing is saved.
 import { SUPABASE_URL, SUPABASE_KEY, SUPABASE_JS } from './config.js';
 import { localDate, addDays, setVolume } from './logic.js';
+import * as TR from './tracking.js';
 
-const SET_COLS = 'id,exercise_id,performed_on,logged_at,date_only,weight,reps,unit,count_bodyweight,bodyweight,is_warmup,notes,import_batch_id,deleted_at';
+const SET_COLS = 'id,exercise_id,performed_on,logged_at,date_only,weight,reps,duration_s,distance_m,rpe,unit,count_bodyweight,bodyweight,is_warmup,notes,import_batch_id,deleted_at';
+const EX_COLS = 'id,name,supports_bodyweight,kind,log_type,deleted_at';
 
 export async function connect(demo) {
   if (demo) {
@@ -92,7 +94,7 @@ class SupaStore {
   }
   async catalog() {
     const [exercises, aliases] = await Promise.all([
-      this.all(() => this.sb.from('lift_exercises').select('id,name,supports_bodyweight,kind,deleted_at').order('name')),
+      this.all(() => this.sb.from('lift_exercises').select(EX_COLS).order('name')),
       this.all(() => this.sb.from('lift_exercise_aliases').select('exercise_id,alias')),
     ]);
     return { exercises, aliases };
@@ -114,6 +116,7 @@ class SupaStore {
   }
   days() { return this.all(() => this.sb.from('lift_days').select('*').order('performed_on', { ascending: false })); }
   bests() { return this.all(() => this.sb.from('lift_bests').select('*')); }
+  feats() { return this.all(() => this.sb.from('lift_feats').select('*')); }   // bests of holds and carries
 
   // ----- writes -----
   async addSet(row) { return must(await this.sb.from('lift_sets').insert(row).select(SET_COLS).single()); }
@@ -126,8 +129,11 @@ class SupaStore {
   async updateSet(id, patch) { return must(await this.sb.from('lift_sets').update(patch).eq('id', id).select(SET_COLS).single()); }
   deleteSet(id) { return this.updateSet(id, { deleted_at: new Date().toISOString() }); }
   restoreSet(id) { return this.updateSet(id, { deleted_at: null }); }
-  async addExercise(name) {
-    return must(await this.sb.from('lift_exercises').insert({ name }).select('id,name,supports_bodyweight,deleted_at').single());
+  async addExercise(name, fields) {
+    return must(await this.sb.from('lift_exercises').insert({ name, ...fields }).select(EX_COLS).single());
+  }
+  async updateExercise(id, patch) {   // admins only (the database says so)
+    return must(await this.sb.from('lift_exercises').update(patch).eq('id', id).select(EX_COLS).single());
   }
 
   // ----- people -----
@@ -210,7 +216,7 @@ class SupaStore {
   async removeWin(id) { must(await this.sb.from('lift_posts').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
   // Every working set you've logged for one exercise, oldest first (for its trend chart).
   async exerciseHistory(exerciseId) {
-    return this.all(() => this.sb.from('lift_sets').select('performed_on,weight,reps,unit,is_warmup').is('deleted_at', null)
+    return this.all(() => this.sb.from('lift_sets').select('performed_on,weight,reps,duration_s,distance_m,count_bodyweight,unit,is_warmup').is('deleted_at', null)
       .eq('exercise_id', exerciseId).order('performed_on'));
   }
 
@@ -255,7 +261,7 @@ class SupaStore {
 
 const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by,points';
 const TPL = 'id,name,notes,is_shared,kind,created_by,updated_at';
-const ITEM_COLS = 'id,template_id,exercise_id,block_id,position,sets,reps,load_mode,load_value,unit,rest_s,note,with_next';
+const ITEM_COLS = 'id,template_id,exercise_id,block_id,position,sets,reps,duration_s,distance_m,load_mode,load_value,unit,rest_s,note,with_next';
 const PLAN = 'id,season_id,template_id,position,weekdays';
 const POST = 'id,kind,performed_on,title,summary,created_by,created_at';
 
@@ -267,6 +273,7 @@ const DEMO_EXERCISES = [
   ['Shoulder Press', ['ohp']], ['Bicep Curl', ['curl']], ['Dips', []], ['Leg Press', []],
   ['Face Pull', []], ['Hip Thrust', []], ['Seated Cable Row', []], ['Tricep Pushdown', []],
   ['Pull Up', ['pullups', 'pull-ups']], ['Goblet Squat', []], ['Lateral Raise', []], ['RDL', ['romanian deadlift']],
+  ['Plank', [], 'time'], ['Farmer\'s Carry', ['farmers walk'], 'distance'],
 ];
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
 // ?demo&big=3: a stress test with years of heavy history, 90 extra routines, a full season feed and
@@ -279,7 +286,7 @@ const DEMO_CARDIO = ['Walk', 'Run', 'Rowing machine', 'Bike', 'Elliptical', 'Sta
 class DemoStore {
   constructor() {
     this.demo = true;
-    this.exercises = DEMO_EXERCISES.map(([name], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up/.test(name), kind: 'strength', deleted_at: null }))
+    this.exercises = DEMO_EXERCISES.map(([name, , logType], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up|Plank/.test(name), kind: 'strength', log_type: logType || 'reps', deleted_at: null }))
       .concat(DEMO_CARDIO.map((name, i) => ({ id: 'cx' + i, name, supports_bodyweight: false, kind: 'cardio', deleted_at: null })));
     this.cardioRows = [{ id: uid(), exercise_id: 'cx1', performed_on: addDays(localDate(), -2), minutes: 28, distance: 5.2, distance_unit: 'km', created_at: new Date().toISOString() }];
     this.aliases = DEMO_EXERCISES.flatMap(([, al], i) => al.map(alias => ({ exercise_id: 'ex' + i, alias })));
@@ -310,6 +317,10 @@ class DemoStore {
           weight: w ? w + grow * (w >= 100 ? 10 : 5) : 0, reps: Math.max(3, r - (s === sets - 1 ? 1 : 0)), unit: 'lb',
           count_bodyweight: ex === 'ex6', bodyweight: ex === 'ex6' ? 180 : null });
       });
+      // Push days end with planks, leg days with carries: sets measured in time and distance.
+      const at = () => new Date(new Date(day + 'T18:00:00').getTime() + (minute++) * 150000).toISOString();
+      if (block === plan[0]) for (let s = 0; s < 2; s++) this.push({ exercise_id: 'ex16', performed_on: day, logged_at: at(), weight: 0, reps: null, duration_s: 45 + grow * 5, unit: 'lb' });
+      if (block === plan[2]) for (let s = 0; s < 2; s++) this.push({ exercise_id: 'ex17', performed_on: day, logged_at: at(), weight: 60 + grow * 5, reps: null, distance_m: 36.58, unit: 'lb' });
     }
     if (BIG) this.bigHistory(today);
   }
@@ -329,7 +340,7 @@ class DemoStore {
   }
   push(r) {
     const row = { id: uid(), date_only: false, is_warmup: false, notes: null, import_batch_id: null, deleted_at: null,
-      count_bodyweight: false, bodyweight: null, ...r };
+      count_bodyweight: false, bodyweight: null, duration_s: null, distance_m: null, rpe: null, ...r };
     this.sets.push(row);
     return row;
   }
@@ -361,9 +372,20 @@ class DemoStore {
   async bests() {
     const m = new Map();
     for (const s of this.live().sort((a, b) => a.performed_on.localeCompare(b.performed_on))) {
-      if (s.is_warmup === true) continue;
+      if (s.is_warmup === true || s.reps == null) continue;   // holds and carries keep their bests in feats()
       const k = s.exercise_id + '|' + s.unit + '|' + s.reps, cur = m.get(k);
       if (!cur || s.weight > cur.heaviest) m.set(k, { exercise_id: s.exercise_id, unit: s.unit, reps: s.reps, heaviest: s.weight, first_lifted_on: s.performed_on });
+    }
+    return [...m.values()];
+  }
+  async feats() {   // the same rule as the database: each set's main measure and its load
+    const m = new Map();
+    for (const s of this.live().sort((a, b) => a.performed_on.localeCompare(b.performed_on))) {
+      if (s.is_warmup === true) continue;
+      for (const [metric, unit, best] of TR.featsOf(s)) {
+        const k = s.exercise_id + '|' + metric + '|' + unit, cur = m.get(k);
+        if (!cur || best > cur.best) m.set(k, { exercise_id: s.exercise_id, metric, unit, best, first_on: s.performed_on });
+      }
     }
     return [...m.values()];
   }
@@ -381,9 +403,14 @@ class DemoStore {
   }
   deleteSet(id) { return this.updateSet(id, { deleted_at: new Date().toISOString() }); }
   restoreSet(id) { return this.updateSet(id, { deleted_at: null }); }
-  async addExercise(name) {
-    const e = { id: uid(), name, supports_bodyweight: false, deleted_at: null };
+  async addExercise(name, fields) {
+    const e = { id: uid(), name, supports_bodyweight: false, kind: 'strength', log_type: 'reps', deleted_at: null, ...fields };
     this.exercises.push(e);
+    return clone(e);
+  }
+  async updateExercise(id, patch) {
+    const e = this.exercises.find(x => x.id === id);
+    Object.assign(e, patch);
     return clone(e);
   }
 
@@ -542,7 +569,7 @@ class DemoStore {
   }
   async exerciseHistory(exerciseId) {
     return this.live().filter(s => s.exercise_id === exerciseId).sort((a, b) => a.performed_on.localeCompare(b.performed_on))
-      .map(s => ({ performed_on: s.performed_on, weight: s.weight, reps: s.reps, unit: s.unit, is_warmup: s.is_warmup }));
+      .map(s => ({ performed_on: s.performed_on, weight: s.weight, reps: s.reps, duration_s: s.duration_s, distance_m: s.distance_m, count_bodyweight: s.count_bodyweight, unit: s.unit, is_warmup: s.is_warmup }));
   }
   async wins() {
     if (!this.winRows) {
