@@ -455,7 +455,7 @@ view.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
-  else if (b.dataset.libMus != null) { S.lib.mus = b.dataset.libMus || null; S.libAll = false; drawLib(); }
+  else if (b.dataset.libMus != null) { S.lib.mus = b.dataset.libMus || null; if (!S.lib.mus) { S.lib.eq = null; S.lib.mine = false; } S.libAll = false; drawLib(); }
   else if (b.dataset.libEq) { S.lib.eq = S.lib.eq === b.dataset.libEq ? null : b.dataset.libEq; S.libAll = false; drawLib(); }
   else if (b.dataset.libMine != null) { S.lib.mine = !S.lib.mine; S.libAll = false; drawLib(); }
   else if (b.dataset.libSort) { S.lib.sort = b.dataset.libSort; drawLib(); }
@@ -982,9 +982,9 @@ function openPicker(title, onPick, multi) {
   LG.pkAll = false;
   inner.innerHTML =
     '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
-    '<div class="sheet-body"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
-    '<div id="pkFilters">' + libChips(LG.pf, 'pk') + '</div>' +
-    (multi ? '<p class="hint-line">Tap to tick as many as you like, in the order you’ll do them. Each comes in at your usual sets and reps.</p>' : '') +
+    // Search and filters stay pinned at the top while the list scrolls under them.
+    '<div class="sheet-body"><div class="pick-top"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
+    '<div id="pkFilters">' + libChips(LG.pf, 'pk') + '</div></div>' +
     (!onPick && !multi && (S.activities || []).length ? '<div class="section-title">Cardio</div><div class="chips cardio-pick">' + S.activities.map(a => '<button type="button" class="chip" data-cardio-new="' + esc(a.id) + '">' + esc(a.name) + '</button>').join('') + '</div>' : '') +
     '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul>' +
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
@@ -997,7 +997,8 @@ function openPicker(title, onPick, multi) {
     if (e.key === 'Enter') { clearTimeout(typing); drawResults(input.value); const first = $('exResults').querySelector('button'); if (first) { e.preventDefault(); first.click(); } }
   });
   drawResults('');
-  setTimeout(() => input.focus(), 60);
+  // With a mouse, type straight away. On a phone, wait for a tap: the keyboard would cover the list.
+  if (window.matchMedia('(pointer: fine)').matches) setTimeout(() => input.focus(), 60);
 }
 function lastSummary(exId) {
   const s = S.recent.find(x => x.exercise_id === exId);
@@ -1270,7 +1271,7 @@ inner.addEventListener('click', async e => {
   if (b.hasAttribute('data-change')) return openLogger();
   if (LG.mode === 'pick' && (b.dataset.pkMus != null || b.dataset.pkEq || b.dataset.pkMine != null)) {
     const f = LG.pf;
-    if (b.dataset.pkMus != null) f.mus = b.dataset.pkMus || null;
+    if (b.dataset.pkMus != null) { f.mus = b.dataset.pkMus || null; if (!f.mus) { f.eq = null; f.mine = false; } }
     else if (b.dataset.pkEq) f.eq = f.eq === b.dataset.pkEq ? null : b.dataset.pkEq;
     else f.mine = !f.mine;
     $('pkFilters').innerHTML = libChips(f, 'pk');
@@ -2276,7 +2277,7 @@ async function designerClick(b) {
   if (b.dataset.panelMus != null || b.dataset.panelEq || b.dataset.panelMine != null || b.dataset.panelTab) {
     const f = D.pf;
     if (b.dataset.panelTab) D.panelTab = b.dataset.panelTab;
-    else if (b.dataset.panelMus != null) f.mus = b.dataset.panelMus || null;
+    else if (b.dataset.panelMus != null) { f.mus = b.dataset.panelMus || null; if (!f.mus) { f.eq = null; f.mine = false; } }
     else if (b.dataset.panelEq) f.eq = f.eq === b.dataset.panelEq ? null : b.dataset.panelEq;
     else f.mine = !f.mine;
     return drawPanel();
@@ -4475,10 +4476,16 @@ function libList(f) {
   if (!f.q) list = list.slice().sort((a, b) => (f.sort === 'az' ? 0 : used(b) - used(a)) || a.name.localeCompare(b.name));
   return list;
 }
+// The filters, as one row of chips (it scrolls sideways on a phone, so the list stays in view):
+// All, then whatever's switched on (so it's never scrolled out of sight), then muscles, then
+// "Done before" and equipment after a thin divider.
 function libChips(f, pre) {
   const chip = (attr, val, label, on) => '<button type="button" class="chip lib-chip" data-' + pre + '-' + attr + '="' + val + '" aria-pressed="' + !!on + '">' + label + '</button>';
-  return '<div class="chips lib-row" role="group" aria-label="Muscle">' + chip('mus', '', 'All', !f.mus) + LIB.MUSCLES.map(([k, l]) => chip('mus', k, l, f.mus === k)).join('') + '</div>' +
-    '<div class="chips lib-row" role="group" aria-label="Equipment and more">' + chip('mine', '', 'Done before', f.mine) + LIB.EQUIPMENT.map(([k, l]) => chip('eq', k, l, f.eq === k)).join('') + '</div>';
+  const mus = LIB.MUSCLES.map(([k, l]) => ({ on: f.mus === k, html: chip('mus', k, l, f.mus === k) }));
+  const more = [{ on: !!f.mine, html: chip('mine', '', 'Done before', f.mine) }].concat(LIB.EQUIPMENT.map(([k, l]) => ({ on: f.eq === k, html: chip('eq', k, l, f.eq === k) })));
+  const on = mus.concat(more).filter(c => c.on), offMus = mus.filter(c => !c.on), offMore = more.filter(c => !c.on);
+  return '<div class="chips lib-row" role="group" aria-label="Filter by muscle, equipment or done before">' + chip('mus', '', 'All', !f.mus && !f.eq && !f.mine) +
+    on.map(c => c.html).join('') + offMus.map(c => c.html).join('') + '<span class="lib-sep" aria-hidden="true"></span>' + offMore.map(c => c.html).join('') + '</div>';
 }
 function renderLibrary() {
   const n = S.exercises.filter(e => !e.deleted_at).length;
