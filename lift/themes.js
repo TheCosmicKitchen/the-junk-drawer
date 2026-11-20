@@ -94,7 +94,56 @@ const CITY = maskUrl('viewBox="0 0 90 22" preserveAspectRatio="none">' +
 const COLUMNS = maskUrl('viewBox="0 0 120 20" preserveAspectRatio="none">' +
   Array.from({ length: 12 }, (_, k) => { const h = Math.round(5 + k * 15 / 11); return '<rect x="' + (k * 10 + 1) + '" y="' + (20 - h) + '" width="8" height="' + h + '"/>'; }).join(''));
 
+// The Iron King's crest: a dragon's head facing right, horns swept back, jaws open, slit eye, and a
+// crown. Colors: body, horns and spikes, eye, and the dark for the pupil and nostril.
+const DRAGON = (body, horn, eye, dark) =>
+  '<path d="M20.5 12.6 C16 9.4 11.5 8 5.5 8.2 C10.5 10 13.8 12.6 16.2 15.6 Z M23.6 12.3 C21.4 8.6 18.4 6.1 14.2 4.6 C17.2 7.6 18.8 10.2 19.8 13.2 Z" fill="' + horn + '"/>' +
+  '<path d="M11.8 23.2 L6.2 23.4 L10.9 27 Z M10.6 28.6 L5.4 29.8 L10.2 32.4 Z" fill="' + horn + '"/>' +
+  '<path d="M10.2 37 C9.2 30 10.2 25.4 13.2 21.4 C15 16.6 18 13.2 22.4 12.4 L27.2 13.2 L29.4 11.8 L30.4 14.4 L36.2 16.6 C37.8 17.3 38.1 18.8 37 19.8 L30.6 21.2 L35.4 24.2 C33.2 27.2 29.4 28.6 25.4 28.6 C21.6 29 19.8 32 19.4 37 Z" fill="' + body + '"/>' +
+  '<path d="M32.4 20.7 L33.1 22.6 L34 20.4 Z" fill="' + body + '"/>' +
+  '<path d="M21.6 11.6 L21.9 7.4 L23.8 9.6 L25.2 6.4 L26.6 9.6 L28.5 7.4 L28.8 12.2 C26.4 11.5 24 11.3 21.6 11.6 Z" fill="' + body + '"/>' +
+  '<path d="M23.6 16.6 C24.9 15.1 27 15 28.3 16.2 C27.2 17.7 25 17.8 23.6 16.6 Z" fill="' + eye + '"/><path d="M26.1 15.4 L26.1 17.4" stroke="' + dark + '" stroke-width=".9" stroke-linecap="round"/>' +
+  '<circle cx="35.4" cy="17.6" r=".55" fill="' + dark + '"/>';
+const KING_COLORS = { bg: '#120c0d', card: '#1c1315', ink: '#f3e8dc', muted: '#b3a196', line: '#33211f', chip: '#28191a', accent: '#c8323f', 'accent-ink': '#ffffff', 'accent-soft': '#3a1519',
+  good: '#7cc79a', gold: '#e4b649', 'gold-soft': '#33280f', grid: '#2a1b1c', axis: '#46302f' };
+
 export const THEMES = {
+  // The default. Royal crimson and gold on near-black (dark in light mode too), a crowned gold dragon
+  // for the crest, and a court to hold.
+  king: theme('king', 'The Iron King', 'Royal crimson and gold, a crowned dragon and a court to hold. The default', {
+    seasonWord: 'Reign', seasonsWord: 'Reigns', eventWord: 'Tournament', eventsWord: 'Tournaments',
+    stamp: 'Seal', stamps: 'Seals', stampBook: 'The royal seals', stampFrame: '50%', stampToast: 'A royal seal: ',
+    brand: 'The Iron King', motto: 'LONG MAY YOU LIFT', tagline: 'Hold court. Log the set.',
+    fonts: 'family=Playfair+Display+SC:wght@700;900&family=Playfair+Display:wght@700;800',
+    brandFont: '"Playfair Display SC", Georgia, serif', headFont: '"Playfair Display", Georgia, serif', brandWeight: 900,
+    // The crest: a gold dragon's head, crowned, with a crimson eye.
+    logo: svg(DRAGON('var(--gold)', 'color-mix(in srgb, var(--gold) 60%, var(--bg))', 'var(--accent)', 'var(--bg)')),
+    css: '.hero { border-top: 2px solid var(--gold); background-image: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%); }' +
+      '.hero .date::before { content: "♛ "; color: var(--gold); }' +
+      '.hero h1, .card-title, .section-title { color: var(--gold); }',
+    titles: { log: 'The Throne Room', routines: 'Royal decrees', history: 'The Chronicle', seasons: 'Reigns', progress: 'The Treasury' },
+    helloBig: 'A royal feast.', helloSome: 'Court is in session.', helloNone: 'The throne awaits.',
+    finish: 'Dismiss the court · Finish ›', finishFeed: 'Dismiss the court · proclaim it', finishPrivate: 'Dismiss the court · finish', updateFeed: 'Update the proclamation',
+    ended: 'Court dismissed. Long may you lift.', endedFeed: 'Court dismissed. It’s been proclaimed.', endedClock: '✓ Court dismissed · ',
+    routineDone: '👑 Decree fulfilled.', routineBtn: 'Decree fulfilled 👑',
+    emptyH: 'The throne awaits.', emptyP: 'Log a set and court is in session.',
+    prToast: '👑 A royal record: ', clubToast: '🏰 A new keep: welcome to the ', goalToast: 'Edict fulfilled: ',
+    weekly: 'The royal report', streak: 'weeks on the throne', restWeek: 'A royal holiday',
+    rest: n => n + ' weeks on the throne in a row. Consider a royal holiday: same lifts at about 60% of the weight, then return to court.',
+    feed: 'Proclamations', feedSub: 'the court’s triumphs', feedEmpty: 'PRs, keeps, edicts, records and finished sessions from the court are proclaimed here.',
+    icons: { pr: '👑', club: '🏰', goal: '📜', session: '⚔️', record: '🐉', quest: '🗺️', holder: '🐉', questOpen: '🗺️', rest: '🛡️', dry: '🕸️' },
+    win: { club: 'Claimed a keep: the ', record: 'Slew the dragon: ', quest: 'Finished a quest: ', goal: 'Fulfilled an edict: ', session: 'Held court: ' },
+    records: 'The Dragon’s Hoard', holderCol: 'Keeper', recordsBlurb: 'Beat the keeper’s best and the hoard is yours.', recordToast: '🐉 The hoard is yours: the record on ',
+    quests: 'Quests', questsSub: 'this week’s quests, the same for the whole court', questDone: '🗺️ Quest complete: ',
+    goals: 'Edicts', goalsKept: 'Edicts fulfilled', plan: 'The royal plan',
+    bar: { height: '10px', fill: 'linear-gradient(90deg, var(--accent), var(--gold))', end: '👑' },
+    colors: {
+      // Dark either way: the light palette is the same, so the phone's light mode doesn't turn it white.
+      light: KING_COLORS,
+      dark: KING_COLORS,
+    },
+  }),
+
   church: theme('church', 'Church of Iron', 'Gothic lettering, gold, candles and saints', {
     seasonWord: 'Pilgrimage', seasonsWord: 'Pilgrimages', eventWord: 'Feast day', eventsWord: 'Feast days',
     stamp: 'Seal', stamps: 'Seals', stampBook: 'The Book of Seals', stampFrame: '8px', stampToast: 'A seal for your book: ',
@@ -998,7 +1047,7 @@ export const THEMES = {
   }),
 };
 
-export const ORDER = ['church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
+export const ORDER = ['king', 'church', 'trains', 'kitchen', 'kaiju', 'coach', 'claus', 'mission', 'greenhouse', 'west', 'circus', 'dungeon', 'arcade', 'viking', 'deep', 'patisserie', 'stone', 'sand'];
 
 // The steel palette in index.html, for the few places that need real colors instead of CSS variables.
 const BASE = {
@@ -1026,7 +1075,7 @@ function chartColors(c) {
   return { ...out, ...c };
 }
 export function applyTheme(id) {
-  const t0 = THEMES[id] || THEMES.church, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
+  const t0 = THEMES[id] || THEMES.king, t = { ...t0, colors: { light: chartColors(t0.colors.light), dark: chartColors(t0.colors.dark) } };
   const v = t.colors, b = t.bar, root = document.documentElement, sel = ':root[data-skin="' + t.id + '"]';
   const bar = { 'bar-h': b.height, 'bar-track': b.track, 'bar-fill': b.fill, 'bar-texture': b.texture, 'bar-end': b.end ? JSON.stringify(b.end) : 'none', 'bar-goal': b.goal ? JSON.stringify(b.goal) : 'none', 'bar-flip': b.flip ? -1 : 1 };
   root.dataset.skin = t.id;
