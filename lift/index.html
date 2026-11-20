@@ -180,6 +180,11 @@
   /* The picker's search and filters stay put while the list scrolls under them. */
   .pick-top { position: sticky; top: -4px; z-index: 2; background: var(--bg); padding: 4px 0 6px; margin-bottom: 2px; }
   .pick-top .lib-row { margin-top: 8px; }
+  .res-title { margin: 8px 4px 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .res-title + .results { margin-top: 6px; }
+  .sheet-head .pk-kind { flex: none; margin-left: auto; }
+  .sheet-head:has(.pk-kind) h2 { flex: 1; min-width: 0; font-size: clamp(20px, 6vw, 26px); line-height: 1.1; }
+  .pk-kind button { padding: 6px 10px; font-size: 13px; }
   .lib-card .search { margin: 0; }
   .lib-count { margin: 14px 4px 0; align-items: center; }
   .lib-name { display: flex; flex-direction: column; min-width: 0; }

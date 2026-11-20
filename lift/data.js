@@ -114,6 +114,8 @@ class SupaStore {
     const day = rows[0] && rows[0].performed_on;
     return rows.filter(r => r.performed_on === day);
   }
+  // Each lift's most recent day before `date` (the phone's 120 days start there), in one request.
+  async lastDaysBefore(date) { return must(await this.sb.rpc('last_days_before', { p_before: date }).select(SET_COLS)); }
   days() { return this.all(() => this.sb.from('lift_days').select('*').order('performed_on', { ascending: false })); }
   bests() { return this.all(() => this.sb.from('lift_bests').select('*')); }
   feats() { return this.all(() => this.sb.from('lift_feats').select('*')); }   // bests of holds and carries
@@ -363,6 +365,11 @@ class DemoStore {
     const rows = this.live().filter(s => s.exercise_id === exerciseId && (!beforeDate || s.performed_on < beforeDate)).sort(byNewest);
     const day = rows[0] && rows[0].performed_on;
     return rows.filter(r => r.performed_on === day).reverse().map(clone);
+  }
+  async lastDaysBefore(date) {
+    const last = new Map();
+    for (const s of this.live()) if (s.performed_on < date && (!last.has(s.exercise_id) || s.performed_on > last.get(s.exercise_id))) last.set(s.exercise_id, s.performed_on);
+    return this.live().filter(s => last.get(s.exercise_id) === s.performed_on).sort((a, b) => a.logged_at.localeCompare(b.logged_at)).map(clone);
   }
   async days() {
     const m = new Map();
