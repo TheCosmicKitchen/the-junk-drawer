@@ -98,6 +98,8 @@ const COLUMNS = maskUrl('viewBox="0 0 120 20" preserveAspectRatio="none">' +
 // Colors: the gold, the shadow under the points, and the stones.
 const CROWN = (gold, shade, gem) =>
   '<path d="M8 28.5 L5.6 13.6 L13.4 20.4 L20 9.4 L26.6 20.4 L34.4 13.6 L32 28.5 Z" fill="' + gold + '"/><path d="M8 28.5 L32 28.5 L31.6 31 L8.4 31 Z" fill="' + shade + '"/><rect x="7.4" y="31" width="25.2" height="3.6" rx="1.4" fill="' + gold + '"/><circle cx="5.6" cy="12.6" r="2.1" fill="' + gold + '"/><circle cx="20" cy="8.2" r="2.4" fill="' + gold + '"/><circle cx="34.4" cy="12.6" r="2.1" fill="' + gold + '"/><path d="M20 19.2 L22.4 23 L20 26.8 L17.6 23 Z" fill="' + gem + '"/><circle cx="12.2" cy="24.6" r="1.4" fill="' + gem + '"/><circle cx="27.8" cy="24.6" r="1.4" fill="' + gem + '"/>';
+const CHURCH_COLORS = { bg: '#f4f6fb', card: '#ffffff', ink: '#14203a', muted: '#5b6782', line: '#dfe5f0', chip: '#ebeff7', accent: '#1d4fa3', 'accent-ink': '#ffffff', 'accent-soft': '#dfe8f8',
+  good: '#2f7a45', gold: '#a87a12', 'gold-soft': '#f6eccf', grid: '#e6ebf3', axis: '#c9d2e2' };
 const KING_COLORS = { bg: '#120c0d', card: '#1c1315', ink: '#f3e8dc', muted: '#b3a196', line: '#33211f', chip: '#28191a', accent: '#c8323f', 'accent-ink': '#ffffff', 'accent-soft': '#3a1519',
   good: '#7cc79a', gold: '#e4b649', 'gold-soft': '#33280f', grid: '#2a1b1c', axis: '#46302f' };
 
@@ -177,11 +179,9 @@ export const THEMES = {
       '<path d="M' + cx + ' 76 V69" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>' +
       (glow > 0.02 ? '<g opacity="' + glowOp(glow, next) + '" transform="translate(' + cx + ' 68) scale(' + (next ? (0.5 + glow * 0.5).toFixed(2) : 1) + ')">' +
         '<path d="M0 -24 C 8 -14, 9 -6, 0 0 C -9 -6, -8 -14, 0 -24 Z" fill="var(--gold)"/><path d="M0 -13 C 4 -8, 4 -4, 0 -1 C -4 -4, -4 -8, 0 -13 Z" fill="#fff" opacity=".7"/></g>' : ''),
-    // Candlelit stone and parchment, gold leaf for trim and wins, and liturgical red for what you tap.
-    colors: {
-      light: { bg: '#f5efe4', card: '#fffcf6', ink: '#231a15', muted: '#6c5e52', line: '#e5dacb', chip: '#efe6d8', accent: '#9e2a2b', 'accent-ink': '#ffffff', 'accent-soft': '#f4dcd8', good: '#2f7a45', gold: '#9a6a00', 'gold-soft': '#f6ead0', grid: '#ece3d5', axis: '#d4c6b2' },
-      dark: { bg: '#0f0c0b', card: '#191412', ink: '#f1e9dc', muted: '#a8998a', line: '#2e2520', chip: '#241d19', accent: '#df5b52', 'accent-ink': '#1a0806', 'accent-soft': '#3a1a17', good: '#7fc48f', gold: '#e8b84a', 'gold-soft': '#33280f', grid: '#262019', axis: '#3d332b' },
-    },
+    // Papal: white vestments and marble, gold leaf for trim and wins, and Marian blue for what you tap.
+    // White either way: the dark palette is the same, so the phone's dark mode doesn't turn it black.
+    colors: { light: CHURCH_COLORS, dark: CHURCH_COLORS },
   }),
 
   trains: theme('trains', 'The Iron Line', 'Railway green, brass, timetables and stations', {
