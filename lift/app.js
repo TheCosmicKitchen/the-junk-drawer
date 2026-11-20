@@ -1,6 +1,7 @@
 // Sisyfitness on the web: the interface. Storage lives in data.js, the maths in logic.js.
 import * as L from './logic.js';
 import * as TR from './tracking.js';
+import * as PL from './plans.js';
 import { connect } from './data.js';
 import { SESSIONS, SPLIT_IDS, PROGRAMS, TIPS } from './starters.js';
 import * as G from './generate.js';
@@ -315,10 +316,11 @@ function fetchAll() {
     store.workoutDays(today()), store.bodyweights(),
     Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
     Promise.resolve().then(() => store.programs()).catch(() => []), Promise.resolve().then(() => store.cardio()).catch(() => []),
-    Promise.resolve().then(() => store.feats()).catch(() => []),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats }));
+    Promise.resolve().then(() => store.feats()).catch(() => []), Promise.resolve().then(() => store.planRuns()).catch(() => []),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns }) {
+  S.planRuns = planRuns || [];   // which plan you're following, since when
   S.wdays = wdays;
   S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || []; S.cardio = cardio || [];
   S.bw = bw;
@@ -560,7 +562,10 @@ view.addEventListener('click', async e => {
   else if (b.hasAttribute('data-core-edit')) openCore(b);
   else if (b.dataset.progUse) { const p = progById(b.dataset.progUse); if (p) addProgramToWeek(p, b); }
   else if (b.dataset.progEdit) openProgramDesigner(b.dataset.progEdit);
-  else if (b.hasAttribute('data-prog-new')) openProgramDesigner(null);
+  else if (b.hasAttribute('data-prog-new')) { if (wideScreen()) openPlanDesigner(null); else openProgramDesigner(null); }
+  else if (b.dataset.planEdit) { if (wideScreen()) openPlanDesigner(b.dataset.planEdit); else toast('Plans are designed on a computer for now. Open the app there to edit this one.'); }
+  else if (b.dataset.planStart) startPlan(b.dataset.planStart, b);
+  else if (b.hasAttribute('data-plan-stop')) stopPlan(b);
   else if (b.dataset.saveDay) saveDayAsRoutine(b.dataset.saveDay, b);
   else if (b.hasAttribute('data-stop-follow')) stopFollowing();
   else if (b.hasAttribute('data-add-today-pick')) openAddToday();
@@ -645,7 +650,19 @@ function lastSession(exId) {
 const loadFor = (it, sharing) => (it.load_mode === 'fixed' && (sharing || !ownStep(it)) ? { load_mode: 'last', load_value: 0 } : { load_mode: it.load_mode, load_value: it.load_value });
 // Is this step in a routine of yours (a set weight only applies to the person who set it)?
 const ownStep = it => { const t = tplById(it.template_id); return !!t && isMine(t); };
+// Following a plan: in its workouts, a lift with a progression gets that week's % of your best, and a
+// deload week lightens the usual suggestion. Everything else is the step's own rule (baseSuggest).
 function suggestFor(it) {
+  const g = baseSuggest(it), pn = planNow();
+  if (!pn || pn.week < 1 || pn.over || g.field !== 'reps' || !pn.doc.workouts.some(w => w.template_id === it.template_id)) return g;
+  const pct = PL.pctFor(pn.doc, pn.week, it.exercise_id), f = PL.loadFactor(pn.doc, pn.week);
+  if (pct != null) {
+    const unit = g.unit || prefs.unit, basis = L.bestE1rm(it.exercise_id, unit, S.bestRows);
+    return basis ? { ...g, unit, weight: roundNear(basis * pct / 100, unit), why: 'week ' + pn.week + ': ' + L.fmtNum(pct, 1) + '% of your best' } : g;
+  }
+  return f < 1 && g.weight > 0 ? { ...g, weight: roundDown(g.weight * f, g.unit), why: (pn.phase ? pn.phase.name.toLowerCase() : 'deload') + ' week: ' + Math.round(f * 100) + '% of ' + g.why } : g;
+}
+function baseSuggest(it) {
   // The step's main measure (reps, time or distance) and its target. Weight is worked out the same
   // way for all of them; only a rep target converts your last weight between rep counts.
   const ex = S.byId.get(it.exercise_id), field = TR.stepField(it, ex), target = TR.stepValue(it, ex);
@@ -1018,14 +1035,14 @@ const LG = { mode: 'pick', exId: null, editing: null };
 // Building a workout or a program opens as a page of its own (the whole screen, ← Back at the top),
 // not a sheet over the app; picking exercises or blocks for it stays on that page. The phone's back
 // gesture closes it too.
-const PAGE_MODES = ['design', 'progdesign'];
+const PAGE_MODES = ['design', 'progdesign', 'plandesign'];
 // The page's history entry is marked { liftPage: 1 }; what's on top of the history decides, never a
 // remembered flag (which went stale when a page closed by moving to another tab).
 let pageHome = null;   // what the page was opened for
 const onPageEntry = () => !!(history.state && history.state.liftPage);
 function openSheet() {
   const el = sheet.querySelector('.sheet');
-  if (LG.mode !== 'design') el.classList.remove('wide');
+  if (LG.mode !== 'design' && LG.mode !== 'plandesign') el.classList.remove('wide');
   const page = PAGE_MODES.includes(LG.mode) || (sheet.open && el.classList.contains('page') && ['pick', 'chunk'].includes(LG.mode));
   el.classList.toggle('page', page);
   if (PAGE_MODES.includes(LG.mode)) pageHome = LG.mode;
@@ -1394,6 +1411,7 @@ inner.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.hasAttribute('data-close')) {
+    if (LG.mode === 'plandesign' && PLD.dirty && !confirm('Leave without saving this plan?')) return;
     // On a workout page, back from picking exercises or blocks goes back to the workout.
     if (['pick', 'chunk'].includes(LG.mode) && sheet.querySelector('.sheet').classList.contains('page') && pageHome === 'design' && D.id && tplById(D.id)) return openDesigner(D.id);
     return closeSheet();
@@ -1432,6 +1450,7 @@ inner.addEventListener('click', async e => {
   if (LG.mode === 'gen') return genClick(b);
   if (LG.mode === 'starters') return starterClick(b);
   if (LG.mode === 'progdesign') return programDesignerClick(b);
+  if (LG.mode === 'plandesign') return planDesignerClick(b);
   if (LG.mode === 'seasonstart') return seasonStartClick(b);
   if (LG.mode === 'seasonprog') return seasonProgClick(b);
   if (LG.mode === 'program') return programClick(b);
@@ -1851,8 +1870,10 @@ function todayList() {
   const add = (tid, why, extra) => { if (!seen.has(tid) && tplById(tid)) { seen.add(tid); out.push({ tid, why, ...extra }); } };
   const f = following();
   if (f) f.ids.forEach(id => add(id, 'following now', { following: true }));
+  const pt = planToday();
+  if (pt && pt.tid) add(pt.tid, pt.p.name + ', week ' + pt.week + (pt.phase ? ' · ' + pt.phase.name : ''));
   todaysDays().forEach(d => add(d.template_id, 'on the calendar', { wday: d }));
-  const tp = todaysPlan();
+  const tp = pt ? null : todaysPlan();   // a plan you're following replaces your week
   if (tp && tp.entry) add(tp.entry.template_id, (isCore(tp.season) ? 'your week' : tp.season.name) + ', ' + tp.why);
   return out;
 }
@@ -2623,6 +2644,8 @@ function todaysPlan() {
 }
 function planCard() {
   if (following()) return '';
+  const pt = planToday();
+  if (pt) return planTodayCard(pt);
   const tp = todaysPlan();
   if (!tp) return '';
   const head = '<div class="date">' + esc(isCore(tp.season) ? 'Your week' : tp.season.name) + '</div>';
@@ -2786,9 +2809,11 @@ function goalsCard() {
 function weekCard() {
   const c = coreNow(), plan = c ? planFor(c.id).filter(p => tplById(p.template_id)) : [];
   const days = p => (p.weekdays ? [1, 2, 3, 4, 5, 6, 0].filter(d => p.weekdays & (1 << d)).map(d => DAY_NAMES[d].slice(0, 3)).join(' · ') : 'takes turns');
-  const now = todayList().map(todayRow).join(''), ahead = comingRows();
+  const now = todayList().map(todayRow).join(''), ahead = comingRows(), pn = planNow();
   return '<section class="card week-home"><div class="card-head"><h3 class="card-title">Your week</h3>' +
       '<button class="btn sm" data-core-edit>' + (plan.length ? 'Edit' : '+ Plan it') + '</button></div>' +
+    (pn ? '<div class="row day-row plan-line"><span><b>' + esc(pn.p.name) + '</b> <small class="muted">· ' + esc(planWhere(pn)) + '</small></span>' +
+      '<button class="btn sm ghost" data-plan-stop>Stop</button></div>' : '') +
     now + ahead +
     (plan.length ? (now || ahead ? '<div class="field-label" style="margin-top:12px"><span>Every week</span></div>' : '') +
         '<div class="week-list">' + plan.map(p => '<div class="row"><b>' + esc(tplById(p.template_id).name) + '</b><span class="muted">' + esc(days(p)) + '</span></div>').join('') + '</div>'
@@ -3598,10 +3623,275 @@ function programsSection() {
       '<small class="muted">' + esc([p.doc.weeks + ' weeks', days(p) + ' days a week', (p.doc.workouts || []).length + ' workouts', isMine(p) ? (p.is_shared ? 'shared' : 'only you') : 'by ' + ownerName(p)].join(' · ')) + '</small></div></div>' +
     (p.doc.about ? '<p class="hint-line" style="margin:6px 0 0">' + esc(p.doc.about) + '</p>' : '') +
     '<div class="actions"><button class="btn primary" data-prog-use="' + esc(p.id) + '">Add to my week</button>' + (isMine(p) ? '<button class="btn" data-prog-edit="' + esc(p.id) + '">Edit</button>' : '') + '</div></section>';
+  // A plan (week by week, pointing at routines): start or stop following it; edit it on a computer.
+  const planCardRt = p => { const pn = planNow(), on = pn && pn.p.id === p.id, d = p.doc;
+    return '<section class="card prog-card"><div class="row"><div><h3 style="margin:0">' + esc(p.name) + '</h3>' +
+      '<small class="muted">' + esc([d.weeks + ' weeks', planPace(d), d.workouts.length + ' workout' + (d.workouts.length === 1 ? '' : 's'), isMine(p) ? (p.is_shared ? 'shared' : 'only you') : 'by ' + ownerName(p)].join(' · ')) + '</small></div></div>' +
+      (d.phases && d.phases.length ? '<div class="pl-strip" aria-hidden="true">' + phaseStrip(d) + '</div>' : '') +
+      (d.about ? '<p class="hint-line" style="margin:6px 0 0">' + esc(d.about) + '</p>' : '') +
+      '<div class="actions">' + (on ? '<button class="btn" disabled>' + esc(planWhere(pn)) + '</button><button class="btn ghost" data-plan-stop>Stop</button>'
+        : '<button class="btn primary" data-plan-start="' + esc(p.id) + '">Start this plan</button>') +
+      (isMine(p) ? '<button class="btn" data-plan-edit="' + esc(p.id) + '">Edit</button>' : '') + '</div></section>'; };
+  const any = p => (PL.isPlan(p) ? planCardRt(p) : card(p));
   const mine = list.filter(isMine), crew = list.filter(p => !isMine(p));
   return '<h3 class="section-title">Programs</h3>' +
-    (mine.length ? mine.map(card).join('') : '<section class="card empty"><p class="muted" style="margin:0">Design a program: workouts on a weekly schedule, ready to share.</p><div class="actions"><button class="btn primary" data-prog-new>+ New program</button></div></section>') +
-    (crew.length ? '<h3 class="section-title">From the crew</h3>' + crew.map(card).join('') : '');
+    (mine.length ? mine.map(any).join('') + (wideScreen() ? '<button class="btn block" style="margin-top:10px" data-prog-new>+ New plan</button>' : '')
+      : '<section class="card empty"><p class="muted" style="margin:0">Design a plan: your workouts laid out week by week, with phases and a deload, ready to share.</p><div class="actions"><button class="btn primary" data-prog-new>+ New plan</button></div></section>') +
+    (crew.length ? '<h3 class="section-title">From the crew</h3>' + crew.map(any).join('') : '');
+}
+
+// ===========================================================================
+// Plans: a program designed week by week (plans.js has the rules). Designed on a wide screen; on a
+// phone you can start, follow and stop one.
+// ===========================================================================
+const wideScreen = () => window.matchMedia('(min-width: 1100px)').matches;
+// The plan you're following and where you are in it, or null.
+function planNow() {
+  const run = (S.planRuns || []).find(r => !r.ended_on);
+  const p = run && progById(run.program_id);
+  if (!run || !PL.isPlan(p)) return null;
+  const week = PL.weekOf(run, today());
+  return { run, p, doc: p.doc, week, over: week > p.doc.weeks, phase: PL.phaseOf(p.doc, week) };
+}
+const planWhere = pn => pn.week < 1 ? 'starts ' + fmtDay(pn.run.starts_on) : pn.over ? 'finished' : 'week ' + pn.week + ' of ' + pn.doc.weeks + (pn.phase ? ' · ' + pn.phase.name : '');
+const planPace = d => d.schedule === 'order' ? 'in order, ' + d.per_week + ' a week' : new Set((d.cells || []).filter(c => c[0] === 1).map(c => c[1])).size + ' days a week';
+const phaseColor = ph => (PL.PHASE_KINDS[ph.kind] || {}).color || 'var(--muted)';
+const phaseStrip = d => (d.phases || []).slice().sort((a, b) => a.from - b.from).map(ph => '<span style="flex:' + (ph.to - ph.from + 1) + ';background:' + phaseColor(ph) + '">' + esc(ph.name) + '</span>').join('');
+// For an in-order plan: the last plan workout you did (before today) and how many this plan week.
+function planDone(pn) {
+  const tids = pn.doc.workouts.map(w => ({ template_id: w.template_id })), start = PL.weekStart(pn.run, pn.week);
+  const days = [...new Set(S.recent.map(x => x.performed_on))].filter(d => d >= pn.run.starts_on && d < today()).sort().reverse();
+  let lastKey = null, thisWeek = 0;
+  for (const d of days) { const i = matchRoutine(tids, d); if (i < 0) continue; if (!lastKey) lastKey = pn.doc.workouts[i].key; if (d >= start) thisWeek++; }
+  return { lastKey, thisWeek };
+}
+// Today in the plan you're following: { ...planNow(), tid } for a workout, or { rest: true }.
+function planToday() {
+  const pn = planNow();
+  if (!pn) return null;
+  if (pn.week < 1 || pn.over) return { ...pn, rest: true };
+  const k = PL.todayKey(pn.doc, pn.run, today(), pn.doc.schedule === 'order' ? planDone(pn) : null), w = k && PL.workoutOf(pn.doc, k);
+  return w && tplById(w.template_id) ? { ...pn, key: k, tid: w.template_id } : { ...pn, rest: true };
+}
+function planTodayCard(pt) {
+  const head = '<div class="date">' + esc(pt.p.name) + ' · ' + esc(planWhere(pt)) + '</div>';
+  if (pt.over) return '<section class="card plan-card">' + head + '<p style="margin:6px 0 0">You finished it. Start it again, or pick another plan on the Routines tab.</p>' +
+    '<div class="actions"><button class="btn primary" data-plan-start="' + esc(pt.p.id) + '">Run it again</button><button class="btn ghost" data-plan-stop>Done</button></div></section>';
+  if (!pt.tid) return '<section class="card plan-card">' + head + '<p style="margin:6px 0 0">' + (pt.week < 1 ? 'Your plan starts on ' + esc(fmtDay(pt.run.starts_on)) + '.' : 'Rest day by the plan.') + '</p></section>';
+  const t = tplById(pt.tid);
+  return '<section class="card plan-card">' + head +
+    '<div class="row" style="margin-top:4px"><div><small class="muted">Today’s workout</small><h2>' + esc(t.name) + '</h2></div>' +
+      '<button class="btn primary" data-start="' + esc(t.id) + '">Start</button></div>' +
+    '<div class="chips">' + routineItems(t.id).map(it => '<span class="chip">' + esc(exName(it.exercise_id)) + ' <small>' + esc(myStepText(it)) + '</small></span>').join('') + '</div></section>';
+}
+async function startPlan(pid, b) {
+  const p = progById(pid);
+  if (!p) return;
+  if (b) b.disabled = true;
+  try {
+    const cur = (S.planRuns || []).find(r => !r.ended_on);
+    if (cur) Object.assign(cur, await store.updatePlanRun(cur.id, { ended_on: today() < cur.starts_on ? cur.starts_on : today() }));
+    const run = await store.startPlan(pid, weekStartOf(today()));   // week 1 is this week, Monday to Sunday
+    S.planRuns = [run].concat(S.planRuns || []);
+    if (sheet.open) sheet.close();
+    render();
+    toast('Following ' + p.name + '. The Log tab shows each day’s workout.');
+  } catch (x) { fail(x); if (b) b.disabled = false; }
+}
+async function stopPlan(b) {
+  const cur = (S.planRuns || []).find(r => !r.ended_on);
+  if (!cur) return;
+  if (b) b.disabled = true;
+  try { Object.assign(cur, await store.updatePlanRun(cur.id, { ended_on: today() < cur.starts_on ? cur.starts_on : today() })); render(); toast('Stopped following that plan.'); }
+  catch (x) { fail(x); if (b) b.disabled = false; }
+}
+
+// ----- the plan designer: a wide page -----
+const PLD = {};
+const PLCOL = ['#c8323f', '#e4b649', '#7a9cc6', '#b07ad0', '#6fa57a', '#d0844f', '#5fb0b7', '#c9c2b8', '#9a7bd4', '#e07aa0'];
+const plColor = key => PLCOL[Math.max(0, PLD.workouts.findIndex(w => w.key === key)) % PLCOL.length];
+function openPlanDesigner(id) {
+  const p = id ? progById(id) : null, d = PL.isPlan(p) ? p.doc : null;
+  Object.assign(PLD, {
+    id: d ? p.id : null, name: d ? p.name : '', weeks: d ? d.weeks : 8, about: d ? d.about || '' : '', shared: d ? !!p.is_shared : false,
+    schedule: d ? d.schedule : 'days', workouts: d ? d.workouts.map(w => ({ ...w })) : [],
+    cells: new Map(d && d.cells ? d.cells.map(([w, dw, k]) => [w + '|' + dw, k]) : []),
+    order: d && d.order ? d.order.slice() : [], perWeek: d && d.per_week || 3,
+    phases: d && d.phases ? d.phases.map(x => ({ ...x })) : [],
+    progression: d && d.progression ? d.progression.map(x => ({ exercise_id: x.exercise_id, pct: x.pct.map(Number) })) : [],
+    brush: null, week: 1, progEx: d && d.progression && d.progression[0] ? d.progression[0].exercise_id : null, err: '', dirty: false,
+  });
+  if (!PLD.brush && PLD.workouts[0]) PLD.brush = PLD.workouts[0].key;
+  LG.mode = 'plandesign';
+  drawPlanDesigner();
+  openSheet();
+  sheet.querySelector('.sheet').classList.add('wide');
+  if (!id) setTimeout(() => { const n = $('plName'); if (n) n.focus(); }, 60);
+}
+const plDirty = () => { PLD.dirty = true; };
+// Lifts in the plan's workouts that can carry a % progression (measured in reps).
+function plLifts() {
+  const ids = new Set();
+  for (const w of PLD.workouts) for (const it of routineItems(w.template_id)) if (TR.mainField(exType(it.exercise_id)) === 'reps') ids.add(it.exercise_id);
+  return [...ids];
+}
+// Hard sets per muscle in a week, from what's on it.
+function plVolume(week) {
+  const keys = PLD.schedule === 'days' ? [...PLD.cells].filter(([k]) => Number(k.split('|')[0]) === week).map(([, v]) => v)
+    : Array.from({ length: PLD.perWeek }, (_, i) => PLD.order[i % Math.max(1, PLD.order.length)]).filter(Boolean);
+  const by = new Map();
+  for (const k of keys) { const w = PLD.workouts.find(x => x.key === k); if (!w) continue;
+    for (const it of routineItems(w.template_id)) { const m = LIB.muscleOf(exName(it.exercise_id)); by.set(m, (by.get(m) || 0) + Number(it.sets || 0)); } }
+  return [...by].filter(([m]) => m !== 'mobility' && m !== 'other').sort((a, b) => b[1] - a[1]).slice(0, 6);
+}
+function drawPlanDesigner() {
+  const o = PLD, DAYS = [1, 2, 3, 4, 5, 6, 0];
+  const usable = S.templates.filter(t => !isBlock(t) && routineItems(t.id).length && !o.workouts.some(w => w.template_id === t.id))
+    .sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || a.name.localeCompare(b.name));
+  const uses = k => o.schedule === 'days' ? [...o.cells.values()].filter(v => v === k).length : o.order.filter(v => v === k).length;
+  const wName = k => { const w = o.workouts.find(x => x.key === k), t = w && tplById(w.template_id); return t ? t.name : 'A workout you can’t see'; };
+  const palette = '<aside class="pl-pal" aria-label="Workouts in this plan"><h3 class="pl-h">Workouts</h3>' +
+    '<p class="hint-line">' + (o.schedule === 'days' ? 'Pick one, then tap days to put it on them.' : 'Tap one to add it to the order.') + '</p>' +
+    o.workouts.map(w => { const t = tplById(w.template_id), sz = t ? sessionSize({ steps: routineItems(t.id) }) : null;
+      return '<div class="pl-wrow"><button type="button" class="pl-w" data-pl-brush="' + esc(w.key) + '" aria-pressed="' + (o.brush === w.key) + '"><i style="background:' + plColor(w.key) + '"></i>' +
+        '<span><b>' + esc(wName(w.key)) + '</b><small>' + (sz ? sz.sets + ' sets · ~' + sz.min + ' min' : '') + '</small></span><em>×' + uses(w.key) + '</em></button>' +
+        '<button type="button" class="iconbtn sm" data-pl-del="' + esc(w.key) + '" aria-label="Take ' + esc(wName(w.key)) + ' out of the plan">✕</button></div>'; }).join('') +
+    (o.schedule === 'days' ? '<button type="button" class="pl-w rest" data-pl-brush="rest" aria-pressed="' + (o.brush === 'rest') + '"><i></i><span><b>Rest</b><small>clear a day</small></span></button>' : '') +
+    (o.workouts.length < 10 ? (usable.length ? '<div class="pl-add"><select class="plain-input" id="plAddSel" aria-label="A routine to add">' +
+        usable.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name + (isMine(t) ? '' : ' (by ' + ownerName(t) + ')')) + '</option>').join('') + '</select><button type="button" class="btn" data-pl-add>Add</button></div>'
+      : '<p class="hint-line">Make workouts on the Routines tab, then add them here.</p>') : '') + '</aside>';
+
+  const head = '<div class="pl-grid pl-dows"><span></span>' + DAYS.map(d => '<span>' + DAY_NAMES[d] + '</span>').join('') + '<span></span></div>';
+  const rows = Array.from({ length: o.weeks }, (_, i) => i + 1).map(w => {
+    const ph = o.phases.find(x => w >= x.from && w <= x.to);
+    return '<div class="pl-grid"><button type="button" class="pl-wk" data-pl-week="' + w + '" aria-pressed="' + (o.week === w) + '" style="border-left-color:' + (ph ? phaseColor(ph) : 'var(--line)') + '"><b>Week ' + w + '</b><small' + (ph ? ' style="color:' + phaseColor(ph) + '"' : '') + '>' + esc(ph ? ph.name : '') + '</small></button>' +
+      DAYS.map(d => { const k = o.cells.get(w + '|' + d), pct = k && o.progEx ? planPct(w) : null;
+        return '<button type="button" class="pl-cell' + (k ? ' on' : '') + '" data-pl-cell="' + w + '|' + d + '" style="' + (k ? 'box-shadow: inset 3px 0 0 ' + plColor(k) : '') + '" aria-label="Week ' + w + ', ' + DAY_NAMES[d] + ': ' + esc(k ? wName(k) : 'rest') + '">' +
+          (k ? '<b>' + esc(wName(k)) + '</b>' + (pct != null && workoutHas(k, o.progEx) ? '<small>' + esc(shortName(o.progEx)) + ' ' + L.fmtNum(pct, 1) + '%</small>' : '') : '<small>Rest</small>') + '</button>'; }).join('') +
+      (w < o.weeks ? '<button type="button" class="iconbtn sm" data-pl-copy="' + w + '" aria-label="Copy week ' + w + ' to week ' + (w + 1) + '" title="Copy to the next week">↓</button>' : '<span></span>') + '</div>';
+  }).join('');
+  const orderList = '<div class="pl-order"><div class="row"><b>In this order, again and again</b><span class="pd-step"><button type="button" data-pl-per="-1" aria-label="Fewer a week">−</button><b>' + o.perWeek + ' a week</b><button type="button" data-pl-per="1" aria-label="More a week">+</button></span></div>' +
+    (o.order.length ? '<ol>' + o.order.map((k, i) => '<li><i style="background:' + plColor(k) + '"></i><span>' + esc(wName(k)) + '</span>' +
+      '<button type="button" class="iconbtn sm" data-pl-up="' + i + '" aria-label="Move up"' + (i ? '' : ' disabled') + '>↑</button><button type="button" class="iconbtn sm" data-pl-rm="' + i + '" aria-label="Remove">✕</button></li>').join('') + '</ol>'
+      : '<p class="hint-line">Tap workouts on the left to line them up.</p>') +
+    '<p class="hint-line">On any days you like. Miss one and the next simply waits; the week ends after ' + o.perWeek + '.</p></div>';
+
+  const phaseRows = o.phases.map((ph, i) => '<div class="pl-phase"><input class="plain-input" data-pl-ph-name="' + i + '" maxlength="20" value="' + esc(ph.name) + '" aria-label="Phase name">' +
+    '<select class="plain-input" data-pl-ph-kind="' + i + '" aria-label="Kind">' + Object.entries(PL.PHASE_KINDS).map(([k, v]) => '<option value="' + k + '"' + (ph.kind === k ? ' selected' : '') + '>' + v.name + '</option>').join('') + '</select>' +
+    '<button type="button" class="iconbtn sm" data-pl-ph-del="' + i + '" aria-label="Remove phase">✕</button>' +
+    '<span class="pl-ph-weeks" style="border-left-color:' + phaseColor(ph) + '">Weeks <select class="plain-input" data-pl-ph-from="' + i + '" aria-label="From week">' + weekOpts(ph.from) + '</select> to <select class="plain-input" data-pl-ph-to="' + i + '" aria-label="To week">' + weekOpts(ph.to) + '</select></span></div>').join('');
+  const lifts = plLifts(), prog = o.progression.find(x => x.exercise_id === o.progEx);
+  const progBox = !lifts.length ? '<p class="hint-line">Add workouts first; their lifts can then climb week by week.</p>'
+    : '<select class="plain-input" id="plProgEx" aria-label="Lift">' + lifts.map(id => '<option value="' + esc(id) + '"' + (id === o.progEx ? ' selected' : '') + '>' + esc(exName(id)) + (o.progression.some(x => x.exercise_id === id) ? ' ✓' : '') + '</option>').join('') + '</select>' +
+      (prog ? planChart(prog.pct) + '<div class="pl-pcts">' + prog.pct.map((v, i) => '<label><small>W' + (i + 1) + '</small><input inputmode="decimal" data-pl-pct="' + i + '" value="' + esc(L.fmtNum(v, 1)) + '" aria-label="Week ' + (i + 1) + ' %"></label>').join('') + '</div>' +
+          '<div class="actions"><button type="button" class="btn sm" data-pl-climb>Climb 2.5% a week from 75</button><button type="button" class="btn sm ghost" data-pl-prog-del>Remove</button></div>' +
+          '<p class="hint-line">% of each person’s best (estimated 1-rep max). Deload weeks also lighten everything else to 60%.</p>'
+        : '<button type="button" class="btn" style="margin-top:8px" data-pl-prog-add>Set % by week for ' + esc(exName(o.progEx || lifts[0])) + '</button>');
+  const vol = plVolume(o.week), top = Math.max(1, ...vol.map(v => v[1]));
+
+  inner.innerHTML =
+    '<div class="sheet-head"><div class="design-title pl-title"><input class="title-input" id="plName" maxlength="60" value="' + esc(o.name) + '" placeholder="Name the plan" aria-label="Plan name">' +
+      '<span class="pd-step"><button type="button" data-pl-weeks="-1" aria-label="Fewer weeks">−</button><b>' + o.weeks + ' weeks</b><button type="button" data-pl-weeks="1" aria-label="More weeks">+</button></span>' +
+      '<span class="seg" role="group" aria-label="Schedule">' + [['days', 'Fixed days'], ['order', 'In order']].map(([k, l]) => '<button type="button" data-pl-sched="' + k + '" aria-pressed="' + (o.schedule === k) + '">' + l + '</button>').join('') + '</span>' +
+      '<button type="button" class="toggle" data-pl-share aria-pressed="' + o.shared + '">' + (o.shared ? '✓ Shared with the crew' : 'Share with the crew') + '</button>' +
+      '<button type="button" class="btn primary" data-pl-save>' + (o.dirty || !o.id ? 'Save' : 'Saved') + '</button>' +
+      (o.id ? '<button type="button" class="btn" data-pl-start-me>Start this plan</button>' : '') + '</div>' +
+      '<button class="iconbtn" data-close aria-label="Back">←</button></div>' +
+    '<div class="pl-cols">' + palette +
+      '<main class="pl-main"><input class="plain-input pl-about" id="plAbout" maxlength="200" value="' + esc(o.about) + '" placeholder="Who it’s for and how it works (optional)" aria-label="About this plan">' +
+        (o.schedule === 'days' ? head + rows : orderList) + '<p class="warn" id="plErr" role="alert">' + esc(o.err) + '</p></main>' +
+      '<aside class="pl-side"><h3 class="pl-h">Phases</h3>' + (o.phases.length ? '<div class="pl-strip">' + phaseStrip({ phases: o.phases }) + '</div>' : '') + phaseRows +
+        '<button type="button" class="btn sm" data-pl-ph-add>+ Phase</button>' +
+        '<h3 class="pl-h">Lift by week</h3>' + progBox +
+        '<h3 class="pl-h">Hard sets in week ' + o.week + '</h3>' + (vol.length ? vol.map(([m, n]) => '<div class="pl-vol"><span>' + esc(LIB.muscleName(m)) + '</span><span class="pl-bar"><i style="width:' + Math.round(n / top * 100) + '%"></i></span><b>' + n + '</b></div>').join('') : '<p class="hint-line">Nothing on this week yet.</p>') +
+      '</aside></div>';
+}
+const weekOpts = sel => Array.from({ length: PLD.weeks }, (_, i) => '<option value="' + (i + 1) + '"' + (i + 1 === sel ? ' selected' : '') + '>' + (i + 1) + '</option>').join('');
+const planPct = w => { const p = PLD.progression.find(x => x.exercise_id === PLD.progEx); return p ? p.pct[w - 1] : null; };
+const workoutHas = (k, exId) => { const w = PLD.workouts.find(x => x.key === k); return !!w && routineItems(w.template_id).some(it => it.exercise_id === exId); };
+function planChart(pct) {
+  const W = 300, H = 110, lo = Math.min(...pct, 50) - 5, hi = Math.max(...pct, 90) + 5, x = i => 10 + i * (W - 20) / Math.max(1, pct.length - 1), y = v => H - 10 - (v - lo) / (hi - lo) * (H - 20);
+  return '<svg class="pl-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(pct.map((v, i) => 'week ' + (i + 1) + ' ' + v + '%').join(', ')) + '">' +
+    '<polyline points="' + pct.map((v, i) => x(i) + ',' + y(v)).join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>' +
+    pct.map((v, i) => '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3.5" fill="var(--gold)"/>').join('') + '</svg>';
+}
+function planDesignerClick(b) {
+  const o = PLD, d = b.dataset;
+  plReadFields();
+  if (d.plBrush) { o.brush = d.plBrush; if (o.schedule === 'order' && d.plBrush !== 'rest') { o.order.push(d.plBrush); plDirty(); } return drawPlanDesigner(); }
+  if (d.plCell) { if (o.brush === 'rest' || o.cells.get(d.plCell) === o.brush) o.cells.delete(d.plCell); else if (o.brush) o.cells.set(d.plCell, o.brush); plDirty(); vibrate(5); return drawPlanDesigner(); }
+  if (d.plCopy) { const w = Number(d.plCopy); for (const day of [0, 1, 2, 3, 4, 5, 6]) { const k = o.cells.get(w + '|' + day); if (k) o.cells.set((w + 1) + '|' + day, k); else o.cells.delete((w + 1) + '|' + day); } plDirty(); return drawPlanDesigner(); }
+  if (d.plWeek) { o.week = Number(d.plWeek); return drawPlanDesigner(); }
+  if (d.plWeeks) {
+    o.weeks = Math.max(1, Math.min(PL.MAX_WEEKS, o.weeks + Number(d.plWeeks)));
+    for (const k of [...o.cells.keys()]) if (Number(k.split('|')[0]) > o.weeks) o.cells.delete(k);
+    o.phases = o.phases.filter(ph => ph.from <= o.weeks).map(ph => ({ ...ph, to: Math.min(ph.to, o.weeks) }));
+    for (const p of o.progression) { while (p.pct.length < o.weeks) p.pct.push(p.pct[p.pct.length - 1] || 75); p.pct.length = o.weeks; }
+    o.week = Math.min(o.week, o.weeks); plDirty(); return drawPlanDesigner();
+  }
+  if (d.plSched) { o.schedule = d.plSched; if (o.schedule === 'order' && !o.order.length) o.order = o.workouts.map(w => w.key); plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-share')) { o.shared = !o.shared; plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-add')) {
+    const t = tplById($('plAddSel').value); if (!t) return;
+    const key = 'w' + Math.random().toString(36).slice(2, 8);
+    o.workouts.push({ key, template_id: t.id }); o.brush = key;
+    if (o.schedule === 'order') o.order.push(key);
+    if (!o.progEx) o.progEx = plLifts()[0] || null;
+    plDirty(); return drawPlanDesigner();
+  }
+  if (d.plDel) { o.workouts = o.workouts.filter(w => w.key !== d.plDel); for (const [k, v] of [...o.cells]) if (v === d.plDel) o.cells.delete(k); o.order = o.order.filter(k => k !== d.plDel); if (o.brush === d.plDel) o.brush = o.workouts[0] ? o.workouts[0].key : null; plDirty(); return drawPlanDesigner(); }
+  if (d.plPer) { o.perWeek = Math.max(1, Math.min(7, o.perWeek + Number(d.plPer))); plDirty(); return drawPlanDesigner(); }
+  if (d.plUp) { const i = Number(d.plUp); [o.order[i - 1], o.order[i]] = [o.order[i], o.order[i - 1]]; plDirty(); return drawPlanDesigner(); }
+  if (d.plRm) { o.order.splice(Number(d.plRm), 1); plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-ph-add')) {
+    const last = o.phases.reduce((m, ph) => Math.max(m, ph.to), 0), from = Math.min(o.weeks, last + 1);
+    o.phases.push({ name: last ? (from === o.weeks ? 'Deload' : 'Push') : 'Build', kind: last ? (from === o.weeks ? 'deload' : 'push') : 'build', from, to: last ? from : Math.max(1, o.weeks - 1) });
+    plDirty(); return drawPlanDesigner();
+  }
+  if (d.plPhDel) { o.phases.splice(Number(d.plPhDel), 1); plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-prog-add')) { const ex = o.progEx || plLifts()[0]; o.progEx = ex; o.progression.push({ exercise_id: ex, pct: PL.climb(o.weeks, 75, 2.5) }); plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-climb')) { const p = o.progression.find(x => x.exercise_id === o.progEx); if (p) { p.pct = PL.climb(o.weeks, 75, 2.5); o.phases.forEach(ph => { if (ph.kind === 'deload') for (let w = ph.from; w <= ph.to; w++) p.pct[w - 1] = 60; }); } plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-prog-del')) { o.progression = o.progression.filter(x => x.exercise_id !== o.progEx); plDirty(); return drawPlanDesigner(); }
+  if (b.hasAttribute('data-pl-save')) return savePlan(b);
+  if (b.hasAttribute('data-pl-start-me')) { if (o.dirty) return toast('Save the plan first.'); return startPlan(o.id, b); }
+}
+function plReadFields() { const n = $('plName'), a = $('plAbout'); if (n) PLD.name = n.value; if (a) PLD.about = a.value; }
+// Typing and picking in the designer: names, phases, the % per week, which lift.
+inner.addEventListener('change', e => {
+  if (LG.mode !== 'plandesign') return;
+  const t = e.target, d = t.dataset, o = PLD;
+  if (t.id === 'plProgEx') { o.progEx = t.value; return drawPlanDesigner(); }
+  if (d.plPhKind != null) { o.phases[Number(d.plPhKind)].kind = t.value; }
+  else if (d.plPhFrom != null) { const ph = o.phases[Number(d.plPhFrom)]; ph.from = Number(t.value); ph.to = Math.max(ph.to, ph.from); }
+  else if (d.plPhTo != null) { const ph = o.phases[Number(d.plPhTo)]; ph.to = Number(t.value); ph.from = Math.min(ph.from, ph.to); }
+  else if (d.plPhName != null) { o.phases[Number(d.plPhName)].name = t.value.trim().slice(0, 20) || 'Phase'; }
+  else if (d.plPct != null) { const p = o.progression.find(x => x.exercise_id === o.progEx), v = L.parseLoad(t.value); if (p && v != null) p.pct[Number(d.plPct)] = Math.max(30, Math.min(110, v)); }
+  else return;
+  plDirty(); drawPlanDesigner();
+});
+inner.addEventListener('input', e => { if (LG.mode === 'plandesign' && (e.target.id === 'plName' || e.target.id === 'plAbout')) { plDirty(); const s = inner.querySelector('[data-pl-save]'); if (s) s.textContent = 'Save'; } });
+async function savePlan(b) {
+  const o = PLD;
+  plReadFields();
+  const name = o.name.trim().replace(/\s+/g, ' ');
+  const cells = [...o.cells].map(([k, v]) => { const [w, d] = k.split('|').map(Number); return [w, d, v]; }).filter(c => o.workouts.some(w => w.key === c[2]) && c[0] <= o.weeks);
+  o.err = !name ? 'Give the plan a name.' : !o.workouts.length ? 'Add at least one workout.' : o.schedule === 'days' && !cells.length ? 'Put a workout on at least one day.'
+    : o.schedule === 'order' && !o.order.length ? 'Line up at least one workout.' : '';
+  if (o.err) return drawPlanDesigner();
+  const doc = { v: 2, kind: 'plan', weeks: o.weeks, about: o.about.trim().slice(0, 200), workouts: o.workouts.map(w => ({ key: w.key, template_id: w.template_id })), schedule: o.schedule,
+    ...(o.schedule === 'days' ? { cells } : { order: o.order.filter(k => o.workouts.some(w => w.key === k)), per_week: o.perWeek }),
+    phases: o.phases.map(ph => ({ name: ph.name, from: ph.from, to: ph.to, kind: ph.kind })),
+    progression: o.progression.filter(p => o.workouts.some(w => workoutHas(w.key, p.exercise_id))).map(p => ({ exercise_id: p.exercise_id, pct: p.pct.slice(0, o.weeks) })) };
+  b.disabled = true;
+  try {
+    // Sharing the plan shares your workouts in it, so the crew can follow it.
+    if (o.shared) for (const w of o.workouts) { const t = tplById(w.template_id); if (t && isMine(t) && !t.is_shared) { await store.updateRoutine(t.id, { is_shared: true }); t.is_shared = true; } }
+    const row = o.id ? await store.updateProgram(o.id, { name, doc, is_shared: o.shared }) : await store.addProgram({ name, doc, is_shared: o.shared });
+    S.programs = [row].concat((S.programs || []).filter(p => p.id !== row.id));
+    o.id = row.id; o.dirty = false; o.err = '';
+    toast(o.shared ? 'Saved and shared with the crew.' : 'Saved.');
+  } catch (x) { o.err = x.message; }
+  drawPlanDesigner();
 }
 
 // ===========================================================================
@@ -4455,7 +4745,7 @@ async function newPickClick(b) {
   if (!k) return;
   if (k === 'season') return openSeasonStart();
   if (k === 'generate') return openGenerator();
-  if (k === 'program') return openProgramDesigner(null);
+  if (k === 'program') return wideScreen() ? openPlanDesigner(null) : openProgramDesigner(null);
   return newRoutine(b, k);
 }
 

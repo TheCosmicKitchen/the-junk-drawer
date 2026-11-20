@@ -31,6 +31,7 @@
 <link rel="modulepreload" href="share.js">
 <link rel="modulepreload" href="library.js">
 <link rel="modulepreload" href="tracking.js">
+<link rel="modulepreload" href="plans.js">
 <link rel="modulepreload" href="charts.js">
 <link rel="modulepreload" href="themes.js">
 <link rel="modulepreload" href="seasons.js">
@@ -440,6 +441,9 @@
   .pd-week button b { font-size: 18px; }
   .pd-week button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .prog-card h3 { font-size: 17px; }
+  /* A plan's phases as one strip: Build, Push, Peak, Deload. */
+  .pl-strip { display: flex; height: 22px; border-radius: 8px; overflow: hidden; margin-top: 8px; }
+  .pl-strip span { color: #120c0d; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; }
   /* season packs and stamps */
   .pack-mini { display: flex; flex-wrap: wrap; gap: 6px; }
   .stamp { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
@@ -858,6 +862,55 @@
     .sheet.tall { height: 88dvh; max-height: 88dvh; }
     .sheet.wide { width: min(1180px, calc(100vw - var(--side) - 48px)); max-width: none; }
     .design-cols.wide { display: grid; grid-template-columns: 360px minmax(0, 1fr); }
+    /* The plan designer: workouts on the left, the weeks in the middle, phases and lifts on the right. */
+    .pl-title { flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .pl-title .title-input { flex: 1 1 260px; }
+    .pl-title .pd-step button { width: 36px; height: 36px; font-size: 18px; }
+    .pl-title .pd-step b { font-size: 15px; min-width: 70px; }
+    .pl-pal > .pl-w { flex: none; }
+    .pl-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 260px minmax(0, 1fr) 360px; }
+    .pl-pal, .pl-side { overflow: auto; padding: 8px 18px 24px; display: flex; flex-direction: column; gap: 8px; }
+    .pl-pal { border-right: 1px solid var(--line); }
+    .pl-side { border-left: 1px solid var(--line); }
+    .pl-main { overflow: auto; padding: 8px 22px 24px; display: flex; flex-direction: column; gap: 6px; }
+    .pl-h { margin: 10px 0 2px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+    .pl-wrow { display: flex; align-items: center; gap: 6px; }
+    .pl-w { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: inherit; font: inherit; }
+    .pl-w[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .pl-w i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+    .pl-w.rest i { border: 1px dashed var(--muted); }
+    .pl-w span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .pl-w small { color: var(--muted); font-size: 11px; }
+    .pl-w em { font-style: normal; font-size: 12px; color: var(--muted); }
+    .pl-add { display: flex; gap: 6px; margin-top: 4px; }
+    .pl-add select { min-width: 0; flex: 1; }
+    .pl-about { margin-bottom: 6px; }
+    .pl-grid { display: grid; grid-template-columns: 96px repeat(7, minmax(0, 1fr)) 32px; gap: 6px; align-items: stretch; }
+    .pl-dows span { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: center; }
+    .pl-wk { text-align: left; border: 0; border-left: 4px solid var(--line); background: transparent; color: inherit; font: inherit; padding: 4px 8px; display: flex; flex-direction: column; justify-content: center; border-radius: 0; }
+    .pl-wk small { font-size: 11px; font-weight: 600; }
+    .pl-wk[aria-pressed="true"] { background: var(--chip); }
+    .pl-cell { min-height: 58px; border-radius: 10px; border: 1px dashed var(--line); background: transparent; color: var(--muted); font: inherit; padding: 6px 8px; display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; overflow: hidden; }
+    .pl-cell.on { border-style: solid; background: var(--card); color: var(--ink); }
+    .pl-cell b { font-size: 12px; font-weight: 600; line-height: 1.2; }
+    .pl-cell small { font-size: 11px; color: var(--muted); }
+    .pl-cell:hover { border-color: var(--accent); }
+    .pl-order ol { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .pl-order li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+    .pl-order li span { flex: 1; }
+    .pl-order li i { width: 10px; height: 10px; border-radius: 3px; }
+    .pl-phase { display: grid; grid-template-columns: minmax(0, 1fr) 104px 30px; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .pl-ph-weeks { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); padding-left: 8px; border-left: 3px solid var(--line); }
+    .pl-ph-weeks select { width: 64px; }
+    .pl-phase .plain-input { padding: 8px; font-size: 13px; }
+    .pl-pcts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .pl-pcts label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+    .pl-pcts input { width: 100%; box-sizing: border-box; padding: 7px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 13px; text-align: center; }
+    .pl-chart { width: 100%; height: auto; margin-top: 6px; }
+    .pl-vol { display: grid; grid-template-columns: 90px minmax(0, 1fr) 28px; gap: 8px; align-items: center; font-size: 13px; }
+    .pl-vol span:first-child { color: var(--muted); }
+    .pl-bar { height: 10px; border-radius: 5px; background: var(--chip); overflow: hidden; }
+    .pl-bar i { display: block; height: 100%; background: var(--accent); }
     .design-panel { border-right: 1px solid var(--line); padding: 6px 18px 18px 22px; overflow: auto; min-height: 0; }
     .design-panel .search { margin-top: 10px; }
     .panel-tabs { margin-top: 2px; }
