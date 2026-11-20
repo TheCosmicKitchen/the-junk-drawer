@@ -5,7 +5,7 @@
 // to PLAIN (for words, icons and the club token) or to the steel palette in index.html (for colors).
 
 const PLAIN = {
-  brand: 'Lift Log', motto: 'SHOW UP · LIFT · WRITE IT DOWN', tagline: 'Log the set.',
+  brand: 'The Church of Iron', motto: 'SHOW UP · LIFT · WRITE IT DOWN', tagline: 'Log the set.',
   fonts: '', brandFont: 'var(--display)', headFont: 'var(--display)', brandWeight: 800, css: '',
   titles: { log: 'Today', routines: 'Routines', library: 'Library', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
   tabs: { log: 'Log', routines: 'Routines', library: 'Library', history: 'Calendar', seasons: 'Seasons', progress: 'Progress' },
