@@ -5,7 +5,7 @@
 // background, so a new version of the app shows up on the next open. The background fetch asks the
 // server whether the file changed (not the browser's own 10-minute copy), and when one of the app's
 // files did change, the open page is told so it can offer a reload right away.
-const CACHE = 'lift-shell-v15';
+const CACHE = 'lift-shell-v16';
 const SCOPE = new URL('./', self.location).href;
 const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'logic.js', 'charts.js', 'starters.js', 'generate.js', 'share.js', 'library.js', 'themes.js', 'seasons.js', 'config.js', 'boot.js',
   'icon.svg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'].map(p => new URL(p, SCOPE).href);
