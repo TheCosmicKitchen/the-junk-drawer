@@ -40,7 +40,8 @@ const S = {
 // Small helpers
 // ===========================================================================
 const exName = id => (S.byId.get(id) || {}).name || 'Unknown exercise';
-const fmtDay = (iso, opts) => L.parseDate(iso).toLocaleDateString('en-US', opts || { weekday: 'short', month: 'short', day: 'numeric' });
+const DAY_DEFAULT = { weekday: 'short', month: 'short', day: 'numeric' };
+const fmtDay = (iso, opts) => L.fmtDate(L.parseDate(iso), opts || DAY_DEFAULT);
 const unitTag = u => (u === prefs.unit ? '' : ' ' + u);
 function setText(s) {
   const load = s.count_bodyweight ? (s.weight > 0 ? 'BW+' + L.fmtLoad(s.weight) : 'BW') : L.fmtLoad(s.weight);
@@ -56,7 +57,41 @@ function volText(v) {
 }
 // Weeks run Monday to Sunday everywhere: the calendar, the Log tab, seasons and the bulletin.
 const weekStartOf = d => L.addDays(d, -((L.parseDate(d).getDay() + 6) % 7));
-const todaySets = () => S.recent.filter(s => s.performed_on === today()).sort((a, b) => a.logged_at.localeCompare(b.logged_at));
+// ---------------------------------------------------------------------------
+// Lookup tables. Built on first use and reused until their source changes: every write to your sets
+// makes a new S.recent array (syncCaches), and routines and steps are added and removed by pushing to
+// or replacing their arrays, so a new array or a new length means rebuild. They hold the same objects,
+// so a change made in place (a set's sync state, a step's reps) shows through without a rebuild.
+// ---------------------------------------------------------------------------
+function memoOn(src, build) {
+  let arr = null, len = -1, val;
+  return () => { const a = src(); if (a !== arr || a.length !== len) { arr = a; len = a.length; val = build(a); } return val; };
+}
+const pushTo = (m, k, v) => { const l = m.get(k); if (l) l.push(v); else m.set(k, [v]); };
+const tplIndex = memoOn(() => S.templates, a => new Map(a.map(t => [t.id, t])));
+const itemsByTpl = memoOn(() => S.items, a => { const m = new Map(); for (const i of a) pushTo(m, i.template_id, i); return m; });
+// Your recent sets by day and by exercise (newest first, as S.recent is), plus today's in the order logged.
+const recentBy = memoOn(() => S.recent, a => {
+  const byDay = new Map(), byEx = new Map();
+  for (const x of a) { pushTo(byDay, x.performed_on, x); pushTo(byEx, x.exercise_id, x); }
+  return { byDay, byEx, today: new Map() };
+});
+const todaySets = () => {
+  const ix = recentBy(), t = today();
+  let list = ix.today.get(t);
+  if (!list) ix.today.set(t, list = (ix.byDay.get(t) || []).slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at)));
+  return list.slice();
+};
+const recentOf = exId => recentBy().byEx.get(exId) || [];
+const recentOn = day => recentBy().byDay.get(day) || [];
+// What you're following, worked out once per tap or draw: a render asks for it dozens of times (once
+// per step), and nothing it depends on changes in the middle of one.
+const FOLLOW = {};
+function taskMemo(box, key, v) {
+  box[key] = v;
+  if (!box.clearing) { box.clearing = true; queueMicrotask(() => { box.ids = box.v = undefined; box.clearing = false; }); }
+  return v;
+}
 function groupByExercise(sets) {
   const out = [];
   for (const s of sets) {
@@ -365,25 +400,10 @@ async function copyLink(key) {
 // Log (today)
 // ===========================================================================
 function renderLog() {
+  clearTimeout(LOG_LATER); LOG_LATER = null;
   const sets = todaySets();
-  const vol = L.volumeByUnit(sets);
-  // The same Monday-to-Sunday week as seasons and the bulletin, counting days you lifted.
-  const weekVisits = S.days.filter(d => d.performed_on >= weekStartOf(today()) && d.sets > 0).length;
   const groups = groupByExercise(sets);
-  const hello = sets.length ? (sets.length >= 15 ? T.helloBig : T.helloSome) : T.helloNone;
-  const finishBtn = groups.length && unfinished() ? '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '';
-  // Following a routine: the day's numbers shrink to one line so the steps sit near the top.
-  const hero = following()
-    ? '<section class="card hero compact"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
-        '<p class="hero-line"><b>' + sets.length + '</b> set' + (sets.length === 1 ? '' : 's') + ' · <b>' + esc(volText(vol)) + '</b> ' + (vol.kg ? '' : 'lb ') + 'today · <b>' + weekVisits + '</b> day' + (weekVisits === 1 ? '' : 's') + ' lifted this week</p>' +
-        (groups.length ? sessionClock() : '') + countsLine() + syncLine() + finishBtn + '</section>'
-    : '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
-    '<h1>' + hello + '</h1><div class="stats">' +
-      '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>' + (vol.kg ? '' : 'lb ') + 'moved today</small></div>' +
-      '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
-      '<div class="stat"><b>' + weekVisits + '</b><small>day' + (weekVisits === 1 ? '' : 's') + ' lifted this week</small></div>' +
-    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + finishBtn : '') + '</section>';
-  view.innerHTML = hero +
+  view.innerHTML = heroHtml(sets, groups) +
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
@@ -398,6 +418,43 @@ function renderLog() {
   // Following a routine: the floating button would sit on the steps' ✓s, so it steps aside and the
   // routine card carries "+ Other exercise" instead.
   $('fab').classList.toggle('away', !!following());
+}
+// After a ✓ on a routine step: the day line and the routine card change at once, and the rest of the
+// Log tab (exercise cards, bulletin, quests, season) catches up a moment later, so the tap answers
+// straight away instead of waiting for the whole tab to be rebuilt.
+let LOG_LATER;
+function redrawAfterStep() {
+  const hero = view.querySelector('.hero'), fc = view.querySelector('.card.follow');
+  if (currentTab !== 'log' || !hero || !fc || !following()) return render();
+  const sets = todaySets();
+  hero.outerHTML = heroHtml(sets, groupByExercise(sets));
+  fc.outerHTML = followCard();
+  tickClock();
+  renderSoon();
+}
+// A full redraw a moment from now, folding together the ones asked for in the meantime (the set
+// landing in the database asks for one too).
+function renderSoon() {
+  clearTimeout(LOG_LATER); LOG_LATER = null;
+  LOG_LATER = setTimeout(() => { LOG_LATER = null; if (!sheet.open) render(); }, 300);
+}
+function heroHtml(sets, groups) {
+  const vol = L.volumeByUnit(sets);
+  // The same Monday-to-Sunday week as seasons and the bulletin, counting days you lifted.
+  const weekVisits = S.days.filter(d => d.performed_on >= weekStartOf(today()) && d.sets > 0).length;
+  const hello = sets.length ? (sets.length >= 15 ? T.helloBig : T.helloSome) : T.helloNone;
+  const finishBtn = groups.length && unfinished() ? '<button class="btn primary finish-btn" data-recap>' + esc(T.finish) + '</button>' : '';
+  // Following a routine: the day's numbers shrink to one line so the steps sit near the top.
+  return following()
+    ? '<section class="card hero compact"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
+        '<p class="hero-line"><b>' + sets.length + '</b> set' + (sets.length === 1 ? '' : 's') + ' · <b>' + esc(volText(vol)) + '</b> ' + (vol.kg ? '' : 'lb ') + 'today · <b>' + weekVisits + '</b> day' + (weekVisits === 1 ? '' : 's') + ' lifted this week</p>' +
+        (groups.length ? sessionClock() : '') + countsLine() + syncLine() + finishBtn + '</section>'
+    : '<section class="card hero"><div class="date">' + esc(fmtDay(today(), { weekday: 'long', month: 'long', day: 'numeric' })) + '</div>' +
+    '<h1>' + hello + '</h1><div class="stats">' +
+      '<div class="stat"><b>' + esc(volText(vol)) + '</b><small>' + (vol.kg ? '' : 'lb ') + 'moved today</small></div>' +
+      '<div class="stat"><b>' + sets.length + '</b><small>set' + (sets.length === 1 ? '' : 's') + '</small></div>' +
+      '<div class="stat"><b>' + weekVisits + '</b><small>day' + (weekVisits === 1 ? '' : 's') + ' lifted this week</small></div>' +
+    '</div>' + countsLine() + syncLine() + (groups.length ? sessionClock() + finishBtn : '') + '</section>';
 }
 // Save several routine steps in one request (not one per step) and keep them in memory.
 async function putItems(rows) {
@@ -551,7 +608,7 @@ const roundDown = (w, unit) => { const step = unit === 'kg' ? 1.25 : 2.5; return
 const roundNear = (w, unit) => { const step = unit === 'kg' ? 2.5 : 5; return Math.round(w / step) * step; };
 // Your most recent session of a lift (before today if there is one): its working sets.
 function lastSession(exId) {
-  const sets = S.recent.filter(x => x.exercise_id === exId && x.is_warmup !== true);
+  const sets = recentOf(exId).filter(x => x.is_warmup !== true);
   if (!sets.length) return null;
   const before = sets.filter(x => x.performed_on < today());
   const pool = before.length ? before : sets;
@@ -622,7 +679,7 @@ async function quickStep(itemId, btn) {
     const saved = await logSets({ exercise_id: it.exercise_id, weight: tg.weight, reps: tg.reps, unit: tg.unit,
       count_bodyweight: bw, bodyweight: bw ? last.bodyweight : null, is_warmup: false }, 1);
     afterLogToast(saved);
-    render();
+    redrawAfterStep();
     restAfterStep(it);
   } catch (x) { fail(x); btn.disabled = false; render(); }
 }
@@ -635,7 +692,7 @@ function bumpDay(s, sign) {
   if (!d) { d = { performed_on: s.performed_on, sets: 0, exercises: 0, volume_lb: 0, volume_kg: 0 }; S.days.push(d); S.days.sort((a, b) => b.performed_on.localeCompare(a.performed_on)); }
   d.sets = Number(d.sets) + sign;
   d['volume_' + s.unit] = Number(d['volume_' + s.unit]) + sign * L.setVolume(s);
-  const pool = S.dayCache.get(s.performed_on) || S.recent.filter(x => x.performed_on === s.performed_on);
+  const pool = S.dayCache.get(s.performed_on) || recentOn(s.performed_on);
   d.exercises = new Set(pool.filter(x => !x.deleted_at && x.is_warmup !== true).map(x => x.exercise_id)).size;
   if (d.sets <= 0) S.days = S.days.filter(x => x !== d);
 }
@@ -810,7 +867,9 @@ function landed(e, res) {
   } else { const cur = findSet(e.id); if (cur) cur._sync = syncOf(e.id); }
   refreshLoggerList();
   if (e.kind === 'add') checkStamps();
-  if (!sheet.open) render();   // the sheet re-renders the page when it closes
+  // The sheet re-renders the page when it closes. On Log, mid-workout, fold this into the redraw a
+  // ✓ already scheduled rather than rebuilding the tab twice in a row.
+  if (!sheet.open) { if (currentTab === 'log' && LOG_LATER) renderSoon(); else render(); }
 }
 function refused(e, err) {
   const why = msgOf(err);
@@ -1001,7 +1060,7 @@ function openPicker(title, onPick, multi) {
   if (window.matchMedia('(pointer: fine)').matches) setTimeout(() => input.focus(), 60);
 }
 function lastSummary(exId) {
-  const s = S.recent.find(x => x.exercise_id === exId);
+  const s = recentOf(exId)[0];
   return s ? setText(s) + ' · ' + fmtDay(s.performed_on, { month: 'short', day: 'numeric' }) : '';
 }
 function drawResults(q) {
@@ -1089,8 +1148,9 @@ function prefetchLast(exIds) { for (const id of exIds) if (!localLast(id) && !S.
 function localLast(exId) {
   const t = today();
   let day = null;
-  for (const x of S.recent) if (x.exercise_id === exId && x.performed_on < t && (!day || x.performed_on > day)) day = x.performed_on;
-  return day ? S.recent.filter(x => x.exercise_id === exId && x.performed_on === day).sort((a, b) => a.logged_at.localeCompare(b.logged_at)) : null;
+  const mine = recentOf(exId);
+  for (const x of mine) if (x.performed_on < t && (!day || x.performed_on > day)) day = x.performed_on;
+  return day ? mine.filter(x => x.performed_on === day).sort((a, b) => a.logged_at.localeCompare(b.logged_at)) : null;
 }
 async function openEntry(exId, editing, item) {
   LG.next = null;
@@ -1403,7 +1463,7 @@ function setRoutines(r) {
   S.itemsById = new ItemMap(r.items.map(i => [i.id, i]));
 }
 // A routine's rows, as stored. A row is an exercise, or (in a workout) a link to a block.
-const rawItems = id => S.items.filter(i => i.template_id === id).sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)));
+const rawItems = id => (itemsByTpl().get(id) || []).slice().sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)));
 // A linked block's steps, standing in for the link: ids are "<link id>~<block step id>", so
 // following, logging and counting work as if they were the workout's own. Edits go to the block.
 function linkedSteps(ref) {
@@ -1459,19 +1519,22 @@ const subFor = id => S.subs.find(s => s.template_id === id);
 // Today's routine: one or more workouts and blocks, done in the order you added them. Kept in this
 // browser and forgotten tomorrow.
 function followIds() {
+  if (FOLLOW.ids) return FOLLOW.ids;
   let f = null;
   try { f = JSON.parse(localStorage.getItem('lift.follow') || 'null'); } catch (e) {}
-  if (!f || f.day !== today()) return [];
-  return (f.ids || (f.id ? [f.id] : [])).filter(id => tplById(id));
+  if (!f || f.day !== today()) return taskMemo(FOLLOW, 'ids', []);
+  return taskMemo(FOLLOW, 'ids', (f.ids || (f.id ? [f.id] : [])).filter(id => tplById(id)));
 }
 function saveFollow(ids) {
+  FOLLOW.ids = FOLLOW.v = undefined;
   try { if (ids.length) localStorage.setItem('lift.follow', JSON.stringify({ ids, day: today() })); else localStorage.removeItem('lift.follow'); } catch (e) {}
 }
 function following() {
+  if (FOLLOW.v !== undefined) return FOLLOW.v;
   const templates = followIds().map(tplById).filter(t => routineItems(t.id).length);
-  if (!templates.length) return null;
-  return { template: { id: templates[0].id, name: templates.map(t => t.name).join(' + ') }, templates, ids: templates.map(t => t.id),
-    items: templates.flatMap(t => routineItems(t.id)) };
+  if (!templates.length) return taskMemo(FOLLOW, 'v', null);
+  return taskMemo(FOLLOW, 'v', { template: { id: templates[0].id, name: templates.map(t => t.name).join(' + ') }, templates, ids: templates.map(t => t.id),
+    items: templates.flatMap(t => routineItems(t.id)) });
 }
 // How many of a step's sets are in today. When the same lift is in two parts of today's routine,
 // the earlier step takes its sets first and the later one gets the rest.
@@ -1622,7 +1685,7 @@ async function autoName(tid) {
 }
 // What you usually do for a lift: your typical number of working sets per session and most common reps.
 function usualFor(exId) {
-  const sets = S.recent.filter(x => x.exercise_id === exId && x.is_warmup !== true);
+  const sets = recentOf(exId).filter(x => x.is_warmup !== true);
   if (!sets.length) return { sets: 3, reps: 8, unit: prefs.unit };
   const perDay = new Map(), reps = new Map();
   for (const x of sets) { perDay.set(x.performed_on, (perDay.get(x.performed_on) || 0) + 1); reps.set(x.reps, (reps.get(x.reps) || 0) + 1); }
@@ -1774,7 +1837,7 @@ function drawSchedule() {
       (isBlock(t) ? '' : weekPickHtml(t.id, 'Every week') + '<div class="field-label" style="margin-top:14px"><span>Just once</span></div>') +
       '<div class="cal">' + days.map(d => {
         const dt = L.parseDate(d);
-        return '<button type="button" data-sched-day="' + d + '" aria-pressed="' + !!on(d) + '"><small>' + (d === today() ? 'Today' : dt.toLocaleDateString('en-US', { weekday: 'short' })) + '</small><b>' + dt.getDate() + '</b></button>';
+        return '<button type="button" data-sched-day="' + d + '" aria-pressed="' + !!on(d) + '"><small>' + (d === today() ? 'Today' : L.fmtDate(dt, { weekday: 'short' })) + '</small><b>' + dt.getDate() + '</b></button>';
       }).join('') + '</div>' +
       '<div class="goal-add plan-add" style="margin-top:12px"><input class="plain-input" id="schedDate" type="date" min="' + today() + '" max="' + L.addDays(today(), 365) + '" aria-label="Another day"><button class="btn" id="schedAdd" type="button">Add day</button></div>' +
       (later.length ? '<p class="hint-line">Also on: ' + later.map(x => esc(fmtDay(x.on_date))).join(', ') + '</p>' : '') +
@@ -2412,7 +2475,7 @@ const seasonSub = id => (S.seasonSubs || []).find(x => x.season_id === id);
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const byPos = (a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id));
 const planFor = sid => (S.plan || []).filter(p => p.season_id === sid).sort(byPos);
-const tplById = id => S.templates.find(t => t.id === id);
+const tplById = id => tplIndex().get(id);
 const dayList = mask => DAY_NAMES.filter((_, i) => mask & (1 << i)).join(', ');
 function planLine(s) {
   const plan = planFor(s.id);
@@ -2420,12 +2483,15 @@ function planLine(s) {
   return '<p class="hint-line">Plan: ' + esc(plan.map(p => { const t = tplById(p.template_id); return (t ? t.name : 'a private routine') + (p.weekdays ? ' (' + dayList(p.weekdays) + ')' : ''); }).join(' → ')) + '</p>';
 }
 // Which routine of a rotation was done on a day: the one whose exercises that day covers best (at least half).
-function matchRoutine(rot, day) {
-  const done = new Set(S.recent.filter(x => x.performed_on === day && x.is_warmup !== true).map(x => x.exercise_id));
+// exs: each routine's exercises, when the caller checks many days against the same routines
+// (rotExercises(rot) once, instead of gathering every routine's steps again for every day).
+const rotExercises = rot => rot.map(p => [...new Set(routineItems(p.template_id).map(it => it.exercise_id))]);
+function matchRoutine(rot, day, exs) {
+  const done = new Set(recentOn(day).filter(x => x.is_warmup !== true).map(x => x.exercise_id));
   if (!done.size) return -1;
   let best = -1, score = 0.5 - 1e-9;
   rot.forEach((p, i) => {
-    const ex = [...new Set(routineItems(p.template_id).map(it => it.exercise_id))];
+    const ex = exs ? exs[i] : [...new Set(routineItems(p.template_id).map(it => it.exercise_id))];
     const sc = ex.length ? ex.filter(e => done.has(e)).length / ex.length : 0;
     if (sc > score) { score = sc; best = i; }
   });
@@ -2797,7 +2863,7 @@ function calendarCard() {
       (lift || run ? '<span class="cal-ico" aria-hidden="true">' + (lift ? '🏋️' : '') + (run ? '🏃' : '') + '</span>' : '') + '</button>');
   }
   return '<section class="card cal-card"><div class="row"><button class="iconbtn" data-cal-move="-1" aria-label="Previous month">‹</button>' +
-    '<h2>' + esc(first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })) + '</h2><button class="iconbtn" data-cal-move="1" aria-label="Next month">›</button></div>' +
+    '<h2>' + esc(L.fmtDate(first, { month: 'long', year: 'numeric' })) + '</h2><button class="iconbtn" data-cal-move="1" aria-label="Next month">›</button></div>' +
     '<div class="cal-grid cal-head">' + ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => '<span>' + x + '</span>').join('') + '</div>' +
     '<div class="cal-grid">' + cells.join('') + '</div>' +
     '<p class="cal-key"><span>🏋️ lifted</span><span>🏃 cardio</span><span><i class="k-pr"></i> PR</span><span><i class="k-plan"></i> planned</span></p></section>' + calDayDetail();
@@ -2827,7 +2893,7 @@ function calDayDetail() {
 // Older days ask the database.
 function localDay(d) {
   if (S.dayCache.has(d) || d < L.addDays(today(), -RECENT_DAYS)) return S.dayCache.has(d);
-  S.dayCache.set(d, S.recent.filter(x => x.performed_on === d).sort((a, b) => a.logged_at.localeCompare(b.logged_at)));
+  S.dayCache.set(d, recentOn(d).slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at)));
   return true;
 }
 async function selectCalDay(d) {
@@ -2863,10 +2929,10 @@ function renderHistory() {
   let html = calendarCard() + '<h2 class="month" style="margin-top:26px">Recent days</h2>', month = '';
   // Which of your workouts each recent day was (the one its lifts cover best), so the list reads "Push day".
   const rot = S.templates.filter(t => !isBlock(t) && (isMine(t) || subFor(t.id)) && routineItems(t.id).length).map(t => ({ template_id: t.id }));
-  const wk = {};
+  const wk = {}, exs = rotExercises(rot);
   for (const d of days.slice(0, S.historyLimit)) {
     if (d.performed_on < L.addDays(today(), -RECENT_DAYS)) break;
-    const i = matchRoutine(rot, d.performed_on);
+    const i = matchRoutine(rot, d.performed_on, exs);
     if (i >= 0) wk[d.performed_on] = tplById(rot[i].template_id).name;
   }
   if (!days.length) html += '<section class="card empty"><p class="muted" style="margin:0">Your days show up here once you’ve logged a set.</p></section>';
@@ -2948,8 +3014,8 @@ function renderProgress() {
     for (let m = first.slice(0, 7); m <= today().slice(0, 7);) { months.push(m); const [y, mo] = m.split('-').map(Number); m = (mo === 12 ? y + 1 : y) + '-' + String(mo === 12 ? 1 : mo + 1).padStart(2, '0'); }
     const by = new Map(months.map(m => [m, { lb: 0, visits: 0 }]));
     for (const d of S.days) { const b = by.get(d.performed_on.slice(0, 7)); if (b && d.sets > 0) { b.lb += lbOf(d); b.visits++; } }
-    const data = months.slice(-24).map(m => ({ label: L.parseDate(m + '-01').toLocaleDateString('en-US', { month: 'short' }), value: by.get(m).lb,
-      tip: esc(L.parseDate(m + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })) + ': <b>' + C.compact(by.get(m).lb) + ' lb</b> · ' + by.get(m).visits + ' days' }));
+    const data = months.slice(-24).map(m => ({ label: L.fmtDate(L.parseDate(m + '-01'), { month: 'short' }), value: by.get(m).lb,
+      tip: esc(L.fmtDate(L.parseDate(m + '-01'), { month: 'long', year: 'numeric' })) + ': <b>' + C.compact(by.get(m).lb) + ' lb</b> · ' + by.get(m).visits + ' days' }));
     vol = { title: 'Pounds moved per month', html: C.columns({ data, every: data.length > 12 ? 3 : 1, label: 'Pounds moved per month' }) };
   }
   const heatVals = new Map(S.days.filter(d => d.sets > 0).map(d => [d.performed_on, lbOf(d)]));
@@ -3020,7 +3086,7 @@ function drawTrend() {
   if (!src) {
     // The last 120 days are on the phone: chart those now, then the full history when it arrives.
     const id = S.trendEx;
-    src = S.recent.filter(r => r.exercise_id === id).slice().reverse();
+    src = recentOf(id).slice().reverse();
     if (!S.histLoading.has(id)) {
       S.histLoading.add(id);
       store.exerciseHistory(id).then(h => { S.hist.set(id, h); if (id === S.trendEx && $('trendBox')) drawTrend(); })
@@ -3156,7 +3222,7 @@ if ('serviceWorker' in navigator && (!/^(localhost|127\.0\.0\.1)$/.test(location
 const tipLine = exId => (S.tips && S.tips.get(exId) ? '<p class="tip">💡 ' + esc(S.tips.get(exId)) + '</p>' : '');
 const stepsOf = sid => (SESSIONS[sid] ? SESSIONS[sid].steps : []).map(([name, sets, reps, rest, note]) => ({ exId: S.nameIndex.get(L.norm(name)), name, sets, reps, rest, note })).filter(x => x.exId);
 function lastLoad(exId) {
-  const x = S.recent.find(r => r.exercise_id === exId && r.is_warmup !== true);
+  const x = recentOf(exId).find(r => r.is_warmup !== true);
   return x ? { weight: Number(x.weight), unit: x.unit } : { weight: 0, unit: prefs.unit };
 }
 // Starter steps carry no weights. Linear programs add weight when every rep was hit; 5/3/1's main
@@ -4145,7 +4211,7 @@ function wzSuggestions() {
   const lifts = pool.map(id => {
     const rows = S.bestRows.filter(r => r.exercise_id === id && r.unit === 'lb' && r.reps <= 8);
     const top = rows.reduce((m, r) => Math.max(m, Number(r.heaviest)), 0);
-    return { id, top, freq: S.recent.filter(x => x.exercise_id === id).length };
+    return { id, top, freq: recentOf(id).length };
   }).filter(x => x.top >= 20).sort((a, b) => b.freq - a.freq).slice(0, 3);
   for (const x of lifts) { const t = Math.ceil((x.top * 1.05) / 5) * 5; out.push({ key: 'lift:' + x.id, metric: 'lift', unit: 'lb', exercise_id: x.id, target: t, name: (exName(x.id) + ' ' + t + ' lb').slice(0, 60) }); }
   return out;

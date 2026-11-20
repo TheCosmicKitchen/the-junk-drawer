@@ -252,6 +252,10 @@
   .sheet-body { overflow: auto; padding: 4px 16px calc(18px + env(safe-area-inset-bottom)); }
   .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 8px auto 0; }
   .results { list-style: none; padding: 0; margin: 10px 0 0; }
+  /* Long lists (the library, the picker, past days): rows off screen aren't laid out until you scroll to them. */
+  .results li, #view > .card.day { content-visibility: auto; contain-intrinsic-size: auto 66px; }
+  /* The charts on Progress, the same way: the ones below the fold wait until you scroll to them. */
+  #view > .card:is(.c-wide, .c-side, .c-half, .c-full) { content-visibility: auto; contain-intrinsic-size: auto 360px; }
   .results li button { width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 13px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 600; }
   .results li small { color: var(--muted); font-weight: 500; }
   .stepper { display: grid; grid-template-columns: 58px 1fr 58px; gap: 8px; align-items: center; }

@@ -283,6 +283,14 @@ class DemoStore {
       .concat(DEMO_CARDIO.map((name, i) => ({ id: 'cx' + i, name, supports_bodyweight: false, kind: 'cardio', deleted_at: null })));
     this.cardioRows = [{ id: uid(), exercise_id: 'cx1', performed_on: addDays(localDate(), -2), minutes: 28, distance: 5.2, distance_unit: 'km', created_at: new Date().toISOString() }];
     this.aliases = DEMO_EXERCISES.flatMap(([, al], i) => al.map(alias => ({ exercise_id: 'ex' + i, alias })));
+    // Stress test: a catalogue the size of the real one (about 250 lifts), from tools × movements.
+    if (BIG) {
+      const tools = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Kettlebell', 'Band', 'Smith Machine', 'Landmine', 'Single-Arm Dumbbell', 'Incline Dumbbell', 'Seated Cable', 'Standing Cable'];
+      const moves = ['Bench Press', 'Row', 'Curl', 'Overhead Press', 'Lateral Raise', 'Fly', 'Squat', 'Lunge', 'Romanian Deadlift', 'Shrug', 'Kickback', 'Pullover', 'Hip Thrust', 'Calf Raise', 'Upright Row', 'Face Pull', 'Good Morning', 'Split Squat', 'Reverse Fly', 'Skull Crusher', 'Step Up'];
+      let k = 0;
+      for (const m of moves) for (const t of tools) if (k < 234 && !this.exercises.some(e => e.name === t + ' ' + m))
+        this.exercises.push({ id: 'big' + k++, name: t + ' ' + m, supports_bodyweight: false, kind: 'strength', deleted_at: null });
+    }
     this.sets = [];
     // Push / pull / legs, three or four days a week, slowly getting stronger.
     const plan = [

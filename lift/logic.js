@@ -22,9 +22,23 @@ export function daysBetween(a, b) {   // b - a, in whole days
 }
 
 // ---------- numbers ----------
+// One formatter per number of decimals, made once: toLocaleString builds a new one on every call,
+// which is about 50 times slower and adds up across a page of weights.
+const NUM_FMT = new Map();
 export function fmtNum(n, max = 1) {
   if (n == null || !isFinite(n)) return '–';
-  return Number(n).toLocaleString('en-US', { maximumFractionDigits: max });
+  let f = NUM_FMT.get(max);
+  if (!f) NUM_FMT.set(max, f = new Intl.NumberFormat('en-US', { maximumFractionDigits: max }));
+  return f.format(Number(n));
+}
+// The same for dates: a formatter per set of options, made once. fmtDate(date, opts) matches
+// date.toLocaleDateString('en-US', opts).
+const DATE_FMT = new Map();
+export function fmtDate(date, opts) {
+  const key = JSON.stringify(opts || {});
+  let f = DATE_FMT.get(key);
+  if (!f) DATE_FMT.set(key, f = new Intl.DateTimeFormat('en-US', opts));
+  return f.format(date);
 }
 export function fmtLoad(n) {   // 135, 137.5
   return fmtNum(Math.round(n * 100) / 100, 2);
