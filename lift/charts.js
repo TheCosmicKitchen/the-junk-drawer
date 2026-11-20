@@ -2,6 +2,7 @@
 // Colors come from CSS tokens (--s1..--s3 for people/series, --seq-1..--seq-5 for magnitude,
 // --grid and --axis for chrome), so light and dark both work. Every chart has a hover/tap layer:
 // any element with data-tip shows a tooltip, and line charts get a crosshair per x position.
+import { fmtDate } from './logic.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
@@ -126,10 +127,10 @@ export function heatmap({ values, end, weeks = 26, label = 'Training calendar', 
       const dt = new Date(start); dt.setDate(start.getDate() + w * 7 + d);
       if (dt > endD) continue;
       const iso = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
-      if (d === 0 && dt.getMonth() !== lastMonth) { lastMonth = dt.getMonth(); s += '<text class="tick" x="' + (Lp + w * (C + G)) + '" y="10">' + dt.toLocaleDateString('en-US', { month: 'short' }) + '</text>'; }
+      if (d === 0 && dt.getMonth() !== lastMonth) { lastMonth = dt.getMonth(); s += '<text class="tick" x="' + (Lp + w * (C + G)) + '" y="10">' + fmtDate(dt, { month: 'short' }) + '</text>'; }
       const v = values.get(iso) || 0, st = step(v);
       s += '<rect x="' + (Lp + w * (C + G)) + '" y="' + (Tp + d * (C + G)) + '" width="' + C + '" height="' + C + '" rx="3" fill="' + (st ? 'var(--seq-' + st + ')' : 'var(--chip)') + '" data-tip="' +
-        esc(dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + (v > 0 ? ': <b>' + fmt(v) + ' ' + unit + '</b>' : ': rest')) + '"/>';
+        esc(fmtDate(dt, { weekday: 'short', month: 'short', day: 'numeric' }) + (v > 0 ? ': <b>' + fmt(v) + ' ' + unit + '</b>' : ': rest')) + '"/>';
     }
   }
   return s + '</svg><div class="legend scale"><span>Less</span>' + [0, 2, 3, 4, 5].map(k => '<i style="background:' + (k ? 'var(--seq-' + k + ')' : 'var(--chip)') + '"></i>').join('') + '<span>More</span></div>';
