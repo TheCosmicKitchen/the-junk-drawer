@@ -112,7 +112,7 @@ const PLAIN_DARK = { bg: '#171513', card: '#201d1a', ink: '#efe9e1', muted: '#a6
 
 export const THEMES = {
   plain: theme('plain', 'Plain', 'Warm neutrals, a clay accent and plain words. The default', {
-    logo: svg('<rect x="3" y="18.6" width="34" height="2.8" rx="1.4" fill="var(--muted)"/><rect x="8" y="10" width="5" height="20" rx="1.6" fill="var(--accent)"/><rect x="27" y="10" width="5" height="20" rx="1.6" fill="var(--accent)"/><rect x="4" y="14" width="3.4" height="12" rx="1.2" fill="var(--ink)"/><rect x="32.6" y="14" width="3.4" height="12" rx="1.2" fill="var(--ink)"/>'),
+    logo: svg('<g transform="translate(-2.4 1) scale(.56)"><ellipse cx="40" cy="22" rx="16" ry="5" fill="none" stroke="var(--gold)" stroke-width="3"/><rect x="16" y="38" width="48" height="4" rx="2" fill="var(--muted)"/><rect x="12" y="29" width="7" height="22" rx="2" fill="var(--accent)"/><rect x="20" y="32" width="5" height="16" rx="1.5" fill="var(--ink)"/><rect x="61" y="29" width="7" height="22" rx="2" fill="var(--accent)"/><rect x="55" y="32" width="5" height="16" rx="1.5" fill="var(--ink)"/></g>'),
     bar: { fill: 'var(--accent)' },
     colors: { light: PLAIN_LIGHT, dark: PLAIN_DARK },
   }),
