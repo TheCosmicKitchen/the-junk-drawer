@@ -55,9 +55,10 @@ export function parseLoad(text) {
 }
 
 // ---------- volume ----------
-// (weight + bodyweight if counted) x reps, kept separate per unit. Warm-ups don't count.
+// (weight + bodyweight if counted) x reps, kept separate per unit. Warm-ups don't count, and nor do
+// sets measured in time or distance (no reps): holds and carries aren't pounds moved.
 export function setVolume(s) {
-  return (Number(s.weight) + (s.count_bodyweight ? Number(s.bodyweight || 0) : 0)) * s.reps;
+  return s.reps == null ? 0 : (Number(s.weight) + (s.count_bodyweight ? Number(s.bodyweight || 0) : 0)) * s.reps;
 }
 export function volumeByUnit(sets) {
   const out = { lb: 0, kg: 0 };
