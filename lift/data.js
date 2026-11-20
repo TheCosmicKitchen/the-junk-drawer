@@ -247,6 +247,10 @@ class SupaStore {
   async addProgram(f) { return must(await this.sb.from('lift_programs').insert(f).select('id,name,doc,is_shared,created_by,updated_at').single()); }
   async updateProgram(id, patch) { return must(await this.sb.from('lift_programs').update(patch).eq('id', id).select('id,name,doc,is_shared,created_by,updated_at').single()); }
   async removeProgram(id) { must(await this.sb.from('lift_programs').update({ deleted_at: new Date().toISOString() }).eq('id', id)); }
+  // Following a plan: which plan, since when. One live run at a time (the database says so).
+  async planRuns() { return must(await this.sb.from('lift_plan_runs').select(RUN_COLS).is('deleted_at', null).order('starts_on', { ascending: false }).limit(20)); }
+  async startPlan(programId, startsOn) { return must(await this.sb.from('lift_plan_runs').insert({ program_id: programId, starts_on: startsOn }).select(RUN_COLS).single()); }
+  async updatePlanRun(id, patch) { return must(await this.sb.from('lift_plan_runs').update(patch).eq('id', id).select(RUN_COLS).single()); }
 
   // ----- season packs: who joined which pack (a run), and the stamps earned (everyone's, for the crew) -----
   async seasonRuns() { return must(await this.sb.from('lift_season_runs').select('id,season_key,starts_on,created_by').is('deleted_at', null).order('starts_on')); }
@@ -261,6 +265,7 @@ class SupaStore {
 
 const SEASON = 'id,name,starts_on,ends_on,is_shared,created_by,points';
 const TPL = 'id,name,notes,is_shared,kind,created_by,updated_at';
+const RUN_COLS = 'id,program_id,starts_on,ended_on';
 const ITEM_COLS = 'id,template_id,exercise_id,block_id,position,sets,reps,duration_s,distance_m,load_mode,load_value,unit,rest_s,note,with_next';
 const PLAN = 'id,season_id,template_id,position,weekdays';
 const POST = 'id,kind,performed_on,title,summary,created_by,created_at';
@@ -634,6 +639,14 @@ class DemoStore {
   async addProgram(f) { await this.programs(); const r = { id: uid(), created_by: 'me', is_shared: false, updated_at: new Date().toISOString(), ...f }; this.progRows.unshift(r); return clone(r); }
   async updateProgram(id, patch) { const r = (this.progRows || []).find(x => x.id === id); Object.assign(r, patch, { updated_at: new Date().toISOString() }); return clone(r); }
   async removeProgram(id) { const r = (this.progRows || []).find(x => x.id === id); if (r) r.deleted_at = new Date().toISOString(); }
+  async planRuns() { return (this.runRows || []).filter(r => !r.deleted_at).map(clone); }
+  async startPlan(programId, startsOn) {
+    this.runRows = this.runRows || [];
+    if (this.runRows.some(r => !r.deleted_at && !r.ended_on)) throw new Error('duplicate key value violates unique constraint "lift_plan_runs_one_live"');
+    const r = { id: uid(), program_id: programId, starts_on: startsOn, ended_on: null };
+    this.runRows.unshift(r); return clone(r);
+  }
+  async updatePlanRun(id, patch) { const r = this.runRows.find(x => x.id === id); Object.assign(r, patch); return clone(r); }
   async seasonRuns() { this.runRows = this.runRows || []; return this.runRows.filter(r => !r.deleted_at).map(clone); }
   async addRun(f) { await this.seasonRuns(); const r = { id: uid(), created_by: 'me', ...f }; this.runRows.push(r); return clone(r); }
   async endRun(id) { const r = (this.runRows || []).find(x => x.id === id); if (r) r.deleted_at = new Date().toISOString(); }
