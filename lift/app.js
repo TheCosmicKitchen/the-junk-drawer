@@ -317,10 +317,19 @@ function fetchAll() {
     Promise.resolve().then(() => store.seasonRuns()).catch(() => []), Promise.resolve().then(() => store.stamps()).catch(() => []),
     Promise.resolve().then(() => store.programs()).catch(() => []), Promise.resolve().then(() => store.cardio()).catch(() => []),
     Promise.resolve().then(() => store.feats()).catch(() => []), Promise.resolve().then(() => store.planRuns()).catch(() => []),
-  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns }));
+    // Every lift's last day before the 120 days, so "last time" never waits on the network.
+    Promise.resolve().then(() => store.lastDaysBefore(L.addDays(today(), -RECENT_DAYS))).catch(() => null),
+  ]).then(([cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns, lastDays]) => ({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns, lastDays }));
 }
-function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns }) {
+function applyData({ cat, recent, days, bests, routines, seasons, names, myId, wdays, bw, runs, stamps, programs, cardio, feats, planRuns, lastDays }) {
   S.planRuns = planRuns || [];   // which plan you're following, since when
+  // With every lift's older last day in hand, a lift missing from it (and from the 120 days) is one
+  // you've never done: no need to ask. Without it (offline, or the server is behind), ask per lift.
+  if (Array.isArray(lastDays)) {
+    S.lastOld = new Map();
+    for (const x of lastDays) pushTo(S.lastOld, x.exercise_id, x);
+    S.lastAll = true;
+  }
   S.wdays = wdays;
   S.runs = runs || []; S.stampRows = stamps || []; S.programs = programs || []; S.cardio = cardio || [];
   S.bw = bw;
@@ -822,7 +831,7 @@ function syncWaiting() {
 }
 function queueStore(st) {
   const signOut = st.signOut.bind(st);
-  st.signOut = async () => { clearSnap(); S.lastOld.clear(); S.standings = {}; S.seasonAt = {}; lastAsked.clear(); return signOut(); };
+  st.signOut = async () => { clearSnap(); S.lastOld.clear(); S.lastAll = false; S.standings = {}; S.seasonAt = {}; lastAsked.clear(); return signOut(); };
   if (!st.addSets) st.addSets = async rows => { const out = []; for (const r of rows) out.push(await st.addSet(r)); return out; };
   return st;
 }
@@ -1085,13 +1094,18 @@ function openPicker(title, onPick, multi) {
   LG.multi = multi ? [] : null;
   LG.pf = { mus: null, eq: null, mine: false, sort: 'used' };
   LG.pkAll = false;
+  LG.pkCardio = false;
+  // Logging (not building): a Weights / Cardio switch beside the title, so the list sits right under the
+  // filters and the first results stay in view with the keyboard up.
+  const both = !onPick && !multi && (S.activities || []).length;
   inner.innerHTML =
-    '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-head"><h2 id="sheetTitle">' + esc(title) + '</h2>' +
+      (both ? '<span class="seg pk-kind" role="group" aria-label="Weights or cardio"><button type="button" data-pk-kind="w" aria-pressed="true">Weights</button><button type="button" data-pk-kind="c" aria-pressed="false">Cardio</button></span>' : '') +
+      '<button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
     // Search and filters stay pinned at the top while the list scrolls under them.
-    '<div class="sheet-body"><div class="pick-top"><input class="search" id="exSearch" type="search" placeholder="Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
+    '<div class="sheet-body"><div class="pick-top"><input class="search" id="exSearch" type="search" placeholder="' + pickHolder() + '" autocomplete="off" enterkeyhint="go" aria-label="Search exercises">' +
     '<div id="pkFilters">' + libChips(LG.pf, 'pk') + '</div></div>' +
-    (!onPick && !multi && (S.activities || []).length ? '<div class="section-title">Cardio</div><div class="chips cardio-pick">' + S.activities.map(a => '<button type="button" class="chip" data-cardio-new="' + esc(a.id) + '">' + esc(a.name) + '</button>').join('') + '</div>' : '') +
-    '<div class="section-title" id="resTitle"></div><ul class="results" id="exResults"></ul>' +
+    '<p class="res-title" id="resTitle" hidden></p><ul class="results" id="exResults"></ul>' +
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
   const input = $('exSearch');
@@ -1109,14 +1123,37 @@ function lastSummary(exId) {
   const s = recentOf(exId)[0];
   return s ? setText(s) + ' · ' + fmtDay(s.performed_on, { month: 'short', day: 'numeric' }) : '';
 }
+const pickHolder = () => LG.pkCardio ? 'Search cardio' : 'Search ' + S.exercises.filter(e => !e.deleted_at).length + ' exercises';
+// Weights / Cardio in the picker's header.
+function setPickKind(cardio) {
+  LG.pkCardio = cardio; LG.pkAll = false;
+  inner.querySelectorAll('[data-pk-kind]').forEach(b => b.setAttribute('aria-pressed', (b.dataset.pkKind === 'c') === cardio));
+  $('pkFilters').hidden = cardio;
+  const input = $('exSearch'); input.placeholder = pickHolder();
+  drawResults(input.value);
+}
+function drawCardioResults(q) {
+  // What you've done most recently first, each with its last outing.
+  const last = new Map();
+  for (const c of S.cardio || []) if (!c.deleted_at && (!last.has(c.exercise_id) || c.performed_on > last.get(c.exercise_id).performed_on)) last.set(c.exercise_id, c);
+  const lastOf = id => last.get(id), when = a => (lastOf(a.id) || {}).performed_on || '';
+  const t = L.norm(q.trim()), list = S.activities.filter(a => !t || L.norm(a.name).includes(t)).sort((a, b) => when(b).localeCompare(when(a)));
+  setResTitle(list.length ? '' : 'No matches');
+  $('exResults').innerHTML = list.map(a => { const c = lastOf(a.id);
+    return '<li><button data-cardio-new="' + esc(a.id) + '"><span>' + esc(a.name) + '</span><small>' + (c ? esc(cardioText(c) + ' · ' + fmtDay(c.performed_on, { month: 'short', day: 'numeric' })) : '') + '</small></button></li>'; }).join('');
+}
+function setResTitle(text) { const el = $('resTitle'); el.textContent = text; el.hidden = !text; }
 function drawResults(q) {
+  if (LG.pkCardio) return drawCardioResults(q);
   const f = LG.pf || {}, filtering = !!(f.mus || f.eq || f.mine);
   // Nothing typed or filtered: your recent lifts when logging, the whole library (yours first) when building.
   let list = !q.trim() && !filtering && !LG.multi ? L.searchExercises('', S.exercises, S.aliases, recentExerciseIds()) : [];
   if (!list.length) list = libList({ ...f, q: q.trim(), sort: 'used' });
-  $('resTitle').textContent = q.trim() ? (list.length ? 'Matches' : 'No matches')
+  // A one-line label only when it says something: a filter's count, or nothing found. Recent and
+  // matches need no heading, so the first results sit right under the filters.
+  setResTitle(q.trim() ? (list.length ? '' : 'No matches')
     : filtering ? (list.length ? list.length + ' ' + [f.mus && LIB.muscleName(f.mus), f.eq && LIB.equipmentName(f.eq)].filter(Boolean).join(' · ') + ' exercise' + (list.length === 1 ? '' : 's') : 'Nothing here yet')
-    : LG.multi ? 'The library · yours first' : 'Recent';
+    : LG.multi ? 'The library · yours first' : '');
   const picked = id => LG.multi && LG.multi.includes(id);
   // What's already ticked comes first (easy to see and untick); ticking more updates rows in place.
   const all = LG.multi && !q.trim() ? LG.multi.map(id => S.byId.get(id)).filter(Boolean).concat(list.filter(e => !picked(e.id))) : list;
@@ -1187,7 +1224,7 @@ function logsAtEnd() {
 S.lastOld = new Map();
 const lastAsked = new Set();
 function fetchLast(exId) {
-  if (lastAsked.has(exId)) return;
+  if (lastAsked.has(exId) || S.lastAll) return;
   lastAsked.add(exId);
   store.lastFor(exId, today()).then(rows => { S.lastOld.set(exId, rows); }).catch(() => { lastAsked.delete(exId); });
 }
@@ -1286,7 +1323,7 @@ async function openEntry(exId, editing, item) {
     // Prefill from last time, unless already lifting this today. The phone already has the last
     // 120 days and anything older it has looked up before, so this is instant; only an older lift
     // it has never seen asks the server.
-    let prev = localLast(exId) || S.lastOld.get(exId);
+    let prev = localLast(exId) || S.lastOld.get(exId) || (S.lastAll ? [] : null);
     if (!prev) { prev = await store.lastFor(exId, today()).catch(() => []); S.lastOld.set(exId, prev); lastAsked.add(exId); }
     if (LG.exId !== exId || LG.mode !== 'entry') return;
     LG.last = prev;
@@ -1433,6 +1470,7 @@ inner.addEventListener('click', async e => {
     vibrate(5);
     return syncTicks();   // in place: redrawing the whole list on every tap is what made it chug
   }
+  if (b.dataset.pkKind) return setPickKind(b.dataset.pkKind === 'c');
   if (b.hasAttribute('data-pk-all')) { LG.pkAll = true; return drawResults($('exSearch').value); }
   if (b.hasAttribute('data-add-selected')) { b.disabled = true; return LG.pickFor(LG.multi.slice()); }
   if (b.dataset.pick) return LG.pickFor ? LG.pickFor(b.dataset.pick) : openEntry(b.dataset.pick);
