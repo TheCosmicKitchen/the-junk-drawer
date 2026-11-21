@@ -1,0 +1,13 @@
+{
+  "name": "the-junk-drawer",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node tests/run-unit.mjs",
+    "test:e2e": "playwright test",
+    "serve": "node tests/serve.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}
