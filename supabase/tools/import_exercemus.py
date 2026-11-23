@@ -53,7 +53,7 @@ SAME = {
 # Movements that mean the barbell version when no equipment is named ("Deadlift", "Bench Press").
 BARBELL_DEFAULT = re.compile(r'\b(bench press|squat|deadlift|good morning)\b')
 # Lifts measured in time or distance, by name.
-DISTANCE = re.compile(r"\b(carry|walk|drag|yoke|sled push|prowler)\b", re.I)
+DISTANCE = re.compile(r"\b(carry|walk|yoke|sled push|sled drag|prowler)\b|\b(backward|forward) drag\b", re.I)
 TIME = re.compile(r"^(side )?plank$|\bhold\b|\bdead hang\b|\bwall sit\b|\bl-sit\b", re.I)
 
 def words(name):
@@ -161,30 +161,58 @@ def emit(data, rows, out):
     w('  muscles <@ %s and muscles_also <@ %s\n' % (sql_arr(muscles), sql_arr(muscles)))
     w('  and equipment <@ %s\n' % sql_arr(equipment))
     w('  and cardinality(muscles) <= 8 and cardinality(muscles_also) <= 12 and cardinality(equipment) <= 6);\n\n')
-    w('create temp table x (name text, ours boolean, aliases text[], muscles text[], muscles_also text[], equipment text[], bw boolean, log_type text) on commit drop;\n')
-    w('insert into x values\n')
-    w(',\n'.join('  (%s, %s, %s, %s, %s, %s, %s, %s)' % (sql_text(r['name']), 'true' if r['ours'] else 'false', sql_arr(r['aliases']), sql_arr(r['muscles']),
-                                                      sql_arr(r['muscles_also']), sql_arr(r['equipment']), 'true' if r['bw'] else 'false', sql_text(r['log_type'])) for r in rows))
-    w(';\n\n')
-    w('-- Lifts we have: fill in what they work and need (only where nothing is recorded yet).\n')
-    w('update public.lift_exercises e set muscles = x.muscles, muscles_also = x.muscles_also, equipment = x.equipment\n')
-    w('  from x where x.ours and lower(btrim(e.name)) = lower(btrim(x.name)) and e.deleted_at is null and e.muscles = \'{}\';\n\n')
-    w('-- New lifts: skip any whose name or other name is already a lift or another lift\'s other name.\n')
-    w('insert into public.lift_exercises (name, kind, log_type, supports_bodyweight, muscles, muscles_also, equipment)\n')
-    w('select x.name, \'strength\', x.log_type, x.bw, x.muscles, x.muscles_also, x.equipment from x\n')
-    w(' where not x.ours\n')
-    w('   and not exists (select 1 from public.lift_exercises e where e.deleted_at is null and lower(btrim(e.name)) = any (select lower(btrim(n)) from unnest(x.name || x.aliases) n))\n')
-    w('   and not exists (select 1 from public.lift_exercise_aliases a where a.deleted_at is null and lower(btrim(a.alias)) = any (select lower(btrim(n)) from unnest(x.name || x.aliases) n));\n\n')
-    w('-- Other names: each points at its lift, unless it\'s already some lift\'s name or other name.\n')
-    w('insert into public.lift_exercise_aliases (exercise_id, alias)\n')
-    w('select distinct on (lower(btrim(al))) e.id, al from x cross join lateral unnest(x.aliases) al\n')
-    w('  join public.lift_exercises e on lower(btrim(e.name)) = lower(btrim(x.name)) and e.deleted_at is null\n')
-    w(' where not exists (select 1 from public.lift_exercises o where o.deleted_at is null and lower(btrim(o.name)) = lower(btrim(al)))\n')
-    w('   and not exists (select 1 from public.lift_exercise_aliases a where a.deleted_at is null and lower(btrim(a.alias)) = lower(btrim(al)))\n')
-    w(' order by lower(btrim(al));\n\n')
+    w(IMPORT_FN)
     w('-- Members read the new columns through the table\'s select grant; the admin can set them on a new\n')
     w('-- exercise or correct them later (the catalogue\'s write policies already allow only the admin).\n')
-    w('grant insert (muscles, muscles_also, equipment), update (muscles, muscles_also, equipment) on public.lift_exercises to authenticated;\n')
+    w('grant insert (muscles, muscles_also, equipment), update (muscles, muscles_also, equipment) on public.lift_exercises to authenticated;\n\n')
+    calls = chunks(rows)
+    w('-- The rows, in %d chunks of [name, ours (1/0), other names, muscles, muscles also, equipment,\n-- bodyweight (1/0), log type (r/t/d)].\n' % len(calls))
+    for part in calls: w(call(part))
+
+# Rows go to the database as compact JSON, a chunk per call, so the migration can also be applied a
+# chunk at a time.
+def chunks(rows, per=120): return [rows[i:i + per] for i in range(0, len(rows), per)]
+def pack(r): return [r['name'], 1 if r['ours'] else 0, r['aliases'], r['muscles'], r['muscles_also'], r['equipment'], 1 if r['bw'] else 0, r['log_type'][0]]
+def call(part):
+    return "select private.import_exercises('" + json.dumps([pack(r) for r in part], ensure_ascii=False, separators=(',', ':')).replace("'", "''") + "'::jsonb);\n"
+
+# Lifts we have: fill in muscles and equipment where none are recorded. New lifts: added unless a name
+# or other name is already taken. Other names: added where free. Safe to run again.
+IMPORT_FN = """create or replace function private.import_exercises(rows jsonb)
+returns void
+language plpgsql
+set search_path = ''
+as $f$
+begin
+  create temp table if not exists x (name text, ours boolean, aliases text[], muscles text[], muscles_also text[], equipment text[], bw boolean, log_type text) on commit drop;
+  truncate x;
+  insert into x
+  select r->>0, (r->>1)::int = 1,
+         array(select jsonb_array_elements_text(r->2)), array(select jsonb_array_elements_text(r->3)),
+         array(select jsonb_array_elements_text(r->4)), array(select jsonb_array_elements_text(r->5)),
+         (r->>6)::int = 1, case r->>7 when 't' then 'time' when 'd' then 'distance' else 'reps' end
+    from jsonb_array_elements(rows) r;
+
+  update public.lift_exercises e set muscles = x.muscles, muscles_also = x.muscles_also, equipment = x.equipment
+    from x where x.ours and lower(btrim(e.name)) = lower(btrim(x.name)) and e.deleted_at is null and e.muscles = '{}';
+
+  insert into public.lift_exercises (name, kind, log_type, supports_bodyweight, muscles, muscles_also, equipment)
+  select x.name, 'strength', x.log_type, x.bw, x.muscles, x.muscles_also, x.equipment from x
+   where not x.ours
+     and not exists (select 1 from public.lift_exercises e where e.deleted_at is null and lower(btrim(e.name)) = any (select lower(btrim(n)) from unnest(x.name || x.aliases) n))
+     and not exists (select 1 from public.lift_exercise_aliases a where a.deleted_at is null and lower(btrim(a.alias)) = any (select lower(btrim(n)) from unnest(x.name || x.aliases) n));
+
+  insert into public.lift_exercise_aliases (exercise_id, alias)
+  select distinct on (lower(btrim(al))) e.id, al from x cross join lateral unnest(x.aliases) al
+    join public.lift_exercises e on lower(btrim(e.name)) = lower(btrim(x.name)) and e.deleted_at is null
+   where not exists (select 1 from public.lift_exercises o where o.deleted_at is null and lower(btrim(o.name)) = lower(btrim(al)))
+     and not exists (select 1 from public.lift_exercise_aliases a where a.deleted_at is null and lower(btrim(a.alias)) = lower(btrim(al)))
+   order by lower(btrim(al));
+end;
+$f$;
+revoke all on function private.import_exercises(jsonb) from public, anon, authenticated;
+
+"""
 
 if __name__ == '__main__':
     data, rows = main(sys.argv[1], sys.argv[2])
@@ -193,6 +221,9 @@ if __name__ == '__main__':
             if r['ours'] or r['aliases']:
                 print(('OURS ' if r['ours'] else 'NEW  ') + r['name'] + '  <=  ' + ' | '.join(r['aliases']))
         print('ours enriched:', sum(r['ours'] for r in rows), ' new:', sum(not r['ours'] for r in rows))
+    elif len(sys.argv) > 3:   # just one chunk's call, to apply a piece at a time
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stdout.write(call(chunks(rows)[int(sys.argv[3])]))
     else:
         sys.stdout.reconfigure(encoding='utf-8')
         emit(data, rows, sys.stdout)
