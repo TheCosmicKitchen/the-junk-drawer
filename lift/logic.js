@@ -251,6 +251,15 @@ export function searchExercises(query, exercises, aliasesById, recentIds = []) {
   return scored.sort((a, b) => b.s - a.s).slice(0, 40).map(x => x.e);
 }
 
+// The other name a search found an exercise by, when its own name doesn't match: searching
+// "barbell bench press" finds Bench Press, and this says "Barbell Bench Press". Null otherwise.
+export function matchedAlias(query, ex, aliasesById) {
+  const words = norm(query).split(' ').filter(Boolean);
+  if (!words.length || words.every(w => norm(ex.name).includes(w))) return null;
+  const hits = (aliasesById.get(ex.id) || []).filter(a => words.every(w => norm(a).includes(w)));
+  return hits.length ? hits.sort((a, b) => a.length - b.length)[0] : null;
+}
+
 // Near-match warning before the admin adds a new name (never merges anything).
 export function suggestMatch(entered, names) {
   const t = entered.trim();

@@ -6,7 +6,7 @@ import { localDate, addDays, setVolume } from './logic.js';
 import * as TR from './tracking.js';
 
 const SET_COLS = 'id,exercise_id,performed_on,logged_at,date_only,weight,reps,duration_s,distance_m,rpe,unit,count_bodyweight,bodyweight,is_warmup,notes,import_batch_id,deleted_at';
-const EX_COLS = 'id,name,supports_bodyweight,kind,log_type,deleted_at';
+const EX_COLS = 'id,name,supports_bodyweight,kind,log_type,muscles,muscles_also,equipment,deleted_at';
 
 export async function connect(demo) {
   if (demo) {
@@ -93,8 +93,10 @@ class SupaStore {
     }
   }
   async catalog() {
+    // Muscles and equipment arrived with migration 38; until it's applied, the older columns.
+    const exs = cols => this.all(() => this.sb.from('lift_exercises').select(cols).order('name'));
     const [exercises, aliases] = await Promise.all([
-      this.all(() => this.sb.from('lift_exercises').select(EX_COLS).order('name')),
+      exs(EX_COLS).catch(() => exs(EX_COLS.replace(',muscles,muscles_also,equipment', ''))),
       this.all(() => this.sb.from('lift_exercise_aliases').select('exercise_id,alias')),
     ]);
     return { exercises, aliases };
@@ -276,12 +278,21 @@ const POST = 'id,kind,performed_on,title,summary,created_by,created_at';
 // Demo: a few weeks of believable lifting, held in memory.
 // ---------------------------------------------------------------------------
 const DEMO_EXERCISES = [
-  ['Bench Press', ['bench']], ['Barbell Squat', ['squat']], ['Deadlift', []], ['Lat Pulldown', []],
+  ['Bench Press', ['bench', 'Barbell Bench Press']], ['Barbell Squat', ['squat', 'Barbell Full Squat']], ['Deadlift', []], ['Lat Pulldown', []],
   ['Shoulder Press', ['ohp']], ['Bicep Curl', ['curl']], ['Dips', []], ['Leg Press', []],
   ['Face Pull', []], ['Hip Thrust', []], ['Seated Cable Row', []], ['Tricep Pushdown', []],
   ['Pull Up', ['pullups', 'pull-ups']], ['Goblet Squat', []], ['Lateral Raise', []], ['RDL', ['romanian deadlift']],
   ['Plank', [], 'time'], ['Farmer\'s Carry', ['farmers walk'], 'distance'],
 ];
+// What some demo lifts work, as the exercemus list has it: [main, secondary, equipment]. The rest have
+// none, so the demo shows both kinds (real data, and muscles read from the name).
+const DEMO_MUSCLES = {
+  'Bench Press': [['chest'], ['shoulders', 'triceps'], ['barbell', 'bench']], 'Barbell Squat': [['quads'], ['calves', 'glutes', 'hamstrings', 'lower back'], ['barbell']],
+  Deadlift: [['lower back'], ['forearms', 'glutes', 'hamstrings', 'lats', 'middle back', 'quads', 'traps'], ['barbell']],
+  'Lat Pulldown': [['lats'], ['biceps', 'middle back', 'shoulders'], ['cable']], 'Bicep Curl': [['biceps'], ['forearms'], ['dumbbell']],
+  'Seated Cable Row': [['middle back'], ['biceps', 'lats', 'shoulders'], ['cable']], 'Tricep Pushdown': [['triceps'], [], ['cable']],
+  RDL: [['hamstrings'], ['calves', 'glutes', 'lower back'], ['barbell']],
+};
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
 // ?demo&big=3: a stress test with years of heavy history, 90 extra routines, a full season feed and
 // years of weigh-ins. Demo only; nothing leaves the browser.
@@ -293,7 +304,8 @@ const DEMO_CARDIO = ['Walk', 'Run', 'Rowing machine', 'Bike', 'Elliptical', 'Sta
 class DemoStore {
   constructor() {
     this.demo = true;
-    this.exercises = DEMO_EXERCISES.map(([name, , logType], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up|Plank/.test(name), kind: 'strength', log_type: logType || 'reps', deleted_at: null }))
+    this.exercises = DEMO_EXERCISES.map(([name, , logType], i) => ({ id: 'ex' + i, name, supports_bodyweight: /Dips|Pull Up|Plank/.test(name), kind: 'strength', log_type: logType || 'reps',
+      muscles: (DEMO_MUSCLES[name] || [[]])[0], muscles_also: (DEMO_MUSCLES[name] || [[], []])[1], equipment: (DEMO_MUSCLES[name] || [[], [], []])[2], deleted_at: null }))
       .concat(DEMO_CARDIO.map((name, i) => ({ id: 'cx' + i, name, supports_bodyweight: false, kind: 'cardio', deleted_at: null })));
     this.cardioRows = [{ id: uid(), exercise_id: 'cx1', performed_on: addDays(localDate(), -2), minutes: 28, distance: 5.2, distance_unit: 'km', created_at: new Date().toISOString() }];
     this.aliases = DEMO_EXERCISES.flatMap(([, al], i) => al.map(alias => ({ exercise_id: 'ex' + i, alias })));
