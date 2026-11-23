@@ -2782,13 +2782,30 @@ const goalAddHtml = () =>
 function drawGoalExtra() {
   const kind = $('gMetric').value.split(':')[0], box = $('gExtra');
   $('gTarget').placeholder = kind === 'lift' ? 'Weight' : kind === 'workout' ? 'Times' : 'How many';
-  if (kind === 'lift') box.innerHTML = '<input class="plain-input" id="gEx" list="gExList" placeholder="Which exercise?" aria-label="Exercise" autocomplete="off"><datalist id="gExList">' +
-    S.exercises.filter(e => !e.deleted_at).map(e => '<option value="' + esc(e.name) + '">').join('') + '</datalist>';
+  SG.goalEx = null;
+  // A lift goal: search the catalogue and tap one (your recent lifts show before you type). The
+  // browser's own suggestion list was unreliable on phones and needed the exact name.
+  if (kind === 'lift') { box.innerHTML = '<input class="plain-input" id="gEx" type="search" enterkeyhint="search" placeholder="Which exercise? Search…" aria-label="Exercise" autocomplete="off">' +
+    '<ul class="results gex-res" id="gExRes" aria-label="Exercises"></ul>'; drawGoalEx(''); }
   else if (kind === 'workout') box.innerHTML = S.templates.length ? '<select class="plain-input" id="gWk" aria-label="Workout">' +
     S.templates.filter(t => !isBlock(t)).map(t => '<option value="' + esc(t.id) + '">' + esc(t.name) + '</option>').join('') + '</select>' : '<p class="hint-line">Make a workout first.</p>';
   else box.innerHTML = '';
 }
+// The lift goal's exercise: up to six matches (or your recent lifts), or the one you picked.
+function drawGoalEx(q) {
+  const res = $('gExRes');
+  if (!res) return;
+  if (SG.goalEx) {
+    res.innerHTML = '<li><button type="button" class="sel" data-gex-clear aria-pressed="true"><span>' + esc(exName(SG.goalEx)) + '</span><small>Change</small></button></li>';
+    return;
+  }
+  const list = L.searchExercises(q, S.exercises, S.aliases, recentExerciseIds()).slice(0, 6);
+  res.innerHTML = list.length
+    ? list.map(e => '<li><button type="button" data-gex="' + esc(e.id) + '"><span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small></span></button></li>').join('')
+    : '<li class="hint-line">' + (q.trim() ? 'No matches.' : 'Type to search the exercises.') + '</li>';
+}
 inner.addEventListener('change', e => { if (e.target.id === 'gMetric') drawGoalExtra(); });
+inner.addEventListener('input', e => { if (e.target.id === 'gEx') { SG.goalEx = null; drawGoalEx(e.target.value); } });
 // Someone else's season you joined: their goals apply to you; add your own on top.
 function openMyGoals(id) {
   const sn = seasonById(id);
@@ -2948,6 +2965,8 @@ async function seasonClick(b) {
   if (b.id === 'pAdd' || b.dataset.planDay || b.dataset.planDel || b.dataset.planUp) return planClick(b);
   if (b.id === 'ptToggle') { const on = b.getAttribute('aria-pressed') !== 'true'; $('ptBox').outerHTML = pointsHtml(on ? { day: 1, pr: 3, workout: 5 } : null); return; }
   if (b.id === 'snShare') { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = shareLabel(on); if (!SG.id) drawPlan(); return; }
+  if (b.dataset.gex) { SG.goalEx = b.dataset.gex; $('gEx').value = exName(SG.goalEx); $('snErr').textContent = ''; drawGoalEx(''); if (!$('gTarget').value) $('gTarget').focus(); return; }
+  if (b.hasAttribute('data-gex-clear')) { SG.goalEx = null; $('gEx').value = ''; drawGoalEx(''); $('gEx').focus(); return; }
   if (b.id === 'gAdd') {
     const [metric, unit] = $('gMetric').value.split(':');
     const target = L.parseLoad($('gTarget').value);
@@ -2955,8 +2974,9 @@ async function seasonClick(b) {
     if (!(target > 0) || (whole && target % 1)) { $('snErr').textContent = whole ? 'Enter a whole number above zero.' : 'Enter a target above zero.'; return; }
     const g = { metric, unit: unit || null, target, exercise_id: null, template_id: null };
     if (metric === 'lift') {
-      g.exercise_id = S.nameIndex.get(L.norm($('gEx') ? $('gEx').value : ''));
-      if (!g.exercise_id) { $('snErr').textContent = 'Pick an exercise from the list.'; return; }
+      // The one tapped; or, typed in full, a name (or alias) that matches exactly.
+      g.exercise_id = SG.goalEx || S.nameIndex.get(L.norm($('gEx') ? $('gEx').value : ''));
+      if (!g.exercise_id) { $('snErr').textContent = 'Tap an exercise in the list under the box.'; return; }
       g.name = (exName(g.exercise_id) + ' ' + L.fmtLoad(target) + ' ' + unit).slice(0, 60);
     } else if (metric === 'workout') {
       g.template_id = $('gWk') ? $('gWk').value : null;
@@ -2967,6 +2987,7 @@ async function seasonClick(b) {
     if (SG.id) { try { S.goals.push(await store.addGoal({ ...g, season_id: SG.id })); } catch (x) { return fail(x); } }
     else SG.pending.push(g);
     $('gTarget').value = ''; drawGoals();
+    if (metric === 'lift') { SG.goalEx = null; $('gEx').value = ''; drawGoalEx(''); }
     return;
   }
   if (b.dataset.goalDel) {
