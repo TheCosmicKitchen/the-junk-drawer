@@ -1120,9 +1120,10 @@ function openPicker(title, onPick, multi) {
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
   const input = $('exSearch');
-  // Search after a short pause in typing, not on every key.
+  // Search after a short pause in typing, not on every key. If a lift was picked in that pause the
+  // picker is gone by now (the sheet is the logger): nothing to redraw.
   let typing;
-  input.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { LG.pkAll = false; drawResults(input.value); }, 120); });
+  input.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { if (!input.isConnected) return; LG.pkAll = false; drawResults(input.value); }, 120); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { clearTimeout(typing); drawResults(input.value); const first = $('exResults').querySelector('button'); if (first) { e.preventDefault(); first.click(); } }
   });
