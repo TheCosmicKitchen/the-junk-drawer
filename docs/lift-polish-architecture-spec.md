@@ -8,9 +8,16 @@ append to the log at the bottom, and commit this file with every piece of work.
 
 ## 0. How to work from this file (read every time you start)
 
-1. Read this whole file, then `tests/README.md`, then `git log --oneline -15` and `git status`.
-2. Find the first unticked box in §5. That is your next task. If a box is half done, the log (§9)
-   says how far it got.
+**The work is tracked as GitHub issues:** the pinned tracking issue
+[#91](https://github.com/TheCosmicKitchen/the-junk-drawer/issues/91) lists issues #54–#90 in order
+(labels `lift-rebuild`, `phase-0`…`phase-5`, `needs-decision`). Each issue has its own checklist
+and "done when". §5 below is the same list, for reading offline; the issues are the source of
+truth for what's done.
+
+1. Read this whole file, then `tests/README.md`, then `git log --oneline -15` and `git status`,
+   then the tracking issue (`gh issue view 91`).
+2. Take the first open issue in the tracking list. That is your next task. If one is half done,
+   its comments and the log (§9) say how far it got.
 3. Work on a branch (`lift-rw-<phase>-<short-name>`), never on `main`. One PR per box or small group
    of boxes. The user merges; ask before merging.
 4. Before every commit: `npm test` (unit + browser) must pass. If a test is wrong rather than the
