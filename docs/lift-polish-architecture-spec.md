@@ -172,7 +172,7 @@ and `private.run_lift_tests()` — see `tests/README.md`.
 ## 5. The work, phase by phase (tick as you go)
 
 ### Phase 0 — baseline (no behaviour change)
-- [ ] Create `docs/lift-baseline/`: phone (375×812) and desktop (1440×900) screenshots of every tab
+- [x] Create `docs/lift-baseline/`: phone (375×812) and desktop (1440×900) screenshots of every tab
   and every sheet in the demo, light and dark, Plain theme + 2 others. Script it (Playwright) so it
   can be re-run: `npm run shots`. Commit the script, not necessarily the PNGs (keep under 5 MB).
 - [ ] Record performance baselines on `?demo&big=3` into §9: app open to first paint, picker open,
@@ -287,3 +287,10 @@ Order is by use and risk; each new screen mounts in place of the old `render*` f
 ## 9. Log (append; newest last)
 - 2026-11-23 — Spec written. Baseline: 33 unit + 32 browser tests green on main (`6a7d420`).
   Database: 854 live lifts, migrations through 38. Nothing in §5 started.
+- 2026-11-23 — #54 screenshot baseline, branch `lift-rw-0-shots`. `npm run shots` (tests/shots.mjs)
+  captures 17 screens × phone/desktop × light/dark × Plain/King/Arcade = 204 JPEGs in ~4 min;
+  only Plain (68, ~4 MB) is committed, the rest are gitignored. Found while scripting it:
+  (1) picking a lift within 120 ms of typing throws in `setResTitle` (the debounced search runs
+  after the picker is gone) — fix under #85; (2) `openWizard` is never called (dead code, or a
+  lost entry point) — decide in Phase 2 (#73). The plan designer shot is a new plan: the demo has
+  no plan of its own to edit.

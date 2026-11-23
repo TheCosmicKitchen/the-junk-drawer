@@ -37,6 +37,11 @@ no account and no network. Any page error or console error fails a test.
 Locally it uses the Edge already installed (`PW_CHANNEL=chrome` for Chrome); CI installs Chromium.
 On a failure, `npx playwright show-report` has a screenshot and a step-by-step trace.
 
+## Screenshots: `npm run shots` (not a test)
+
+Every tab and the main sheets of the demo, phone and desktop, light and dark, in three themes,
+written to `docs/lift-baseline/` for comparing before and after a change. See the README there.
+
 ## 3. Database tests: `supabase/sql/06_policy_tests.sql` and `37_lift_tests.sql`
 
 Act as each kind of user (logged out, not on the list, a member, the admin with and without their
