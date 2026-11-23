@@ -63,7 +63,7 @@ function stepTarget(exId, u) {
 const mainText = x => { const m = TR.mainOf(x); return m ? TR.FIELDS[m].text(x[m], TRO()) : ''; };
 // A PR line from a post's summary (any kind of set), with its unit.
 const prText = m => TR.setText({ weight: m.weight, reps: m.reps ?? null, duration_s: m.duration_s ?? null, distance_m: m.distance_m ?? null,
-  count_bodyweight: !!m.count_bodyweight, unit: m.unit || 'lb' }, { unitTag: u => ' ' + u, carryUnit: carryUnit() });
+  count_bodyweight: !!m.count_bodyweight || (m.reps != null && !(Number(m.weight) > 0)), unit: m.unit || 'lb' }, { unitTag: u => ' ' + u, carryUnit: carryUnit() });
 // A feed item's sets line: [name, sets, reps (or a time or distance as text), weight, unit, bodyweight, pr].
 function itemLine(it, num) {
   const measured = typeof it[2] === 'string', w = Number(it[3]);
@@ -4967,6 +4967,7 @@ async function loadWins() {
   const before = S.myId ? unfinished() : null;
   try { S.wins = await store.wins(); S.winsAt = Date.now(); } catch (x) { S.wins = S.wins || []; }
   S.winsLoading = false;
+  await autoFinish();
   if (currentTab === 'log' && before !== null && before !== unfinished()) return render();
   const box = $('winsBox'); if (box && currentTab === 'log') box.outerHTML = winsCard();
 }
@@ -5005,7 +5006,7 @@ function sessionCardHtml(w, extra) {
     : x.kind === 'record' ? badge(T.icons.record, verb(T.win.record), x.title.replace(/ record$/, ''), true)
     : x.kind === 'pr' && !names.has(x.title.replace(/ PR$/, '')) ? badge(T.icons.pr, x.title.replace(/ PR$/, ''), T.pr)
     : '').join('') + (m.streak >= 2 ? badge(T.icons.streak, m.streak + ' ' + T.streak, '') : '');
-  const foot = [m.where, m.nth ? ordinal(m.nth) + ' gym day this week' : ''].filter(Boolean).join(' · ');
+  const foot = [m.where, m.nth ? ordinal(m.nth) + ' gym day this week' : '', m.auto ? 'finished automatically' : ''].filter(Boolean).join(' · ');
   return '<div class="ws-card"><div class="ws-top"><span class="ws-title">' + T.icons.session + ' ' + esc(w.title) + '</span><span class="ws-date">' +
       esc(fmtDay(w.performed_on, { weekday: 'short', month: 'short', day: 'numeric' })) + '</span></div>' +
     (stats ? '<div class="ws-stats">' + stats + '</div>' : '') +
@@ -5266,24 +5267,25 @@ function winsCard() {
 // ===========================================================================
 // Session recap: what today added up to, then Finish to put it in the stream.
 // ===========================================================================
-function sessionSummary() {
-  const sets = todaySets().filter(x => x.is_warmup !== true);
+const daySets = day => (day === today() ? todaySets() : recentOn(day).slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at)));
+function sessionSummary(day = today()) {
+  const sets = daySets(day).filter(x => x.is_warmup !== true && x._sync !== 'gone');
   if (!sets.length) return null;
   const lb = L.lbEquivalent(L.volumeByUnit(sets));
   const times = sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite);
   const minutes = times.length > 1 ? Math.round((Math.max(...times) - Math.min(...times)) / 60000) : 0;
   const exIds = [...new Set(sets.map(x => x.exercise_id))];
-  const prs = S.bestRows.filter(r => r.first_lifted_on === today());
+  const prs = S.bestRows.filter(r => r.first_lifted_on === day);
   const byEx = new Map();
   for (const r of prs) if (!byEx.has(r.exercise_id) || Number(r.heaviest) > Number(byEx.get(r.exercise_id).heaviest)) byEx.set(r.exercise_id, r);
-  const f = following();
-  const prev = S.days.find(x => x.performed_on < today() && x.sets > 0);
-  return { title: f ? f.template.name : nameFrom(exIds), lb, sets: sets.length, minutes: minutes >= 5 ? minutes : 0, exIds, prs: [...byEx.values()], prev };
+  const f = day === today() ? following() : null;
+  const prev = S.days.find(x => x.performed_on < day && x.sets > 0);
+  return { day, title: f ? f.template.name : nameFrom(exIds), lb, sets: sets.length, minutes: minutes >= 5 ? minutes : 0, exIds, prs: [...byEx.values()], prev };
 }
 // What a finished session puts in the feed: totals, every lift's top set, and a little context.
 // Names travel with it so the crew sees them without a lookup. Kept well under the 4 KB a post allows.
 function sessionPost(r) {
-  const sets = todaySets().filter(x => x.is_warmup !== true && x._sync !== 'gone');
+  const sets = daySets(r.day).filter(x => x.is_warmup !== true && x._sync !== 'gone');
   const prEx = new Set(r.prs.map(p => p.exercise_id)), by = new Map();
   for (const x of sets) {
     const g = by.get(x.exercise_id) || { n: 0, top: x };
@@ -5293,7 +5295,7 @@ function sessionPost(r) {
   }
   const items = [...by].slice(0, 10).map(([id, g]) => [exName(id).slice(0, 40), g.n, g.top.reps ?? mainText(g.top), Number(g.top.weight), g.top.unit,
     g.top.count_bodyweight && !(Number(g.top.weight) > 0) ? 1 : 0, prEx.has(id) ? 1 : 0]);
-  const t = today(), sn = (S.seasons || []).find(x => inSeason(x) && !isCore(x) && x.starts_on <= t && t <= x.ends_on);
+  const t = r.day, sn = (S.seasons || []).find(x => inSeason(x) && !isCore(x) && x.starts_on <= t && t <= x.ends_on);
   const where = sn ? sn.name + ' · week ' + (Math.floor((Date.parse(t) - Date.parse(sn.starts_on)) / 864e5 / 7) + 1) : '';
   const nth = S.days.filter(d => d.performed_on >= weekOf(t) && d.performed_on <= t && d.sets > 0).length;
   return { lb: Math.round(r.lb), sets: r.sets, minutes: r.minutes, lifts: r.exIds.length, prs: r.prs.length,
@@ -5311,6 +5313,23 @@ function finishedSets() {
   return Math.max((w && w.summary && Number(w.summary.sets)) || 0, local);
 }
 const unfinished = () => workingToday() > finishedSets();
+// A workout nobody tapped Finish on finishes itself 12 hours after its last set, so the crew sees the
+// whole session instead of a scatter of PRs. Your last 3 days, once the feed has loaded (so it knows
+// what's already posted); a day finished by hand, here or on another phone, is left alone. Posts only
+// if your wins are shared, the same as Finish. The card says it finished itself.
+const AUTO_FINISH_H = 12;
+async function autoFinish() {
+  if (!S.myId || !S.wins || !shareOn()) return;
+  const posted = new Set(S.wins.filter(w => w.created_by === S.myId && w.kind === 'session').map(w => w.performed_on));
+  let local = ''; try { local = (localStorage.getItem('lift.finished') || '').split('|')[0]; } catch (e) {}
+  const days = L.daysToFinish({ today: today(), now: Date.now(), setsOn: daySets, posted, finishedHere: local, hours: AUTO_FINISH_H });
+  for (const day of days) {
+    const r = sessionSummary(day);
+    if (r) await postWin('session', r.title, { ...sessionPost(r), auto: 1 }, day);
+  }
+  const any = days.length > 0;
+  if (any && currentTab === 'log') render();
+}
 function openRecap() {
   const r = sessionSummary();
   if (!r) return toast('Log a set first.');

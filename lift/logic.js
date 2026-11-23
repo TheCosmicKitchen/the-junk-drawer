@@ -251,6 +251,20 @@ export function searchExercises(query, exercises, aliasesById, recentIds = []) {
   return scored.sort((a, b) => b.s - a.s).slice(0, 40).map(x => x.e);
 }
 
+// Which of your recent days should finish themselves: the last `back` days (today included) with
+// working sets, none posted or finished on this phone, whose last set is at least `hours` old.
+// setsOn(day) gives that day's sets; posted is a Set of days already finished.
+export function daysToFinish({ today, now, setsOn, posted, finishedHere, hours = 12, back = 3 }) {
+  const out = [];
+  for (let k = 0; k < back; k++) {
+    const day = addDays(today, -k);
+    if (posted.has(day) || finishedHere === day) continue;
+    const times = setsOn(day).filter(x => x.is_warmup !== true && x._sync !== 'gone').map(x => Date.parse(x.logged_at)).filter(Number.isFinite);
+    if (times.length && now - Math.max(...times) >= hours * 3600e3) out.push(day);
+  }
+  return out;
+}
+
 // The other name a search found an exercise by, when its own name doesn't match: searching
 // "barbell bench press" finds Bench Press, and this says "Barbell Bench Press". Null otherwise.
 export function matchedAlias(query, ex, aliasesById) {
