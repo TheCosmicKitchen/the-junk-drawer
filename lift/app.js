@@ -5322,19 +5322,12 @@ async function autoFinish() {
   if (!S.myId || !S.wins || !shareOn()) return;
   const posted = new Set(S.wins.filter(w => w.created_by === S.myId && w.kind === 'session').map(w => w.performed_on));
   let local = ''; try { local = (localStorage.getItem('lift.finished') || '').split('|')[0]; } catch (e) {}
-  let any = false;
-  for (let k = 0; k <= 2; k++) {
-    const day = L.addDays(today(), -k);
-    if (posted.has(day) || local === day) continue;
-    const sets = daySets(day).filter(x => x.is_warmup !== true && x._sync !== 'gone');
-    if (!sets.length) continue;
-    const last = Math.max(...sets.map(x => Date.parse(x.logged_at)).filter(Number.isFinite));
-    if (!(Date.now() - last >= AUTO_FINISH_H * 3600e3)) continue;
+  const days = L.daysToFinish({ today: today(), now: Date.now(), setsOn: daySets, posted, finishedHere: local, hours: AUTO_FINISH_H });
+  for (const day of days) {
     const r = sessionSummary(day);
-    if (!r) continue;
-    await postWin('session', r.title, { ...sessionPost(r), auto: 1 }, day);
-    any = true;
+    if (r) await postWin('session', r.title, { ...sessionPost(r), auto: 1 }, day);
   }
+  const any = days.length > 0;
   if (any && currentTab === 'log') render();
 }
 function openRecap() {

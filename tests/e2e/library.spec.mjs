@@ -20,11 +20,11 @@ test('searching another name for a lift finds ours and says so', async ({ page }
 test('Progress shows the muscles a week hit and missed', async ({ page }) => {
   const errors = await openDemo(page);
   await tab(page, 'progress').click();
-  const card = page.locator('#musclesBox');
-  await expect(card).toBeVisible();
-  await expect(card.locator('.mus-row')).toHaveCount(14);
-  await card.locator('[data-mus-week="last"]').click();
+  await expect(page.locator('#musclesBox')).toBeVisible();
+  // Last week, so it doesn't matter whether anything's been logged yet this week (a Monday).
+  await page.locator('#musclesBox [data-mus-week="last"]').click();
   await expect(page.locator('#musclesBox [data-mus-week="last"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#musclesBox .mus-row')).toHaveCount(14);
   await expect(page.locator('#musclesBox .mus-sum')).toContainText(/Missing:|Every muscle hit/);
   expect(errors).toEqual([]);
 });
