@@ -553,6 +553,7 @@ view.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
+  else if (b.dataset.musWeek) { S.musWeek = b.dataset.musWeek; const box = $('musclesBox'); if (box) box.outerHTML = musclesCard(); }
   else if (b.dataset.themeHint) {
     prefs.themeHint = 1; savePrefs();
     const card = view.querySelector('.theme-hint'); if (card) card.remove();
@@ -1170,7 +1171,7 @@ function drawResults(q) {
   // The first 40, then "Show all": drawing all ~250 rows on a phone is slow, and search finds the rest.
   const shown = LG.pkAll ? all : all.slice(0, PICK_SHOW);
   let html = shown.map(e => '<li><button data-pick="' + esc(e.id) + '"' + (LG.multi ? ' class="' + (picked(e.id) ? 'sel' : '') + '" aria-pressed="' + picked(e.id) + '"' : '') + '><span>' +
-    (LG.multi ? '<i class="tickbox" aria-hidden="true">' + (picked(e.id) ? LG.multi.indexOf(e.id) + 1 : '') + '</i>' : '') + '<span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small></span></span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
+    (LG.multi ? '<i class="tickbox" aria-hidden="true">' + (picked(e.id) ? LG.multi.indexOf(e.id) + 1 : '') + '</i>' : '') + '<span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(akaTag(q, e) + libTag(e)) + '</small></span></span><small>' + esc(lastSummary(e.id)) + '</small></button></li>').join('');
   const typed = q.trim();
   const exact = e => [e.name, ...(S.aliases.get(e.id) || [])].some(n => L.norm(n) === L.norm(typed));
   if (typed && me && me.is_admin && !S.exercises.some(e => !e.deleted_at && exact(e))) {
@@ -3186,6 +3187,29 @@ function streakWeeks() {
 }
 const kpi = (label, value, sub, sparkVals) =>
   '<div class="kpi card"><small>' + esc(label) + '</small><b>' + esc(value) + '</b>' + (sub ? '<span class="kpi-sub">' + sub + '</span>' : '') + (sparkVals ? C.spark(sparkVals) : '') + '</div>';
+// The muscles a week's working sets hit, each counted 1 for a lift's main muscles and ½ for its
+// secondary ones: what you're hitting, what's light, and what you've missed.
+S.musWeek = 'this';
+function weekCoverage(start) {
+  const end = L.addDays(start, 6), sets = S.recent.filter(x => x.performed_on >= start && x.performed_on <= end);
+  return { sets, groups: LIB.coverage(sets, S.byId) };
+}
+function musclesCard() {
+  const start = S.musWeek === 'last' ? L.addDays(weekOf(today()), -7) : weekOf(today());
+  const { sets, groups } = weekCoverage(start), top = Math.max(10, ...groups.map(g => g.sets));
+  const names = v => groups.filter(g => g.verdict === v).map(g => g.name);
+  const missing = names('missing'), light = names('light');
+  const seg = '<span class="seg" role="group" aria-label="Which week">' + [['this', 'This week'], ['last', 'Last week']].map(([k, l]) =>
+    '<button type="button" data-mus-week="' + k + '" aria-pressed="' + (S.musWeek === k) + '">' + l + '</button>').join('') + '</span>';
+  return '<section class="card c-half muscles" id="musclesBox"><div class="card-head"><h3 class="card-title">Muscles</h3>' + seg + '</div>' +
+    (!sets.length ? '<p class="muted">No sets ' + (S.musWeek === 'last' ? 'last week' : 'yet this week') + '. Everything’s still to hit.</p>' :
+      '<p class="mus-sum">' + (missing.length ? '<b>Missing:</b> ' + esc(missing.join(', ')) : '<b>Every muscle hit.</b>') +
+        (light.length ? '<br><b>Light:</b> ' + esc(light.join(', ')) : '') + '</p>' +
+      '<div class="mus-list">' + groups.map(g => '<div class="mus-row ' + g.verdict + '"><span>' + esc(g.name) + '</span>' +
+        '<div class="bar" style="--p:' + (g.sets / top * 100).toFixed(1) + '%"><i></i></div><small>' + (g.sets ? L.fmtNum(g.sets, 1) : '–') + '</small></div>').join('') + '</div>' +
+      '<p class="hint-line">Hard sets: 1 for a lift’s main muscles, ½ for the ones it also works. Six or more a week counts as hit.</p>') +
+  '</section>';
+}
 function renderProgress() {
   if (!['all', 'year', '30'].includes(S.period)) S.period = 'all';
   const from = S.period === 'year' ? L.addDays(today(), -364) : S.period === '30' ? L.addDays(today(), -29) : null;
@@ -3233,6 +3257,7 @@ function renderProgress() {
     '<section class="card c-wide"><div class="card-head"><h3 class="card-title">' + vol.title + '</h3><small class="muted">Warm-ups excluded</small></div>' + vol.html + '</section>' +
     '<section class="card c-side"><div class="card-head"><h3 class="card-title">Training calendar</h3><small class="muted">26 weeks</small></div>' + C.heatmap({ values: heatVals, end: today(), label: 'Days lifted in the last 26 weeks, shaded by pounds moved' }) +
       '<p class="hint-line">Best of the last 12 weeks: week of ' + esc(fmtDay(best.start, { month: 'short', day: 'numeric' })) + ', <b>' + C.compact(best.lb) + ' lb</b> over ' + best.visits + ' days.</p></section>' +
+    musclesCard() +
     '<section class="card c-wide" id="trendBox"></section>' +
     '<section class="card c-full" id="recordsBox"></section>' +
     '<section class="card c-side"><div class="card-head"><h3 class="card-title">Top lifts</h3><small class="muted">by estimated 1-rep max</small></div>' +
@@ -3810,7 +3835,7 @@ function plVolume(week) {
     : Array.from({ length: PLD.perWeek }, (_, i) => PLD.order[i % Math.max(1, PLD.order.length)]).filter(Boolean);
   const by = new Map();
   for (const k of keys) { const w = PLD.workouts.find(x => x.key === k); if (!w) continue;
-    for (const it of routineItems(w.template_id)) { const m = LIB.muscleOf(exName(it.exercise_id)); by.set(m, (by.get(m) || 0) + Number(it.sets || 0)); } }
+    for (const it of routineItems(w.template_id)) { const m = LIB.muscleKeyOf(S.byId.get(it.exercise_id) || { name: exName(it.exercise_id) }); by.set(m, (by.get(m) || 0) + Number(it.sets || 0)); } }
   return [...by].filter(([m]) => m !== 'mobility' && m !== 'other').sort((a, b) => b[1] - a[1]).slice(0, 6);
 }
 function drawPlanDesigner() {
@@ -4993,14 +5018,18 @@ function sessionCardHtml(w, extra) {
 // your own numbers. Open one to log it, add it to a workout or see its trend.
 // ===========================================================================
 S.lib = { q: '', mus: null, eq: null, mine: false, sort: 'used' };
-// "Chest · Barbell", worked out from the name once per exercise and kept.
+// "Chest · Barbell": from the exercise's muscles and equipment, or its name when it has none.
+// Worked out once per exercise and kept.
 const TAGS = new Map();
 const libTag = e => {
-  const key = e.id + '|' + e.name;
+  const key = e.id + '|' + e.name + '|' + (e.muscles || []).join() + '|' + (e.equipment || []).join();
   let t = TAGS.get(key);
-  if (t == null) TAGS.set(key, t = [LIB.muscleName(LIB.muscleOf(e.name)), LIB.equipmentName(LIB.equipmentOf(e.name, e.supports_bodyweight) || '')].filter(Boolean).join(' · '));
+  if (t == null) TAGS.set(key, t = [LIB.muscleName(LIB.muscleKeyOf(e)), LIB.equipmentName(LIB.equipmentKeyOf(e) || '')].filter(Boolean).join(' · '));
   return t;
 };
+// A search that found a lift by another name says so: "Barbell Bench Press" finds Bench Press,
+// "also called Barbell Bench Press".
+const akaTag = (q, e) => { const a = q && L.matchedAlias(q, e, S.aliases); return a ? 'also called ' + a + ' · ' : ''; };
 let LIBSTATS = null, LIBKEY = '';
 // Per exercise: days done in the last 120, the last day, and your best set by estimated 1-rep max.
 function libStats() {
@@ -5024,8 +5053,8 @@ function libStats() {
 function libList(f) {
   const st = libStats();
   let list = f.q ? L.searchExercises(f.q, S.exercises, S.aliases, recentExerciseIds()) : S.exercises.filter(e => !e.deleted_at);
-  if (f.mus) list = list.filter(e => LIB.muscleOf(e.name) === f.mus);
-  if (f.eq) list = list.filter(e => LIB.equipmentOf(e.name, e.supports_bodyweight) === f.eq);
+  if (f.mus) list = list.filter(e => LIB.muscleKeyOf(e) === f.mus);
+  if (f.eq) list = list.filter(e => LIB.equipmentKeyOf(e) === f.eq);
   if (f.mine) list = list.filter(e => (st.get(e.id) || {}).ever);
   const used = e => { const r = st.get(e.id); return r ? r.days.size * 10 + (r.ever ? 1 : 0) : 0; };
   if (!f.q) list = list.slice().sort((a, b) => (f.sort === 'az' ? 0 : used(b) - used(a)) || a.name.localeCompare(b.name));
@@ -5063,7 +5092,7 @@ function libListHtml() {
       const r = st.get(e.id);
       const mine = r && r.best ? 'best ' + (r.best.w > 0 ? L.fmtLoad(r.best.w) + ' ' + r.best.unit + ' × ' + r.best.reps : r.best.reps + ' reps') : TR.featLine(e.id, S.feats, TRO());
       const when = r && r.last ? (r.days.size > 1 ? r.days.size + ' days lately · ' : '') + 'last ' + fmtDay(r.last, { month: 'short', day: 'numeric' }) : '';
-      return '<li><button data-lib-ex="' + esc(e.id) + '"><span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(libTag(e)) + '</small>' +
+      return '<li><button data-lib-ex="' + esc(e.id) + '"><span class="lib-name">' + esc(e.name) + '<small class="lib-sub">' + esc(akaTag(f.q, e) + libTag(e)) + '</small>' +
         (mine || when ? '<small class="lib-me">' + esc([mine, when].filter(Boolean).join(' · ')) + '</small>' : '') + '</span><span class="chev" aria-hidden="true">›</span></button></li>';
     }).join('') + '</ul>' +
     (shown.length < list.length ? '<button class="btn ghost block" data-lib-all>Show all ' + list.length + '</button>' : '');
@@ -5335,6 +5364,8 @@ function weeklyCard() {
       '<button class="iconbtn sm" data-week-seen="' + lastWeek + '" aria-label="Hide last week’s recap">✕</button></div>' +
     '<div class="sb-stats"><div><b>' + w1.sets + '</b><small>sets</small></div><div><b>' + prs + '</b><small>' + esc(T.prs) + '</small></div><div><b>' + (streakWeeks() || 0) + '</b><small>' + esc(T.streak) + '</small></div></div>' +
     (diff != null && w1.visits ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' pounds than the week before.</p>' : '') +
+    (w1.visits ? (() => { const miss = weekCoverage(lastWeek).groups.filter(g => g.verdict === 'missing').map(g => g.name);
+      return '<p class="hint-line">' + (miss.length ? 'Missed: ' + esc(miss.join(', ')) + '.' : 'Every muscle got some work.') + '</p>'; })() : '') +
     (sabbath ? '<p class="hint-line">' + T.icons.rest + ' ' + esc(T.rest(streakWeeks())) + '</p>' : '') +
     (live.length ? '<p class="hint-line">' + live.map(x => { const g = goalsDone(x); return '<button class="linkbtn" data-season="' + esc(x.id) + '">' + esc(x.name) + '</button>: ' + g.done + ' of ' + g.of + ' goals done, ' + esc(seasonStatus(x)); }).join(' · ') + '</p>' : '') +
   '</section>';
