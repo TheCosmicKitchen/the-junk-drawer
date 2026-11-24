@@ -1,4 +1,4 @@
-// The lifting pet: what feeds it, how it grows, how it sulks, and how it devolves back to an egg.
+// Kintoremon, the pet lizard: what feeds it, how it grows, how it sulks, and how it devolves back to an egg.
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -73,7 +73,7 @@ test('neglect devolves it a stage at a time, all the way back to an egg; lifting
   for (let w = 0; w < 10; w++) for (const d of [0, 2, 4]) list.push(workout(addDays(HATCH, w * 7 + d), { sets: 25, reps: 8, weight: 100 + w }));
   const lastDay = addDays(HATCH, 9 * 7 + 4);
   const top = pet(lastDay, list);
-  assert.ok(top.stage >= 4, 'a Lifter or better after 10 weeks: ' + top.stageName);
+  assert.ok(top.stage >= 4, 'a Komodo or better after 10 weeks: ' + top.stageName);
 
   let prev = top.stage, seen = new Set([top.stage]);
   for (let i = 1; i <= 45; i++) {

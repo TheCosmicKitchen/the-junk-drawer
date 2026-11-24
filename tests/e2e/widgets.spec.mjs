@@ -1,5 +1,5 @@
-// Widgets: opt-in extras from Settings → Widgets. The first is the lifting pet, who hatches from an
-// egg once you log a few sets. Its rules (growing, moods, devolving) are in tests/unit/pet.test.mjs.
+// Widgets: opt-in extras from Settings → Widgets. The first is Kintoremon, a pet lizard who hatches
+// from an egg once you log a few sets. Its rules (growing, moods, devolving) are in tests/unit/pet.test.mjs.
 import { test, expect } from '@playwright/test';
 import { openDemo, openPicker } from './helpers.mjs';
 
@@ -14,7 +14,7 @@ async function closeSheet(page) {
   await expect(page.locator('#sheet')).not.toHaveAttribute('open', '');
 }
 
-test('widgets are off until switched on; the pet hatches from a few sets, keeps its name, and stays through a reload', async ({ page }) => {
+test('widgets are off until switched on; Kintoremon hatches from a few sets, keeps its name, and stays through a reload', async ({ page }) => {
   const errors = await openDemo(page);
   await expect(petCard(page)).toHaveCount(0);
 
@@ -23,9 +23,9 @@ test('widgets are off until switched on; the pet hatches from a few sets, keeps 
   await petSwitch(page).click();
   await expect(petSwitch(page)).toHaveAttribute('aria-pressed', 'true');
   await closeSheet(page);
-  await expect(petCard(page)).toContainText('Pip');
+  await expect(petCard(page)).toContainText('Iggy');
   await expect(petCard(page)).toContainText('Egg');
-  await expect(petCard(page).locator('svg')).toHaveAttribute('aria-label', /Pip, egg/);
+  await expect(petCard(page).locator('svg')).toHaveAttribute('aria-label', /Iggy, egg/);
 
   // Five sets of bench: enough to hatch it.
   await openPicker(page);
@@ -58,10 +58,10 @@ test('widgets are off until switched on; the pet hatches from a few sets, keeps 
   expect(errors).toEqual([]);
 });
 
-test('the pet draws in another theme too', async ({ page }) => {
+test('Kintoremon draws in another theme too', async ({ page }) => {
   const errors = await openDemo(page, { prefs: { themeHint: 1, theme: 'arcade', widgets: { pet: true } } });
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'arcade');
-  await expect(petCard(page)).toContainText('Pip');
+  await expect(petCard(page)).toContainText('Iggy');
   await expect(petCard(page).locator('svg')).toBeVisible();
   expect(errors).toEqual([]);
 });

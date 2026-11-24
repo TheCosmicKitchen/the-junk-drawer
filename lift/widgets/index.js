@@ -21,12 +21,12 @@ let petSeen = null, hopUntil = 0;
 
 const pet = {
   id: 'pet',
-  name: 'Lifting pet',
-  blurb: 'A little guy who eats your sets, reps and PRs and grows. Skip the gym and he gets sad, then grouchy, then shrinks back toward an egg.',
+  name: 'Kintoremon',
+  blurb: 'A pet lizard who eats your sets, reps and PRs and grows from an egg into a dragon. Skip the gym and he gets sad, then grouchy, then shrinks back toward an egg.',
   where: 'log',
-  start: ctx => ({ hatched: ctx.today, name: 'Pip', checkpoint: null }),
+  start: ctx => ({ hatched: ctx.today, name: 'Iggy', checkpoint: null }),
   card(ctx) {
-    const d = ctx.data, name = d.name || 'Pip';
+    const d = ctx.data, name = d.name || 'Iggy';
     const p = petState({ hatched: d.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: d.checkpoint });
     if (p.checkpoint) ctx.save({ checkpoint: p.checkpoint });
     const fed = p.fedToday ? p.fedToday.sets : 0;
@@ -46,8 +46,8 @@ const pet = {
   },
   click(b, ctx) {
     if (!b.hasAttribute('data-pet-rename')) return false;
-    const now = ctx.data.name || 'Pip';
-    const typed = window.prompt('Name your pet', now);
+    const now = ctx.data.name || 'Iggy';
+    const typed = window.prompt('Name your lizard', now);
     if (typed == null) return false;
     const name = typed.trim().slice(0, 24);
     if (!name || name === now) return false;

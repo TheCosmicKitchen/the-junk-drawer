@@ -1,4 +1,4 @@
-// The lifting pet: a little guy who eats your sets, reps and PRs, grows through six stages, and
+// Kintoremon: a little lizard who eats your sets, reps and PRs, grows from an egg to a dragon, and
 // sulks when you stop. Leave it long enough and it devolves, stage by stage, back into an egg.
 //
 // Nothing about the pet is stored but its hatch day, its name and a checkpoint: everything else is
@@ -8,14 +8,14 @@
 // Food. A typical session (20 sets, ~150 reps, a PR or two) is about 100 XP.
 export const FOOD = { set: 3, rep: 0.2, pr: 15 };
 
-// Stages by XP. A few sets hatch the egg; Legend takes months of steady lifting.
+// Stages by XP, a lizard's life. A few sets hatch the egg; Dragon takes months of steady lifting.
 export const STAGES = [
   { key: 'egg', name: 'Egg', min: 0 },
   { key: 'hatchling', name: 'Hatchling', min: 20 },
-  { key: 'kid', name: 'Gym kid', min: 300 },
-  { key: 'rat', name: 'Gym rat', min: 1000 },
-  { key: 'lifter', name: 'Lifter', min: 2500 },
-  { key: 'legend', name: 'Legend', min: 6000 },
+  { key: 'gecko', name: 'Gecko', min: 300 },
+  { key: 'iguana', name: 'Iguana', min: 1000 },
+  { key: 'komodo', name: 'Komodo', min: 2500 },
+  { key: 'dragon', name: 'Dragon', min: 6000 },
 ];
 
 // Moods by whole days since the last day you lifted. Two rest days never bother it.
@@ -26,7 +26,7 @@ export const MOODS = [
   { key: 'grouchy', upTo: Infinity },
 ];
 // From the first grouchy day on, each day without a set keeps this much of its XP. About four weeks
-// of that takes even a Legend back to an egg; the next workout starts it growing again.
+// of that takes even a Dragon back to an egg; the next workout starts it growing again.
 export const DECAY = 0.85;
 export const GROUCHY_AFTER = MOODS[2].upTo;   // 7
 
@@ -121,26 +121,44 @@ const FACES = {
     '<circle cx="52" cy="51" r="2.6" class="pl-ink"/><circle cx="68" cy="51" r="2.6" class="pl-ink"/>' +
     '<path d="M86 22 q4 -5 0 -10 M94 26 q4 -5 0 -10" class="pl-steam"/>',
 };
-// Bodies get bigger and grow arms, then a dumbbell, then a barbell, then a crown.
-const BODIES = [
-  '',
-  '<ellipse cx="60" cy="64" rx="26" ry="24" class="pl-body"/><path d="M40 46 l6 -8 l6 6 l8 -9 l8 9 l6 -6 l6 8" class="pl-shell"/>',
-  '<ellipse cx="60" cy="62" rx="30" ry="29" class="pl-body"/><path d="M31 66 q-9 3 -10 12 M89 66 q9 3 10 12" class="pl-limb"/>',
-  '<ellipse cx="60" cy="60" rx="32" ry="33" class="pl-body"/><path d="M29 64 q-10 -2 -14 -12 M91 64 q10 -2 14 -12" class="pl-limb"/>' +
-    '<rect x="8" y="44" width="14" height="6" rx="2" class="pl-iron"/><rect x="98" y="44" width="14" height="6" rx="2" class="pl-iron"/>',
-  '<path d="M26 92 q-4 -56 34 -62 q38 6 34 62 z" class="pl-body"/><path d="M28 58 q-14 -6 -14 -26 M92 58 q14 -6 14 -26" class="pl-limb"/>' +
-    '<path d="M6 30 h108" class="pl-bar"/><rect x="4" y="20" width="8" height="20" rx="2" class="pl-iron"/><rect x="108" y="20" width="8" height="20" rx="2" class="pl-iron"/>',
-  '<path d="M24 94 q-4 -60 36 -66 q40 6 36 66 z" class="pl-body"/><path d="M26 58 q-14 -6 -14 -26 M94 58 q14 -6 14 -26" class="pl-limb"/>' +
-    '<path d="M6 30 h108" class="pl-bar"/><rect x="2" y="18" width="10" height="24" rx="2" class="pl-gold"/><rect x="108" y="18" width="10" height="24" rx="2" class="pl-gold"/>' +
-    '<path d="M44 26 l4 -12 l7 8 l5 -11 l5 11 l7 -8 l4 12 z" class="pl-gold"/>',
+// A chibi lizard: a big round head (the face goes on it), a little body and feet, a curled tail.
+// It grows a crest and a dewlap, picks up dumbbells, then a barbell, and as a Dragon gets wings, a
+// crown and gold plates. Earlier stages are drawn smaller.
+const tail = d => '<path d="' + d + '" class="pl-out"/><path d="' + d + '" class="pl-tail"/>';
+const TAIL = { short: 'M76 92 q14 4 18 -6', long: 'M76 92 q22 6 28 -8 q3 -8 -3 -12', big: 'M78 94 q26 6 32 -10 q3 -10 -5 -14' };
+const BODY = '<ellipse cx="60" cy="88" rx="20" ry="13" class="pl-body"/><ellipse cx="60" cy="91" rx="11" ry="7" class="pl-belly"/>' +
+  '<ellipse cx="45" cy="100" rx="7" ry="3.5" class="pl-body"/><ellipse cx="75" cy="100" rx="7" ry="3.5" class="pl-body"/>';
+const HEAD = '<ellipse cx="60" cy="56" rx="27" ry="22" class="pl-body"/>';
+const CREST = '<path d="M42 41 l3 -9 l5 6 l4 -10 l6 9 l6 -9 l4 10 l5 -6 l3 9" class="pl-crest"/>';
+const DEWLAP = '<path d="M50 74 q10 14 20 0" class="pl-crest"/>';
+const SHELL = '<path d="M38 47 q22 -28 44 0 l-5 -5 l-6 5 l-6 -6 l-5 6 l-6 -6 l-5 6 l-6 -5 z" class="pl-shell"/>';
+const CROWN = '<path d="M46 38 l3 -12 l7 7 l4 -10 l4 10 l7 -7 l3 12 z" class="pl-gold"/>';
+const WINGS = '<path d="M44 82 q-24 -20 -32 -4 q8 0 10 6 q6 -4 10 2 z M76 82 q24 -20 32 -4 q-8 0 -10 6 q-6 -4 -10 2 z" class="pl-wing"/>';
+const DUMBBELLS = '<path d="M42 84 q-14 -2 -20 -14 M78 84 q14 -2 20 -14" class="pl-limb"/>' +
+  '<rect x="12" y="64" width="16" height="6" rx="2" class="pl-iron"/><rect x="92" y="64" width="16" height="6" rx="2" class="pl-iron"/>';
+const barbell = plate => '<path d="M42 84 q-18 -10 -22 -62 M78 84 q18 -10 22 -62" class="pl-limb"/><path d="M4 20 h112" class="pl-bar"/>' +
+  '<rect x="2" y="9" width="9" height="22" rx="2" class="pl-' + plate + '"/><rect x="109" y="9" width="9" height="22" rx="2" class="pl-' + plate + '"/>';
+// Stage → [scale, parts behind the head, parts in front of it]
+const LIZARD = [
+  null,
+  [0.72, tail(TAIL.short) + BODY, SHELL],
+  [0.85, tail(TAIL.long) + BODY + '<path d="M42 86 q-9 1 -12 8 M78 86 q9 1 12 8" class="pl-limb"/>', ''],
+  [0.95, tail(TAIL.long) + BODY + DEWLAP + CREST, DUMBBELLS],
+  [1, tail(TAIL.big) + BODY + DEWLAP + CREST, barbell('iron')],
+  [1, tail(TAIL.big) + WINGS + BODY + DEWLAP, CROWN + barbell('gold')],
 ];
+function lizard(stage, face) {
+  const [k, back, front] = LIZARD[stage];
+  const at = k === 1 ? '' : ' transform="translate(' + (60 - 60 * k).toFixed(1) + ' ' + (100 - 100 * k).toFixed(1) + ') scale(' + k + ')"';
+  return '<g' + at + '>' + back + HEAD + front + face + '</g>';
+}
 const EGG = (cracked, mood) => '<ellipse cx="60" cy="64" rx="27" ry="34" class="pl-egg"/>' +
   '<circle cx="50" cy="52" r="4" class="pl-spot"/><circle cx="70" cy="74" r="5" class="pl-spot"/><circle cx="66" cy="44" r="3" class="pl-spot"/>' +
   (cracked ? '<path d="M38 62 l8 -5 l6 6 l8 -7 l8 6 l7 -5 l7 5" class="pl-crack"/>' : '') +
   (mood === 'grouchy' || mood === 'sad' ? '<text x="88" y="30" class="pl-zzz">z</text><text x="96" y="20" class="pl-zzz">z</text>' : '');
 
 export function petSvg(p, label) {
-  const body = p.stage === 0 ? EGG(p.devolved || p.xp >= STAGES[1].min / 2, p.mood) : BODIES[p.stage] + FACES[p.fedToday ? 'happy' : p.mood];
+  const body = p.stage === 0 ? EGG(p.devolved || p.xp >= STAGES[1].min / 2, p.mood) : lizard(p.stage, FACES[p.fedToday ? 'happy' : p.mood]);
   return '<svg class="pet-svg pet-' + p.stageKey + ' mood-' + (p.fedToday ? 'happy' : p.mood) + '" viewBox="0 0 120 110" role="img" aria-label="' + label + '">' +
     '<ellipse cx="60" cy="102" rx="34" ry="5" class="pl-floor"/><g class="pl-me">' + body + '</g></svg>';
 }

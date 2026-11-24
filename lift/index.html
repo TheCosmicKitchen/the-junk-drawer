@@ -800,18 +800,25 @@
   .widget-switch i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s; }
   .widget-opt[aria-pressed="true"] .widget-switch { background: var(--accent); border-color: var(--accent); }
   .widget-opt[aria-pressed="true"] .widget-switch i { transform: translateX(18px); background: var(--accent-ink); }
-  /* The lifting pet (lift/widgets/pet.js): drawn in the theme's own colours. */
+  /* Kintoremon (lift/widgets/pet.js): a lizard, green in every theme (the theme's own green, softened
+     into its card colour), with the theme's accent for crest and wings. */
   .pet-card { display: flex; gap: 14px; align-items: center; }
   .pet-pic { flex: none; width: 96px; }
   .pet-info { flex: 1; min-width: 0; }
   .pet-info .card-head { margin: 0; }
   .pet-stage { display: block; margin-top: 2px; }
   .pet-mood { margin: 6px 0 8px; font-size: 14px; }
-  .pet-svg { width: 96px; height: 88px; display: block; overflow: visible; }
-  .pet-svg .pl-body { fill: var(--accent-soft); stroke: var(--ink); stroke-width: 2.5; }
-  .pet-svg .pl-egg { fill: var(--accent-soft); stroke: var(--ink); stroke-width: 2.5; }
+  .pet-svg { width: 96px; height: 88px; display: block; overflow: visible;
+    --liz: color-mix(in srgb, var(--good) 45%, var(--card)); --liz-belly: color-mix(in srgb, var(--good) 15%, var(--card)); }
+  .pet-svg .pl-body { fill: var(--liz); stroke: var(--ink); stroke-width: 2.5; }
+  .pet-svg .pl-belly { fill: var(--liz-belly); }
+  .pet-svg .pl-out { fill: none; stroke: var(--ink); stroke-width: 12; stroke-linecap: round; }
+  .pet-svg .pl-tail { fill: none; stroke: var(--liz); stroke-width: 7; stroke-linecap: round; }
+  .pet-svg .pl-crest { fill: var(--accent); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-wing { fill: var(--accent-soft); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-egg { fill: var(--liz-belly); stroke: var(--ink); stroke-width: 2.5; }
   .pet-svg .pl-shell { fill: var(--card); stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
-  .pet-svg .pl-spot { fill: var(--accent); opacity: .55; }
+  .pet-svg .pl-spot { fill: var(--good); opacity: .6; }
   .pet-svg .pl-line, .pet-svg .pl-crack { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
   .pet-svg .pl-ink, .pet-svg .pl-iron { fill: var(--ink); }
   .pet-svg .pl-limb { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
