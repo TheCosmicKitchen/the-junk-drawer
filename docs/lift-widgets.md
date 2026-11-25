@@ -14,11 +14,13 @@ Code lives in `lift/widgets/`. `index.js` lists the widgets; each is a plain obj
 | `where` | where its card goes; today only `'log'` (the Log tab, right under today's card, so you see it react as you log) |
 | `start(ctx)` | its saved data the first time it's switched on |
 | `card(ctx)` | its card as an HTML string; the root carries `data-widget="<id>"` |
-| `click(btn, ctx)` | a tap on a button in its card; return `true` to redraw |
+| `page(ctx)` | optional: its own sheet (head and body), opened by a button with `data-widget-open="<id>"` |
+| `click(btn, ctx)` | a tap on a button in its card or page; return `true` to redraw |
 | `recap(ctx)` | optional: a line for the Finish recap (HTML), or nothing |
 
 `ctx` holds `today`, the lifting history (`days`: one row per day ever, and `recent`: the sets from
-the last 120 days), the widget's own saved `data`, `save(patch)`, and `esc` for anything typed.
+the last 120 days), `facts` (clubs, streaks, challenges, goals, records, seasons, stamps; worked out
+when first asked for), the widget's own saved `data`, `save(patch)`, and `esc` for anything typed.
 
 Rules:
 - **Widgets only read.** They never write sets, wins or anything else in the database, so they need
@@ -56,9 +58,53 @@ starts out called Iggy; tap Rename to change it.
   It bobs, wobbles as an egg, shakes when grouchy, and hops when fed (no animation with reduced
   motion).
 
-### Ideas for later (not built)
+### Hats (built)
+
+Tap the pet (or **Hats** on its card) for its page: the pet up close, its stages, and the wardrobe.
+Hats are earned by what the app already tracks, kept for good once earned (saved with the day, since
+some facts only say what's true now, like a record you hold today), and worn one at a time. The
+Finish recap announces new ones. Rules and drawings: `lift/widgets/hats.js`.
+
+| Hat | Earned by |
+|---|---|
+| Sweatband | a PR after hatching |
+| Party hat | the Elephant Club (10,000 lb, lifetime) |
+| Viking helmet | the 100K Club |
+| Star headband | lifting 4 weeks in a row |
+| Halo | 12 weeks in a row |
+| Bandana | all of a week's challenges |
+| Graduation cap | a season goal met |
+| Laurel wreath | holding a crew record |
+| Wizard hat | finishing a season (after hatching) |
+| Stamp pin | a season stamp (after hatching) |
+| Pumpkin, Santa hat | anyone, in October and December only |
+
+### The plan from here (decided 2026-11-24, not built yet)
+
+**Branches.** At 1,000 XP the pet branches by how you trained in the 4 weeks before (working sets by
+main muscle, `library.js` groups): 40%+ push (chest, shoulders, triceps), pull (back, biceps,
+traps, forearms) or legs (quads, hamstrings, glutes, calves, inner thighs), otherwise balanced. It's
+automatic, never chosen. The branch is saved with the checkpoint; devolve below 1,000 XP and it's
+forgotten, so the next time can be different.
+
+| | Push | Pull | Legs | Balanced |
+|---|---|---|---|---|
+| 1,000 XP | Frilled lizard (neck frill) | Chameleon (curled grip tail) | Basilisk (big back legs) | Iguana |
+| 2,500 XP | Frillback | Grip chameleon | Stomp basilisk | Komodo |
+| 6,000 XP | Sun dragon | Shadow dragon | Wyvern | Iron dragon |
+
+Each form is the current lizard plus a trait layer or two, in the theme's colours.
+
+**Treats.** Collectable snacks, earned by events, fed by tapping in the pet's page: a cricket for
+each weekly challenge (+20 XP), a protein shake for each club joined (+40), a golden cricket for each
+goal met (+60), a dragonfruit for each season finished (+100). **Only on a day you lifted**:
+dessert, not dinner, so treats never stand in for training. Eaten treats are saved (day, kind) and
+replayed as XP on that day.
+
+**Private.** Evolutions, hats and treats never post to the feed; it stays wins-only.
+
+### Ideas for later
+- Dragon auras by style (heavy PRs, high volume, never missing a week).
 - Per-theme touches (a knight's helmet in The Iron King, a pixel lizard in Iron Arcade).
-- Evolution paths by what you train (legs-day beast, bench goblin).
 - Show it on Progress, or a tiny one in the header.
 - Sync the pet across devices (would need a column or table: ask first).
-- An evolution posting a win to the feed (opt-in, wins only).

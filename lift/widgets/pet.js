@@ -157,27 +157,28 @@ const DUMBBELLS = '<path d="M42 84 q-14 -2 -20 -14 M78 84 q14 -2 20 -14" class="
   '<rect x="12" y="64" width="16" height="6" rx="2" class="pl-iron"/><rect x="92" y="64" width="16" height="6" rx="2" class="pl-iron"/>';
 const barbell = plate => '<path d="M42 84 q-18 -10 -22 -62 M78 84 q18 -10 22 -62" class="pl-limb"/><path d="M4 20 h112" class="pl-bar"/>' +
   '<rect x="2" y="9" width="9" height="22" rx="2" class="pl-' + plate + '"/><rect x="109" y="9" width="9" height="22" rx="2" class="pl-' + plate + '"/>';
-// Stage → [scale, parts behind the head, parts in front of it]
+// Stage → [scale, parts behind the head, parts in front of it, its own headgear (a hat replaces it)]
 const LIZARD = [
   null,
-  [0.72, tail(TAIL.short) + BODY, SHELL],
-  [0.85, tail(TAIL.long) + BODY + '<path d="M42 86 q-9 1 -12 8 M78 86 q9 1 12 8" class="pl-limb"/>', ''],
-  [0.95, tail(TAIL.long) + BODY + DEWLAP + CREST, DUMBBELLS],
-  [1, tail(TAIL.big) + BODY + DEWLAP + CREST, barbell('iron')],
-  [1, tail(TAIL.big) + WINGS + BODY + DEWLAP, CROWN + barbell('gold')],
+  [0.72, tail(TAIL.short) + BODY, '', SHELL],
+  [0.85, tail(TAIL.long) + BODY + '<path d="M42 86 q-9 1 -12 8 M78 86 q9 1 12 8" class="pl-limb"/>', '', ''],
+  [0.95, tail(TAIL.long) + BODY + DEWLAP + CREST, DUMBBELLS, ''],
+  [1, tail(TAIL.big) + BODY + DEWLAP + CREST, barbell('iron'), ''],
+  [1, tail(TAIL.big) + WINGS + BODY + DEWLAP, barbell('gold'), CROWN],
 ];
-function lizard(stage, face) {
-  const [k, back, front] = LIZARD[stage];
+function lizard(stage, face, hat) {
+  const [k, back, front, own] = LIZARD[stage];
   const at = k === 1 ? '' : ' transform="translate(' + (60 - 60 * k).toFixed(1) + ' ' + (100 - 100 * k).toFixed(1) + ') scale(' + k + ')"';
-  return '<g' + at + '>' + back + HEAD + front + face + '</g>';
+  return '<g' + at + '>' + back + HEAD + front + face + (hat || own) + '</g>';
 }
 const EGG = (cracked, mood) => '<ellipse cx="60" cy="64" rx="27" ry="34" class="pl-egg"/>' +
   '<circle cx="50" cy="52" r="4" class="pl-spot"/><circle cx="70" cy="74" r="5" class="pl-spot"/><circle cx="66" cy="44" r="3" class="pl-spot"/>' +
   (cracked ? '<path d="M38 62 l8 -5 l6 6 l8 -7 l8 6 l7 -5 l7 5" class="pl-crack"/>' : '') +
   (mood === 'grouchy' || mood === 'sad' ? '<text x="88" y="30" class="pl-zzz">z</text><text x="96" y="20" class="pl-zzz">z</text>' : '');
 
-export function petSvg(p, label) {
-  const body = p.stage === 0 ? EGG(p.devolved || p.xp >= STAGES[1].min / 2, p.mood) : lizard(p.stage, FACES[p.fedToday ? 'happy' : p.mood]);
+// hat: a hat's drawing from hats.js (hatSvg), or nothing.
+export function petSvg(p, label, hat = '') {
+  const body = p.stage === 0 ? EGG(p.devolved || p.xp >= STAGES[1].min / 2, p.mood) + hat : lizard(p.stage, FACES[p.fedToday ? 'happy' : p.mood], hat);
   return '<svg class="pet-svg pet-' + p.stageKey + ' mood-' + (p.fedToday ? 'happy' : p.mood) + '" viewBox="0 0 120 110" role="img" aria-label="' + label + '">' +
     '<ellipse cx="60" cy="102" rx="34" ry="5" class="pl-floor"/><g class="pl-me">' + body + '</g></svg>';
 }

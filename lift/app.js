@@ -462,8 +462,43 @@ function renderLog() {
 const widgetOn = id => !!(prefs.widgets && prefs.widgets[id]);
 function widgetCtx(w) {
   const all = prefs.widgetData || (prefs.widgetData = {});
-  return { today: today(), days: S.days, recent: S.recent, data: all[w.id] || {}, esc,
-    save: patch => { all[w.id] = { ...(all[w.id] || {}), ...patch }; savePrefs(); } };
+  let facts = null;
+  const ctx = { today: today(), days: S.days, recent: S.recent, data: all[w.id] || {}, esc,
+    get facts() { return facts || (facts = widgetFacts()); },
+    save: patch => { all[w.id] = { ...(all[w.id] || {}), ...patch }; ctx.data = all[w.id]; savePrefs(); } };
+  return ctx;
+}
+// What else the app tracks, for widgets that reward it (Kintoremon's hats): clubs, streaks, this
+// week's challenges, season goals met, crew records held, seasons finished, stamps.
+function widgetFacts() {
+  let lb = 0, kg = 0;
+  for (const d of S.days) { lb += Number(d.volume_lb) || 0; kg += Number(d.volume_kg) || 0; }
+  const mine = (S.seasons || []).filter(inSeason), t = today();
+  const safe = (f, or) => { try { return f(); } catch (x) { return or; } };
+  return {
+    lifetimeLb: L.lbEquivalent({ lb, kg }),
+    streakWeeks: safe(streakWeeks, 0),
+    questsAllDone: safe(() => { const q = weekQuests(); return q.length > 0 && q.every(x => x.done); }, false),
+    goalsDone: mine.reduce((n, sn) => n + safe(() => goalsDone(sn).done, 0), 0),
+    recordsHeld: (S.records || []).filter(r => r.user_id === S.myId).length,
+    seasonsFinished: mine.filter(sn => sn.ends_on < t).map(sn => sn.ends_on),
+    stamps: (S.stampRows || []).filter(x => x.created_by === S.myId).map(x => x.earned_on),
+  };
+}
+// A widget's own page, in the sheet. Taps on it go to the widget, which redraws it.
+function openWidgetPage(w) {
+  if (!w || !w.page) return;
+  LG.mode = 'widget'; LG.widget = w.id;
+  inner.innerHTML = w.page(widgetCtx(w));
+  openSheet();
+}
+function widgetSheetClick(b) {
+  const w = widgetById(LG.widget);
+  if (!w || !w.click(b, widgetCtx(w))) return;
+  const body = inner.querySelector('.sheet-body'), top = body ? body.scrollTop : 0;
+  inner.innerHTML = w.page(widgetCtx(w));
+  const again = inner.querySelector('.sheet-body'); if (again) again.scrollTop = top;
+  render();
 }
 // A widget that throws leaves its card out rather than taking the Log tab down with it.
 const widgetCards = where => WIDGETS.filter(w => w.where === where && widgetOn(w.id))
@@ -568,6 +603,7 @@ function emptyToday() {
 view.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.widgetOpen) return openWidgetPage(widgetById(b.dataset.widgetOpen));
   const wEl = b.closest('[data-widget]');
   if (wEl) { const w = widgetById(wEl.dataset.widget); if (w && w.click(b, widgetCtx(w))) render(); return; }
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
@@ -1493,6 +1529,7 @@ inner.addEventListener('click', async e => {
     return drawResults($('exSearch').value);
   }
   if (LG.mode === 'exinfo' || LG.mode === 'libaddto' || LG.mode === 'newex') return libSheetClick(b);
+  if (LG.mode === 'widget') return widgetSheetClick(b);
   if (b.dataset.pick && LG.multi) {
     const id = b.dataset.pick, i = LG.multi.indexOf(id);
     if (i >= 0) LG.multi.splice(i, 1); else LG.multi.push(id);

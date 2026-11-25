@@ -834,6 +834,44 @@
   .pet-svg .pl-steam { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
   .pet-svg .pl-zzz { fill: var(--muted); font: 700 12px system-ui, sans-serif; }
   .pet-svg .pl-floor { fill: var(--line); }
+  /* Hats (lift/widgets/hats.js): the theme's accent, its gold, and fixed colours for the seasonal ones. */
+  .pet-svg .pl-hat { fill: var(--accent); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-hat2 { fill: var(--accent-ink); }
+  .pet-svg .pl-hatline { fill: none; stroke: var(--ink); stroke-width: 1.5; opacity: .5; }
+  .pet-svg .pl-metal { fill: var(--chip); stroke: var(--ink); stroke-width: 2; }
+  .pet-svg .pl-horn { fill: var(--card); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-halo { fill: none; stroke: var(--gold); stroke-width: 4; }
+  .pet-svg .pl-tassel { fill: none; stroke: var(--gold); stroke-width: 2; }
+  .pet-svg .pl-vine { fill: none; stroke: var(--good); stroke-width: 2.5; stroke-linecap: round; }
+  .pet-svg .pl-leaf { fill: var(--good); stroke: var(--ink); stroke-width: 1; }
+  .pet-svg .pl-wizard { fill: var(--accent-soft); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-pumpkin { fill: #e8792b; stroke: var(--ink); stroke-width: 2; }
+  .pet-svg .pl-santa { fill: #c62f2f; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-fur { fill: #fbfbf7; stroke: var(--ink); stroke-width: 1.5; }
+  /* The card's picture opens the pet's page; the page shows its stages and wardrobe. */
+  button.pet-pic { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; }
+  .pet-links { display: flex; gap: 12px; }
+  .pet-new { background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: 0 6px; font-size: 11px; }
+  .pet-hero { display: flex; gap: 14px; align-items: center; }
+  .pet-hero > .pet-svg { width: 120px; height: 110px; flex: none; }
+  .pet-hero .btn { margin-top: 8px; }
+  .pet-steps { list-style: none; padding: 0; margin: 10px 0 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; text-align: center; }
+  .pet-step .pet-svg { width: 100%; height: auto; }
+  .pet-step small { font-size: 11px; color: var(--muted); }
+  .pet-step.now { background: var(--accent-soft); border-radius: 10px; }
+  .pet-step.now small { color: var(--ink); font-weight: 700; }
+  .pet-step.later .pet-svg { opacity: .35; filter: grayscale(1); }
+  .pet-step .pl-me, .hat-tile .pl-me { animation: none; }
+  .hat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+  .hat-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 8px 6px; text-align: center; color: var(--ink); }
+  .hat-tile .pet-svg { width: 72px; height: 66px; }
+  .hat-tile b { font-size: 13px; }
+  .hat-tile small { font-size: 11px; color: var(--muted); line-height: 1.3; }
+  .hat-tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .hat-tile.locked { opacity: .6; }
+  .hat-tile.locked .pl-hatg { filter: grayscale(1); opacity: .45; }
+  .pet-recap > div { min-width: 0; }
+  .pet-recap .pet-unlock { margin: 4px 0 0; font-size: 13px; }
   .pet-svg .pl-me { transform-box: fill-box; transform-origin: 50% 100%; animation: pet-bob 2.6s ease-in-out infinite; }
   .pet-svg.mood-sad .pl-me { animation-duration: 4.5s; }
   .pet-svg.mood-grouchy .pl-me { animation: pet-grump 1.8s ease-in-out infinite; }
