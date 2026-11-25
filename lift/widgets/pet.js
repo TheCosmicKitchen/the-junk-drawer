@@ -95,6 +95,25 @@ export function petState({ hatched, today, days = [], recent = [], checkpoint = 
   };
 }
 
+// Today at a glance, for the Finish recap: what it ate, and whether that hatched or evolved it
+// (its stage now against its stage as of yesterday). null when it hasn't eaten today.
+export function petToday(args) {
+  const now = petState(args);
+  if (!now.fedToday) return null;
+  const y = new Date(Date.parse(args.today + 'T00:00:00Z') - DAY).toISOString().slice(0, 10);
+  const before = y < args.hatched ? 0 : petState({ ...args, today: y }).stage;
+  return { ...now, before, evolved: now.stage > before };
+}
+export function recapLine(t, name) {
+  const f = t.fedToday, list = [f.sets + (f.sets === 1 ? ' set' : ' sets')];
+  if (f.reps) list.push(Math.round(f.reps) + (f.reps === 1 ? ' rep' : ' reps'));
+  if (f.prs) list.push(f.prs + (f.prs === 1 ? ' PR' : ' PRs'));
+  const ate = name + ' ate ' + (list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0]) + ' (+' + f.xp + ' XP).';
+  if (t.evolved) return ate + ' ' + (t.before === 0 ? name + ' hatched!' : name + ' evolved into a ' + t.stageName + '!');
+  if (t.stage === 0) return ate + ' The egg is wobbling.';
+  return ate + ' ' + (t.nextName ? Math.round(t.progress * 100) + '% of the way to ' + t.nextName + '.' : 'A full-grown ' + t.stageName + '.');
+}
+
 // One line about how it's doing, in plain words.
 export function moodLine(p, name) {
   if (p.stage === 0) return p.fedToday ? 'The egg is wobbling. A few more sets and it hatches.'

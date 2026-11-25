@@ -11,10 +11,11 @@ Code lives in `lift/widgets/`. `index.js` lists the widgets; each is a plain obj
 | field | what it is |
 |---|---|
 | `id`, `name`, `blurb` | shown in the Widgets list |
-| `where` | where its card goes; today only `'log'` (the Log tab, after today's logging) |
+| `where` | where its card goes; today only `'log'` (the Log tab, right under today's card, so you see it react as you log) |
 | `start(ctx)` | its saved data the first time it's switched on |
 | `card(ctx)` | its card as an HTML string; the root carries `data-widget="<id>"` |
 | `click(btn, ctx)` | a tap on a button in its card; return `true` to redraw |
+| `recap(ctx)` | optional: a line for the Finish recap (HTML), or nothing |
 
 `ctx` holds `today`, the lifting history (`days`: one row per day ever, and `recent`: the sets from
 the last 120 days), the widget's own saved `data`, `save(patch)`, and `esc` for anything typed.
@@ -46,6 +47,9 @@ starts out called Iggy; tap Rename to change it.
 - **Stored:** only the hatch day, its name and a checkpoint. Everything else is replayed from your
   history each time it draws, so it's the same offline and in the demo. The checkpoint (30 days back)
   remembers the XP from days whose reps and PRs have left the 120-day window on the phone.
+- **At Finish,** the recap says what he ate and how far he is to the next stage, or celebrates (in
+  gold) when that workout hatched or evolved him: "Iggy ate 6 sets, 39 reps and 1 PR (+41 XP). Iggy
+  hatched!"
 - **Drawn** in SVG as a chibi lizard: green in every theme (the theme's own green, softened into its
   card colour), with the theme's accent for the crest and wings. A face for each mood; it grows a crest
   and dewlap, lifts dumbbells, then a barbell, and as a Dragon gets wings, a crown and gold plates.

@@ -2,7 +2,7 @@
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { petState, meals, moodLine, petSvg, FOOD, STAGES, stageOf, CHECKPOINT_BACK } from '../../lift/widgets/pet.js';
+import { petState, petToday, recapLine, meals, moodLine, petSvg, FOOD, STAGES, stageOf, CHECKPOINT_BACK } from '../../lift/widgets/pet.js';
 
 const addDays = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 const HATCH = '2026-01-05';
@@ -124,4 +124,26 @@ test('stages climb by XP, and the drawing names the pet and its mood', () => {
   const svg = petSvg(pet(addDays(HATCH, 9), [workout(HATCH, { sets: 30, reps: 10 })]), 'Pip, grouchy');
   assert.match(svg, /^<svg class="pet-svg pet-\w+ mood-grouchy"/);
   assert.match(svg, /aria-label="Pip, grouchy"/);
+});
+
+test('the Finish recap says what it ate today, and when that hatched or evolved it', () => {
+  const day1 = [workout(HATCH, { sets: 5, reps: 5 })];
+  const t1 = petToday({ hatched: HATCH, today: HATCH, ...history(day1) });
+  assert.equal(t1.evolved, true);
+  assert.equal(recapLine(t1, 'Iggy'), 'Iggy ate 5 sets, 25 reps and 1 PR (+35 XP). Iggy hatched!');
+
+  // A rest day: nothing to say.
+  assert.equal(petToday({ hatched: HATCH, today: addDays(HATCH, 1), ...history(day1) }), null);
+
+  // An ordinary day: how far to the next stage.
+  const day2 = [...day1, workout(addDays(HATCH, 2), { sets: 3, reps: 5, weight: 90 })];
+  const t2 = petToday({ hatched: HATCH, today: addDays(HATCH, 2), ...history(day2) });
+  assert.equal(t2.evolved, false);
+  assert.match(recapLine(t2, 'Iggy'), /^Iggy ate 3 sets and 15 reps \(\+12 XP\)\. \d+% of the way to Gecko\.$/);
+
+  // The day it crosses into Gecko.
+  const big = [...day1, workout(addDays(HATCH, 2), { sets: 60, reps: 10, weight: 100, ex: 'squat' })];
+  const t3 = petToday({ hatched: HATCH, today: addDays(HATCH, 2), ...history(big) });
+  assert.equal(t3.stageName, 'Gecko');
+  assert.match(recapLine(t3, 'Iggy'), /Iggy evolved into a Gecko!$/);
 });

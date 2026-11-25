@@ -803,12 +803,18 @@
   /* Kintoremon (lift/widgets/pet.js): a lizard, green in every theme (the theme's own green, softened
      into its card colour), with the theme's accent for crest and wings. */
   .pet-card { display: flex; gap: 14px; align-items: center; }
-  .pet-pic { flex: none; width: 96px; }
+  .pet-pic { flex: none; width: 76px; }
   .pet-info { flex: 1; min-width: 0; }
   .pet-info .card-head { margin: 0; }
   .pet-stage { display: block; margin-top: 2px; }
-  .pet-mood { margin: 6px 0 8px; font-size: 14px; }
-  .pet-svg { width: 96px; height: 88px; display: block; overflow: visible;
+  .pet-mood { margin: 4px 0 6px; font-size: 14px; }
+  .pet-recap { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 8px 12px; border-radius: 14px; background: var(--chip); }
+  .pet-recap .pet-svg { width: 56px; height: 52px; flex: none; }
+  .pet-recap p { margin: 0; font-size: 14px; }
+  .pet-recap.pet-evolved { background: var(--gold-soft); }
+  .pet-recap.pet-evolved p { font-weight: 700; }
+  .pet-recap.pet-evolved .pl-me { animation: pet-hop .55s ease-out 3; }
+  .pet-svg { width: 76px; height: 70px; display: block; overflow: visible;
     --liz: color-mix(in srgb, var(--good) 45%, var(--card)); --liz-belly: color-mix(in srgb, var(--good) 15%, var(--card)); }
   .pet-svg .pl-body { fill: var(--liz); stroke: var(--ink); stroke-width: 2.5; }
   .pet-svg .pl-belly { fill: var(--liz-belly); }

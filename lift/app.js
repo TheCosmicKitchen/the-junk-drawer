@@ -441,12 +441,12 @@ function renderLog() {
   const sets = todaySets();
   const groups = groupByExercise(sets);
   view.innerHTML = themeHint() + heroHtml(sets, groups) +
+    widgetCards('log') +   // opt-in extras (Settings → Widgets), up top so you see them react as you log
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
     (groups.length ? groups.map(exCard).join('') + (following() ? '' : '<section class="card rest-card">' + restRow() + '</section>') : (following() || cardioCard() ? '' : emptyToday())) +
     (groups.length && !following() ? '<button class="btn block" style="margin-top:14px" data-save-day="' + today() + '">Make a workout from today</button>' : '') +
-    widgetCards('log') +   // opt-in extras (Settings → Widgets), right after today's logging
     weeklyCard() +   // the week's bulletin and quests come after today's logging
     questsCard() +
     winsCard();
@@ -468,6 +468,9 @@ function widgetCtx(w) {
 // A widget that throws leaves its card out rather than taking the Log tab down with it.
 const widgetCards = where => WIDGETS.filter(w => w.where === where && widgetOn(w.id))
   .map(w => { try { return w.card(widgetCtx(w)); } catch (x) { console.warn('widget ' + w.id, x); return ''; } }).join('');
+// Lines for the Finish recap, from widgets that have something to say about today.
+const widgetRecaps = () => WIDGETS.filter(w => w.recap && widgetOn(w.id))
+  .map(w => { try { return w.recap(widgetCtx(w)) || ''; } catch (x) { console.warn('widget ' + w.id, x); return ''; } }).join('');
 // First time in: a one-off note that there are other looks. Gone once you pick a theme or dismiss it.
 const themeHint = () => prefs.theme || prefs.themeHint ? '' :
   '<section class="card theme-hint"><p><b>Hey, there are color themes.</b> This is the plain one. There are ' + (ORDER.length - 1) +
@@ -5371,6 +5374,7 @@ function openRecap() {
       (diff != null ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' than your last session (' + esc(fmtDay(r.prev.performed_on, { month: 'short', day: 'numeric' })) + ').</p>' : '') +
       (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">' + T.icons.pr + ' ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
       '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
+      widgetRecaps() +
       '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + esc(shareOn() ? (posted ? T.updateFeed : T.finishFeed) : T.finishPrivate) + '</button>' +
       (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
       '<button class="btn block" id="recapShare" style="margin-top:10px">Share a picture</button>' +

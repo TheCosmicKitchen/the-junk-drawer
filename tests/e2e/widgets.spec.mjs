@@ -37,6 +37,13 @@ test('widgets are off until switched on; Kintoremon hatches from a few sets, kee
   await expect(page.locator('#sheet')).not.toHaveAttribute('open', '');
   await expect(petCard(page).locator('.pet-stage')).toContainText('Hatchling');
   await expect(petCard(page)).toContainText('full and happy: 5 sets');
+  // Right under today's card, so you see it react as you log.
+  await expect(page.locator('#view .hero + .pet-card')).toHaveCount(1);
+
+  // Finish: the recap says what it ate, and that it hatched.
+  await page.locator('#view [data-recap]').first().click();
+  await expect(page.locator('#sheet .pet-recap')).toContainText(/Iggy ate 5 sets.*Iggy hatched!/);
+  await closeSheet(page);
 
   page.once('dialog', d => d.accept('Gains'));
   await petCard(page).getByRole('button', { name: /Rename/ }).click();

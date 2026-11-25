@@ -6,6 +6,7 @@
 //   start(ctx)          its saved data the first time it's switched on
 //   card(ctx)           its card, as an HTML string; the root carries data-widget="<id>"
 //   click(btn, ctx)     a tap on a button inside its card; return true to redraw
+//   recap(ctx)          optional: a line for the Finish recap (HTML), or nothing
 // ctx (from the app, read-only except through save):
 //   today               ISO date
 //   days, recent        lifting history: one row per day ever (sets, volume), and the sets from
@@ -13,7 +14,7 @@
 //   data                this widget's saved data; save(patch) merges into it and keeps it
 //   esc                 HTML-escape for anything user-typed
 // Widgets never write sets or anything else in the database: they only read.
-import { petState, moodLine, petSvg } from './pet.js';
+import { petState, petToday, moodLine, recapLine, petSvg } from './pet.js';
 
 // Sets fed today when the card last drew: a new one makes it hop. The hop lasts a moment, since the
 // Log tab often redraws again right after a set (when the save lands).
@@ -43,6 +44,14 @@ const pet = {
         '<p class="pet-mood">' + ctx.esc(moodLine(p, name)) + '</p>' +
         '<div class="bar" style="--p:' + Math.round(p.progress * 100) + '%" role="img" aria-label="' + Math.round(p.progress * 100) + '% of the way to ' + ctx.esc(p.nextName || 'the top') + '"><i></i></div>' +
       '</div></section>';
+  },
+  recap(ctx) {
+    const d = ctx.data, name = d.name || 'Iggy';
+    const t = petToday({ hatched: d.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: d.checkpoint });
+    if (!t) return '';
+    const label = ctx.esc(name + ', ' + t.stageName.toLowerCase() + ', happy');
+    return '<div class="pet-recap' + (t.evolved ? ' pet-evolved' : '') + '" data-widget-recap="pet">' + petSvg({ ...t, fedToday: t.fedToday }, label) +
+      '<p>' + ctx.esc(recapLine(t, name)) + '</p></div>';
   },
   click(b, ctx) {
     if (!b.hasAttribute('data-pet-rename')) return false;
