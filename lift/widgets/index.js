@@ -16,9 +16,10 @@
 //   facts               what else the app tracks: clubs, streaks, challenges, goals, records,
 //                       seasons, stamps (see hats.js), worked out when first asked for
 //   data                this widget's saved data; save(patch) merges into it and keeps it
+//   groupsOf(id)        a lift's main muscle groups, for Kintoremon's branches
 //   esc                 HTML-escape for anything user-typed
 // Widgets never write sets or anything else in the database: they only read.
-import { petState, petToday, moodLine, recapLine, petSvg, meals, STAGES } from './pet.js';
+import { petState, petToday, moodLine, recapLine, petSvg, meals, STAGES, FORMS, BRANCH_AT, WHY, formName } from './pet.js';
 import { HATS, hatById, hatsMet, mergeUnlocks, wearable, newToday, hatSvg } from './hats.js';
 
 // Sets fed today when the card last drew: a new one makes it hop. The hop lasts a moment, since the
@@ -27,7 +28,8 @@ let petSeen = null, hopUntil = 0;
 
 const nameOf = d => d.name || 'Iggy';
 const shortDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });   // Nov 24
-const stateOf = ctx => petState({ hatched: ctx.data.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: ctx.data.checkpoint });
+const argsOf = ctx => ({ hatched: ctx.data.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: ctx.data.checkpoint, groupsOf: ctx.groupsOf });
+const stateOf = ctx => petState(argsOf(ctx));
 // Hats earned so far (saved), adding any met right now. Saves only when something's new.
 function unlocks(ctx) {
   const d = ctx.data, hatched = d.hatched || ctx.today;
@@ -82,11 +84,16 @@ const pet = {
   page(ctx) {
     const d = ctx.data, name = nameOf(d), p = stateOf(ctx), un = unlocks(ctx), hat = wornHat(ctx, un);
     const up = STAGES[p.stage + 1];
+    // His line's forms; before he branches, the later ones are a mystery.
     const stages = STAGES.map((s, i) => {
+      const secret = i >= BRANCH_AT && !p.branch, nm = secret ? '?' : formName(i, p.branch);
       const q = { ...p, stage: i, stageKey: s.key, fedToday: null, mood: 'happy', devolved: false, xp: s.min };
-      return '<li class="pet-step' + (i === p.stage ? ' now' : i > p.stage ? ' later' : '') + '">' + petSvg(q, ctx.esc(s.name)) +
-        '<small>' + ctx.esc(s.name) + '</small></li>';
+      return '<li class="pet-step' + (i === p.stage ? ' now' : i > p.stage ? ' later' : '') + (secret ? ' secret' : '') + '">' + petSvg(q, ctx.esc(nm)) +
+        '<small>' + ctx.esc(nm) + '</small></li>';
     }).join('');
+    const lines = Object.entries(FORMS).map(([k, f]) => '<li' + (k === p.branch ? ' class="now"' : '') + '><b>' + ({ balanced: 'All-round', push: 'Push', pull: 'Pull', legs: 'Legs' })[k] + '</b> ' + f.map(x => ctx.esc(x)).join(' → ') + '</li>').join('');
+    const branchNote = p.branch ? WHY[p.branch] + ' made ' + ctx.esc(name) + ' ' + (/^[AEIOU]/i.test(formName(BRANCH_AT, p.branch)) ? 'an ' : 'a ') + ctx.esc(formName(BRANCH_AT, p.branch)) + '. Drop below ' + STAGES[BRANCH_AT].min.toLocaleString() + ' XP and he can branch again.'
+      : 'At ' + STAGES[BRANCH_AT].min.toLocaleString() + ' XP he branches by what you’ve trained the 4 weeks before: mostly push, pull or legs, or all-round.';
     const tile = (id, title, sub, on, can) => '<button type="button" class="hat-tile' + (can ? '' : ' locked') + '" data-hat="' + id + '" aria-pressed="' + on + '"' + (can ? '' : ' disabled') + '>' +
       drawPet(p, ctx, ctx.esc(title), id ? id : null) + '<b>' + ctx.esc(title) + '</b><small>' + ctx.esc(sub) + '</small></button>';
     const hats = HATS.map(h => {
@@ -104,14 +111,14 @@ const pet = {
           '<div><button class="btn sm" data-pet-rename>Rename</button></div></div></div>' +
         '<div class="field-label"><span>Growing up</span><small>sets, reps and PRs feed him</small></div>' +
         '<ol class="pet-steps">' + stages + '</ol>' +
-        '<p class="hint-line">Coming soon: from Iguana on, he’ll branch by how you train: push, pull, legs, or all-round.</p>' +
+        '<p class="hint-line">' + branchNote + '</p><ul class="pet-lines">' + lines + '</ul>' +
         '<div class="field-label" style="margin-top:18px"><span>Wardrobe</span><small>' + got + ' of ' + of + ' hats earned</small></div>' +
         '<div class="hat-grid" role="group" aria-label="Hats">' + tile('', 'No hat', 'Just ' + name, !hat, true) + hats + '</div>' +
       '</div>';
   },
   recap(ctx) {
     const d = ctx.data, name = nameOf(d);
-    const t = petToday({ hatched: d.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: d.checkpoint });
+    const t = petToday(argsOf(ctx));
     const un = unlocks(ctx), hat = wornHat(ctx, un);
     // Hats first earned today, in one line: "New hats: Party hat, Viking helmet and Halo."
     const got = newToday(un, ctx.today).map(id => '<b>' + ctx.esc(hatById(id).name) + '</b>');

@@ -79,7 +79,7 @@ Finish recap announces new ones. Rules and drawings: `lift/widgets/hats.js`.
 | Stamp pin | a season stamp (after hatching) |
 | Pumpkin, Santa hat | anyone, in October and December only |
 
-### The plan from here (decided 2026-11-24, not built yet)
+### Branches (built)
 
 **Branches.** At 1,000 XP the pet branches by how you trained in the 4 weeks before (working sets by
 main muscle, `library.js` groups): 40%+ push (chest, shoulders, triceps), pull (back, biceps,
@@ -93,7 +93,13 @@ forgotten, so the next time can be different.
 | 2,500 XP | Frillback | Grip chameleon | Stomp basilisk | Komodo |
 | 6,000 XP | Sun dragon | Shadow dragon | Wyvern | Iron dragon |
 
-Each form is the current lizard plus a trait layer or two, in the theme's colours.
+Each form is the current lizard plus a trait layer or two, in the theme's colours: a neck frill
+(push; gold rays on the Sun dragon), a casque and curled grip tail (pull), big thighs and back and head
+sails (legs), the crest and dewlap (all-round). Before it branches, the page shows the later forms as
+"?" and the card says "next: a surprise". The recap names the form and why ("Iggy evolved into a
+Basilisk! All that leg work did that."). Rules: `focusOf` and `petState` in `pet.js`.
+
+### Still to build (decided 2026-11-24)
 
 **Treats.** Collectable snacks, earned by events, fed by tapping in the pet's page: a cricket for
 each weekly challenge (+20 XP), a protein shake for each club joined (+40), a golden cricket for each

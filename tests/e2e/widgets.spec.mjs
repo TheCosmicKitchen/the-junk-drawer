@@ -94,3 +94,25 @@ test('hats: earned ones can be worn and show on the card after a reload; locked 
   await expect(petCard(page).getByRole('button', { name: /Hats/ })).toContainText('new');   // earned today
   expect(errors).toEqual([]);
 });
+
+test('branches: before 1,000 XP the forms after Gecko are a surprise', async ({ page }) => {
+  const errors = await openDemo(page, { prefs: { themeHint: 1, widgets: { pet: true } } });
+  await petCard(page).getByRole('button', { name: /Hats/ }).click();
+  await expect(page.locator('#sheet .pet-step.secret')).toHaveCount(3);
+  await expect(page.locator('#sheet .pet-page')).toContainText('he branches by what you’ve trained');
+  expect(errors).toEqual([]);
+});
+
+test('branches: one who crossed 1,000 XP on leg day is a Basilisk, on the card and the page', async ({ page }) => {
+  const day = n => new Date(Date.now() + n * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const pet = { hatched: day(-60), name: 'Iggy', checkpoint: { day: day(-1), xp: 1300, last: day(-1), branch: 'legs' } };
+  const errors = await openDemo(page, { prefs: { themeHint: 1, widgets: { pet: true }, widgetData: { pet } } });
+  await expect(petCard(page).locator('.pet-stage')).toContainText('Basilisk · next: Stomp basilisk');
+  await expect(petCard(page).locator('svg')).toHaveClass(/line-legs/);
+  await petCard(page).getByRole('button', { name: /Hats/ }).click();
+  await expect(page.locator('#sheet .pet-step.secret')).toHaveCount(0);
+  await expect(page.locator('#sheet .pet-step.now')).toContainText('Basilisk');
+  await expect(page.locator('#sheet .pet-lines li.now')).toContainText('Basilisk → Stomp basilisk → Wyvern');
+  await expect(page.locator('#sheet .pet-page')).toContainText('All that leg work made Iggy a Basilisk');
+  expect(errors).toEqual([]);
+});

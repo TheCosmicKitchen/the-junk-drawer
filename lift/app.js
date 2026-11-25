@@ -464,6 +464,7 @@ function widgetCtx(w) {
   const all = prefs.widgetData || (prefs.widgetData = {});
   let facts = null;
   const ctx = { today: today(), days: S.days, recent: S.recent, data: all[w.id] || {}, esc,
+    groupsOf: id => LIB.worked(S.byId.get(id)).main,   // a lift's main muscle groups (library.js)
     get facts() { return facts || (facts = widgetFacts()); },
     save: patch => { all[w.id] = { ...(all[w.id] || {}), ...patch }; ctx.data = all[w.id]; savePrefs(); } };
   return ctx;
