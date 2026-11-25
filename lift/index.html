@@ -878,6 +878,17 @@
   .hat-tile.locked { opacity: .6; }
   .hat-tile.locked .pl-hatg { filter: grayscale(1); opacity: .45; }
   .pet-recap > div { min-width: 0; }
+  /* The treat bag (lift/widgets/treats.js). */
+  .treat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+  .treat-tile { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 8px 10px; color: var(--ink); }
+  .treat-tile .treat-svg { grid-row: span 2; width: 40px; height: 40px; }
+  .treat-tile b { font-size: 14px; }
+  .treat-tile small { font-size: 12px; color: var(--muted); }
+  .treat-tile:not(:disabled) { border-color: var(--accent); }
+  .treat-tile:not(:disabled):active { transform: scale(.97); }
+  .treat-tile.empty .treat-svg { filter: grayscale(1); opacity: .4; }
+  .treat-n { color: var(--accent); }
+  .pet-dessert { margin: 6px 0 0; font-size: 14px; }
   .pet-recap .pet-unlock { margin: 4px 0 0; font-size: 13px; }
   .pet-svg .pl-me { transform-box: fill-box; transform-origin: 50% 100%; animation: pet-bob 2.6s ease-in-out infinite; }
   .pet-svg.mood-sad .pl-me { animation-duration: 4.5s; }

@@ -29,7 +29,7 @@ test('a new pet is an egg, and a few sets hatch it', () => {
   assert.match(moodLine(pet(HATCH, [workout(HATCH, { sets: 1, reps: 1, weight: 0 })]), 'Pip'), /wobbling/);   // fed, not hatched yet
   const fed = pet(HATCH, [workout(HATCH, { sets: 5, reps: 5 })]);
   assert.equal(fed.stageKey, 'hatchling');
-  assert.deepEqual(fed.fedToday, { sets: 5, reps: 25, prs: 1, xp: 5 * FOOD.set + 25 * FOOD.rep + FOOD.pr });
+  assert.deepEqual(fed.fedToday, { sets: 5, reps: 25, prs: 1, xp: 5 * FOOD.set + 25 * FOOD.rep + FOOD.pr, treatXp: 0 });
   assert.match(moodLine(fed, 'Pip'), /Pip is full and happy: 5 sets and 1 PR today/);
 });
 

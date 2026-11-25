@@ -469,15 +469,20 @@ function widgetCtx(w) {
     save: patch => { all[w.id] = { ...(all[w.id] || {}), ...patch }; ctx.data = all[w.id]; savePrefs(); } };
   return ctx;
 }
-// What else the app tracks, for widgets that reward it (Kintoremon's hats): clubs, streaks, this
-// week's challenges, season goals met, crew records held, seasons finished, stamps.
+// What else the app tracks, for widgets that reward it (Kintoremon's hats and treats): clubs, streaks,
+// this week's challenges, season goals met, crew records held, seasons finished, stamps.
 function widgetFacts() {
   let lb = 0, kg = 0;
   for (const d of S.days) { lb += Number(d.volume_lb) || 0; kg += Number(d.volume_kg) || 0; }
   const mine = (S.seasons || []).filter(inSeason), t = today();
   const safe = (f, or) => { try { return f(); } catch (x) { return or; } };
+  const lifetimeLb = L.lbEquivalent({ lb, kg }), week = weekOf(t);
   return {
-    lifetimeLb: L.lbEquivalent({ lb, kg }),
+    lifetimeLb,
+    clubs: L.MILESTONES.filter(m => lifetimeLb >= m.lb).map(m => m.lb),
+    questsDone: safe(() => weekQuests().filter(q => q.done).map(q => week + ':' + q.id), []),
+    goalsMet: mine.flatMap(sn => safe(() => { const m = seasonM(sn); return goalsFor(sn, S.myId).filter(g => goalHave(g, m, { season: sn }) >= Number(g.target)).map(g => g.id); }, [])),
+    seasonsDone: mine.filter(sn => sn.ends_on < t).map(sn => ({ id: sn.id, ends_on: sn.ends_on })),
     streakWeeks: safe(streakWeeks, 0),
     questsAllDone: safe(() => { const q = weekQuests(); return q.length > 0 && q.every(x => x.done); }, false),
     goalsDone: mine.reduce((n, sn) => n + safe(() => goalsDone(sn).done, 0), 0),

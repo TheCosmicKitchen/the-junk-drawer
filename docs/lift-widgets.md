@@ -99,13 +99,24 @@ sails (legs), the crest and dewlap (all-round). Before it branches, the page sho
 "?" and the card says "next: a surprise". The recap names the form and why ("Iggy evolved into a
 Basilisk! All that leg work did that."). Rules: `focusOf` and `petState` in `pet.js`.
 
-### Still to build (decided 2026-11-24)
+### Treats (built)
 
-**Treats.** Collectable snacks, earned by events, fed by tapping in the pet's page: a cricket for
-each weekly challenge (+20 XP), a protein shake for each club joined (+40), a golden cricket for each
-goal met (+60), a dragonfruit for each season finished (+100). **Only on a day you lifted**:
-dessert, not dinner, so treats never stand in for training. Eaten treats are saved (day, kind) and
-replayed as XP on that day.
+Collectable snacks in a bag on the pet's page (`lift/widgets/treats.js`):
+
+| Treat | Earned for | XP |
+|---|---|---|
+| Cricket | each weekly challenge finished | +20 |
+| Protein shake | each new club | +40 |
+| Golden cricket | each season goal met | +60 |
+| Dragonfruit | each season finished (after hatching) | +100 |
+
+- **Dessert, not dinner:** they can only be fed on a day you lifted, up to 3 a day, so treats never
+  stand in for training. Eaten treats are saved (kind, day) and replayed as XP on that day.
+- **A starting line:** on the day treats are first worked out, everything done so far (including
+  facts that load a moment later that day) is marked seen without a treat; hats reward the past.
+  From the next day on, each new thing earns one.
+- The page says what he had ("Dessert today: a Golden cricket. Yum."), he hops, and the recap lists
+  new treats and adds "plus dessert (+60 XP)".
 
 **Private.** Evolutions, hats and treats never post to the feed; it stays wins-only.
 

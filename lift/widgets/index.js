@@ -21,6 +21,7 @@
 // Widgets never write sets or anything else in the database: they only read.
 import { petState, petToday, moodLine, recapLine, petSvg, meals, STAGES, FORMS, BRANCH_AT, WHY, formName } from './pet.js';
 import { HATS, hatById, hatsMet, mergeUnlocks, wearable, newToday, hatSvg } from './hats.js';
+import { TREATS, PER_DAY, treatKeys, syncTreats, bag, canFeed, feed, bonusByDay, eatenOn, gotOn, treatList, treatSvg } from './treats.js';
 
 // Sets fed today when the card last drew: a new one makes it hop. The hop lasts a moment, since the
 // Log tab often redraws again right after a set (when the save lands).
@@ -28,7 +29,14 @@ let petSeen = null, hopUntil = 0;
 
 const nameOf = d => d.name || 'Iggy';
 const shortDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });   // Nov 24
-const argsOf = ctx => ({ hatched: ctx.data.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: ctx.data.checkpoint, groupsOf: ctx.groupsOf });
+const argsOf = ctx => ({ hatched: ctx.data.hatched || ctx.today, today: ctx.today, days: ctx.days, recent: ctx.recent, checkpoint: ctx.data.checkpoint, groupsOf: ctx.groupsOf,
+  bonus: bonusByDay(ctx.data.treats) });
+// The treat bag, with anything newly earned added. Saves only when something's new.
+function treatsOf(ctx) {
+  const d = ctx.data, next = syncTreats(d.treats, treatKeys(ctx.facts, d.hatched || ctx.today), ctx.today);
+  if (next !== d.treats) ctx.save({ treats: next });
+  return next;
+}
 const stateOf = ctx => petState(argsOf(ctx));
 // Hats earned so far (saved), adding any met right now. Saves only when something's new.
 function unlocks(ctx) {
@@ -64,17 +72,16 @@ const pet = {
     const d = ctx.data, name = nameOf(d);
     const p = stateOf(ctx);
     if (p.checkpoint) ctx.save({ checkpoint: p.checkpoint });
-    const un = unlocks(ctx), hat = wornHat(ctx, un);
-    const fed = p.fedToday ? p.fedToday.sets : 0;
+    const un = unlocks(ctx), hat = wornHat(ctx, un), tr = treatsOf(ctx);
+    const fed = (p.fedToday ? p.fedToday.sets : 0) + eatenOn(tr, ctx.today).length;
     if (petSeen != null && fed > petSeen) hopUntil = Date.now() + 1200;
     petSeen = fed;
-    const hop = Date.now() < hopUntil, fresh = newToday(un, ctx.today).length;
+    const hop = Date.now() < hopUntil, fresh = newToday(un, ctx.today).length + gotOn(tr, ctx.today).length;
     return '<section class="card widget pet-card" data-widget="pet">' +
       '<button class="pet-pic' + (hop ? ' pet-hop' : '') + '" data-widget-open="pet" aria-label="Open ' + ctx.esc(name) + '’s page">' + drawPet(p, ctx, labelOf(ctx, p, hat), hat) + '</button>' +
       '<div class="pet-info">' +
         '<div class="card-head"><h3 class="card-title" id="petName">' + ctx.esc(name) + '</h3>' +
-          '<span class="pet-links"><button class="linkbtn" data-widget-open="pet">Hats' + (fresh ? ' <b class="pet-new">new</b>' : '') + '</button>' +
-          '<button class="linkbtn" data-pet-rename aria-label="Rename ' + ctx.esc(name) + '">Rename</button></span></div>' +
+          '<span class="pet-links"><button class="linkbtn" data-widget-open="pet">Hats & treats' + (fresh ? ' <b class="pet-new">new</b>' : '') + '</button></span></div>' +
         '<small class="muted pet-stage">' + ctx.esc(p.stageName) + (p.nextName ? ' · next: ' + ctx.esc(p.nextName) : ' · fully grown') + '</small>' +
         '<p class="pet-mood">' + ctx.esc(moodLine(p, name)) + '</p>' +
         '<div class="bar" style="--p:' + Math.round(p.progress * 100) + '%" role="img" aria-label="' + Math.round(p.progress * 100) + '% of the way to ' + ctx.esc(p.nextName || 'the top') + '"><i></i></div>' +
@@ -82,8 +89,14 @@ const pet = {
   },
   // Its page: the pet up close, the way up the stages, and the wardrobe.
   page(ctx) {
-    const d = ctx.data, name = nameOf(d), p = stateOf(ctx), un = unlocks(ctx), hat = wornHat(ctx, un);
+    const d = ctx.data, name = nameOf(d), un = unlocks(ctx), tr = treatsOf(ctx), p = stateOf(ctx), hat = wornHat(ctx, un);
     const up = STAGES[p.stage + 1];
+    const inBag = bag(tr), lifted = !!p.fedToday, dessert = eatenOn(tr, ctx.today);
+    const treats = TREATS.map(t => {
+      const can = canFeed(tr, t.id, lifted, ctx.today), n = inBag[t.id];
+      return '<button type="button" class="treat-tile' + (n ? '' : ' empty') + '" data-treat="' + t.id + '"' + (can.ok ? '' : ' disabled') + ' aria-label="Feed ' + ctx.esc(name) + ' a ' + ctx.esc(t.name) + '">' +
+        treatSvg(t.id) + '<b>' + ctx.esc(t.name) + (n ? ' <span class="treat-n">×' + n + '</span>' : '') + '</b><small>+' + t.xp + ' XP · ' + ctx.esc(n ? (can.ok ? 'Tap to feed' : can.why) : t.hint) + '</small></button>';
+    }).join('');
     // His line's forms; before he branches, the later ones are a mystery.
     const stages = STAGES.map((s, i) => {
       const secret = i >= BRANCH_AT && !p.branch, nm = secret ? '?' : formName(i, p.branch);
@@ -105,13 +118,16 @@ const pet = {
     return '<div class="sheet-head"><div><small class="muted">Kintoremon</small><h2 id="sheetTitle">' + ctx.esc(name) + '</h2></div>' +
       '<button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
       '<div class="sheet-body pet-page">' +
-        '<div class="pet-hero">' + drawPet(p, ctx, labelOf(ctx, p, hat), hat) +
+        '<div class="pet-hero' + (Date.now() < hopUntil ? ' pet-hop' : '') + '">' + drawPet(p, ctx, labelOf(ctx, p, hat), hat) +
           '<div><b>' + ctx.esc(p.stageName) + '</b><p class="pet-mood">' + ctx.esc(moodLine(p, name)) + '</p>' +
           '<small class="muted">' + Math.floor(p.xp).toLocaleString() + ' XP' + (up ? ' · ' + up.min.toLocaleString() + ' for ' + ctx.esc(up.name) : '') + '</small>' +
           '<div><button class="btn sm" data-pet-rename>Rename</button></div></div></div>' +
         '<div class="field-label"><span>Growing up</span><small>sets, reps and PRs feed him</small></div>' +
         '<ol class="pet-steps">' + stages + '</ol>' +
         '<p class="hint-line">' + branchNote + '</p><ul class="pet-lines">' + lines + '</ul>' +
+        '<div class="field-label" style="margin-top:18px"><span>Treat bag</span><small>dessert after a workout, up to ' + PER_DAY + ' a day</small></div>' +
+        (dessert.length ? '<p class="pet-dessert">Dessert today: ' + ctx.esc(treatList(dessert)) + '. Yum.</p>' : '') +
+        '<div class="treat-grid" role="group" aria-label="Treats">' + treats + '</div>' +
         '<div class="field-label" style="margin-top:18px"><span>Wardrobe</span><small>' + got + ' of ' + of + ' hats earned</small></div>' +
         '<div class="hat-grid" role="group" aria-label="Hats">' + tile('', 'No hat', 'Just ' + name, !hat, true) + hats + '</div>' +
       '</div>';
@@ -124,12 +140,21 @@ const pet = {
     const got = newToday(un, ctx.today).map(id => '<b>' + ctx.esc(hatById(id).name) + '</b>');
     const list = got.length > 1 ? got.slice(0, -1).join(', ') + ' and ' + got[got.length - 1] : got[0];
     const fresh = got.length ? '<p class="pet-unlock">' + (got.length > 1 ? 'New hats: ' : 'New hat: ') + list + '. Try ' + (got.length > 1 ? 'them' : 'it') + ' on from ' + ctx.esc(name) + '’s page.</p>' : '';
-    if (!t) return fresh ? '<div class="pet-recap">' + fresh + '</div>' : '';
+    const tr = treatsOf(ctx), newTreats = gotOn(tr, ctx.today);
+    const snacks = newTreats.length ? '<p class="pet-unlock">New ' + (newTreats.length > 1 ? 'treats' : 'treat') + ' in the bag: <b>' + ctx.esc(treatList(newTreats)) + '</b>.</p>' : '';
+    if (!t) return fresh || snacks ? '<div class="pet-recap"><div>' + fresh + snacks + '</div></div>' : '';
     return '<div class="pet-recap' + (t.evolved ? ' pet-evolved' : '') + '" data-widget-recap="pet">' + drawPet({ ...t }, ctx, labelOf(ctx, t, hat), hat) +
-      '<div><p>' + ctx.esc(recapLine(t, name)) + '</p>' + fresh + '</div></div>';
+      '<div><p>' + ctx.esc(recapLine(t, name)) + '</p>' + fresh + snacks + '</div></div>';
   },
   click(b, ctx) {
     if (b.hasAttribute('data-pet-rename')) return rename(ctx);
+    if (b.dataset.treat) {
+      const tr = treatsOf(ctx), p = stateOf(ctx);
+      if (!canFeed(tr, b.dataset.treat, !!p.fedToday, ctx.today).ok) return false;
+      ctx.save({ treats: feed(tr, b.dataset.treat, ctx.today) });
+      hopUntil = Date.now() + 1200;
+      return true;
+    }
     if (b.dataset.hat != null) {
       const id = b.dataset.hat || null;
       if (id && !wearable(id, unlocks(ctx), ctx.today)) return false;
