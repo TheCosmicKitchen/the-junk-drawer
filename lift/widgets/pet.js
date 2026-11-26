@@ -102,7 +102,8 @@ export const xpOf = m => (m ? m.sets * FOOD.set + m.reps * FOOD.rep + m.prs * FO
 
 // The pet today. hatched: the day it hatched (ISO). checkpoint: { day, xp, last } saved earlier, or
 // none. Returns its stage, mood, XP and, when it's time, a newer checkpoint for the app to keep.
-export function petState({ hatched, today, days = [], recent = [], checkpoint = null, groupsOf }) {
+// bonus: treat XP by day (treats.js bonusByDay); it only counts on days you lifted.
+export function petState({ hatched, today, days = [], recent = [], checkpoint = null, groupsOf, bonus = new Map() }) {
   const food = meals({ days, recent });
   const focusOn = d => focusOf(recent.filter(x => x.performed_on > fromDay(d - FOCUS_DAYS) && x.performed_on <= fromDay(d)), groupsOf);
   const end = toDay(today);
@@ -117,7 +118,7 @@ export function petState({ hatched, today, days = [], recent = [], checkpoint = 
   let next = null;
   for (let d = from; d <= end; d++) {
     const m = food.get(fromDay(d));
-    if (m) { xp += xpOf(m); last = d; }
+    if (m) { xp += xpOf(m) + (bonus.get(fromDay(d)) || 0); last = d; }
     else if (d - last > GROUCHY_AFTER) xp *= DECAY;
     const st = stageOf(xp);
     if (st < BRANCH_AT) branch = null;   // devolved below the branch: forgotten
@@ -131,7 +132,7 @@ export function petState({ hatched, today, days = [], recent = [], checkpoint = 
   const nextName = !up ? null : stage + 1 === BRANCH_AT ? 'a surprise' : formName(stage + 1, branch);
   return {
     xp, stage, stageKey: cur.key, stageName: formName(stage, branch), branch, idle, mood: moodOf(idle),
-    fedToday: fed ? { sets: fed.sets, reps: fed.reps, prs: fed.prs, xp: Math.round(xpOf(fed)) } : null,
+    fedToday: fed ? { sets: fed.sets, reps: fed.reps, prs: fed.prs, xp: Math.round(xpOf(fed)), treatXp: bonus.get(today) || 0 } : null,
     progress: up ? Math.max(0, Math.min(1, (xp - cur.min) / (up.min - cur.min))) : 1,
     nextName,
     devolved: stage < peak,   // it was bigger than this since the checkpoint
@@ -153,7 +154,8 @@ export function recapLine(t, name) {
   const f = t.fedToday, list = [f.sets + (f.sets === 1 ? ' set' : ' sets')];
   if (f.reps) list.push(Math.round(f.reps) + (f.reps === 1 ? ' rep' : ' reps'));
   if (f.prs) list.push(f.prs + (f.prs === 1 ? ' PR' : ' PRs'));
-  const ate = name + ' ate ' + (list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0]) + ' (+' + f.xp + ' XP).';
+  const ate = name + ' ate ' + (list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0]) + ' (+' + f.xp + ' XP)' +
+    (f.treatXp ? ', plus dessert (+' + f.treatXp + ' XP).' : '.');
   if (t.evolved) return ate + ' ' + (t.before === 0 ? name + ' hatched!' : name + ' evolved into ' + aOrAn(t.stageName) + ' ' + t.stageName + '!' +
     (t.stage === BRANCH_AT && t.before < BRANCH_AT ? ' ' + WHY[t.branch] + ' did that.' : ''));
   if (t.stage === 0) return ate + ' The egg is wobbling.';

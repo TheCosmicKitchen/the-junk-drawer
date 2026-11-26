@@ -45,8 +45,12 @@ test('widgets are off until switched on; Kintoremon hatches from a few sets, kee
   await expect(page.locator('#sheet .pet-recap')).toContainText(/Iggy ate 5 sets.*Iggy hatched!/);
   await closeSheet(page);
 
+  // Renamed from his page.
+  await petCard(page).getByRole('button', { name: /Hats/ }).click();
   page.once('dialog', d => d.accept('Gains'));
-  await petCard(page).getByRole('button', { name: /Rename/ }).click();
+  await page.locator('#sheet [data-pet-rename]').click();
+  await expect(page.locator('#sheetTitle')).toHaveText('Gains');
+  await closeSheet(page);
   await expect(petCard(page).locator('#petName')).toHaveText('Gains');
 
   await page.reload();
@@ -114,5 +118,35 @@ test('branches: one who crossed 1,000 XP on leg day is a Basilisk, on the card a
   await expect(page.locator('#sheet .pet-step.now')).toContainText('Basilisk');
   await expect(page.locator('#sheet .pet-lines li.now')).toContainText('Basilisk → Stomp basilisk → Wyvern');
   await expect(page.locator('#sheet .pet-page')).toContainText('All that leg work made Iggy a Basilisk');
+  expect(errors).toEqual([]);
+});
+
+test('treats: none before a workout; after one, feeding adds XP and the page says what he had', async ({ page }) => {
+  const day = n => new Date(Date.now() + n * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const pet = { hatched: day(-60), name: 'Iggy', checkpoint: { day: day(-1), xp: 1300, last: day(-1), branch: 'push' },
+    treats: { since: day(0), seen: {}, got: [{ kind: 'golden', day: day(-3) }], eaten: [] } };   // started today: the demo's history is the starting line
+  const errors = await openDemo(page, { prefs: { themeHint: 1, widgets: { pet: true }, widgetData: { pet } } });
+  await petCard(page).getByRole('button', { name: /Hats/ }).click();
+  const golden = page.locator('#sheet .treat-tile[data-treat="golden"]');
+  await expect(golden).toBeDisabled();
+  await expect(golden).toContainText('After a workout today');
+  await closeSheet(page);
+
+  await openPicker(page);
+  await page.locator('#exSearch').fill('bench press');
+  await page.waitForTimeout(250);
+  await page.locator('#exResults [data-pick]').first().click();
+  await page.locator('#saveBtn').click();
+  await expect(page.locator('#sheet')).not.toHaveAttribute('open', '');
+
+  await petCard(page).getByRole('button', { name: /Hats/ }).click();
+  const xp = async () => Number((await page.locator('#sheet .pet-hero small').textContent()).match(/^([\d,]+) XP/)[1].replace(/,/g, ''));
+  const before = await xp();
+  await expect(golden).toBeEnabled();
+  await golden.click();
+  await expect(page.locator('#sheet .pet-dessert')).toContainText('Dessert today: a Golden cricket');
+  expect(await xp()).toBe(before + 60);
+  await expect(page.locator('#sheet .treat-tile[data-treat="golden"]')).toBeDisabled();   // that was the only one
+  await expect(page.locator('#sheet .treat-tile[data-treat="golden"]')).toContainText('Hit a season goal');
   expect(errors).toEqual([]);
 });

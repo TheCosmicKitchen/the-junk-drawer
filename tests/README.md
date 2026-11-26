@@ -17,7 +17,7 @@ saving), volume, milestones, PRs and bests, estimated maxes, plates, exercise se
 names (`logic.test.mjs`); reading and writing sets of reps, time and distance, and bests for holds and
 carries (`tracking.test.mjs`); following a plan week by week (`plans.test.mjs`); the library and the
 workout generator (`library.test.mjs`); the lifting pet widget: what feeds it, moods, devolving to an egg,
-the checkpoint (`pet.test.mjs`); its hats (`hats.test.mjs`) and branches (`branches.test.mjs`). The recipe parser's tests run here too.
+the checkpoint (`pet.test.mjs`); its hats (`hats.test.mjs`), branches (`branches.test.mjs`) and treats (`treats.test.mjs`). The recipe parser's tests run here too.
 
 Add one when a rule changes, or when a bug turns out to be a rule: write the failing case first.
 
