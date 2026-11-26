@@ -522,9 +522,21 @@ async function saveDayAsRoutine(day, btn) {
     openDesigner(t.id);
   } catch (x) { fail(x); btn.disabled = false; }
 }
+// Your PR for a lift, next to its name on the Log tab: the best you've ever done at the rep count of
+// today's heaviest set (bests include today's). "New PR" when one of today's sets is it. Nothing for
+// holds and carries (no reps) or a lift with no weight on it.
+function exPr(g) {
+  const work = g.sets.filter(x => x.is_warmup !== true && x.reps != null && Number(x.weight) > 0);
+  if (!work.length) return '';
+  const top = work.reduce((a, x) => (Number(x.weight) > Number(a.weight) ? x : a));
+  const best = S.bests.get(L.bestKey(top));
+  if (best == null) return '';
+  if (work.some(x => x._pr && x.reps === top.reps && Number(x.weight) >= best)) return '<span class="ex-pr new">' + esc(T.icons.pr) + ' New PR</span>';
+  return '<span class="ex-pr">PR ' + esc(L.fmtLoad(best) + unitTag(top.unit) + ' × ' + top.reps) + '</span>';
+}
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
-  return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + '</h3><span class="muted num">' + (L.lbEquivalent(v) > 0 ? esc(volText(v)) : '') + '</span></div>' +   // holds and carries move no volume
+  return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + exPr(g) + '</h3><span class="muted num">' + (L.lbEquivalent(v) > 0 ? esc(volText(v)) : '') + '</span></div>' +   // holds and carries move no volume
     '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') +
       // One small button: log another set, the logger opening with your last one filled in.
       '<button class="chip dup" data-more="' + esc(g.exercise_id) + '" aria-label="Log another set of ' + esc(exName(g.exercise_id)) + ', filled in from your last">' +
@@ -4649,12 +4661,30 @@ function heavyLine(lb) {
   const n = Math.round(lb / h[0]);
   return 'About the weight of ' + (n <= 1 ? h[1] : n + ' ' + h[2]) + '.';
 }
+// Your own season, for Wrapped (asked for by a tester): your favourite lifts, the ones new to you,
+// and your PRs, from your own sets, so it works whether or not your wins are shared. A lift is new
+// when nothing says you did it before the season: no set in the months the phone keeps from before
+// it, and no best set dated before it.
+function mySeason(sn) {
+  const live = x => !x.deleted_at && x.is_warmup !== true;
+  const inside = S.recent.filter(x => live(x) && x.performed_on >= sn.starts_on && x.performed_on <= sn.ends_on);
+  const before = S.recent.filter(x => live(x) && x.performed_on < sn.starts_on);
+  const count = new Map();
+  for (const x of inside) count.set(x.exercise_id, (count.get(x.exercise_id) || 0) + 1);
+  const faves = [...count].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const earlier = new Set(before.map(x => x.exercise_id));
+  for (const r of S.bestRows) if (r.first_lifted_on < sn.starts_on) earlier.add(r.exercise_id);
+  const fresh = [...count.keys()].filter(id => !earlier.has(id));
+  const prs = L.prSets(inside.filter(x => x.reps != null && Number(x.weight) > 0), before);
+  return { faves, fresh, prs, sets: inside.length };
+}
 function renderWrapped(sn) {
   const st = S.standings[sn.id];
   if (!st || !st.feed) return seasonLoading(sn, renderWrapped);
   const people = seasonPeople(sn, st), weeks = seasonWeeks(sn), ids = new Set(people.map(p => p.user_id));
   const total = people.reduce((a, p) => a + p.lb, 0);
   const prs = st.feed.filter(w => w.kind === 'pr' && ids.has(w.created_by)).sort((a, b) => a.performed_on.localeCompare(b.performed_on));
+  const myPrs = mySeason(sn).prs.length;   // yours from your own sets: the feed only has the ones you shared
   const num = (v, label) => '<div><b>' + v + '</b><small>' + label + '</small></div>';
   const kept = p => {
     const planned = p.prog ? (p.prog.days_a_week || 0) * weeks : 0;
@@ -4662,7 +4692,7 @@ function renderWrapped(sn) {
     return p.visits >= planned ? 'Kept all ' + planned + ' ' + p.prog.program_name + ' days.' : p.visits + ' of ' + planned + ' ' + p.prog.program_name + ' days.';
   };
   const pcard = p => '<div class="wr-card"><div class="sz-who"><i style="background:' + p.color + '">' + esc(initials(p.display_name)) + '</i><b>' + esc(p.name) + '</b></div>' +
-    '<div class="wr-nums">' + num(p.visits, p.visits === 1 ? 'session' : 'sessions') + num(L.fmtNum(p.sets, 0), 'sets') + num(C.compact(p.lb), 'lb moved') + num(prs.filter(w => w.created_by === p.user_id).length, 'new bests') + '</div>' +
+    '<div class="wr-nums">' + num(p.visits, p.visits === 1 ? 'session' : 'sessions') + num(L.fmtNum(p.sets, 0), 'sets') + num(C.compact(p.lb), 'lb moved') + num(p.user_id === S.myId ? Math.max(myPrs, prs.filter(w => w.created_by === p.user_id).length) : prs.filter(w => w.created_by === p.user_id).length, 'new bests') + '</div>' +
     '<p class="wr-foot">' + esc(kept(p)) + '</p></div>';
   // Each person's top lift: the heaviest for its reps (estimated one-rep max).
   const tops = people.map(p => {
@@ -4682,6 +4712,7 @@ function renderWrapped(sn) {
       '<p class="wr-kicker">' + esc(sn.name) + ' · ' + esc(seasonDates(sn)) + '</p><h1 class="wr-title">That’s the season.</h1>' +
       '<div class="wr-hero"><small>' + (people.length > 1 ? 'Moved between you' : 'You moved') + '</small><b>' + esc(L.fmtNum(Math.round(total), 0)) + ' lb</b><p>' + esc(heavyLine(total)) + '</p></div>' +
       '<div class="wr-people">' + people.map(pcard).join('') + '</div>' +
+      myWrapped(sn) +
       (tops ? '<div class="wr-box"><h3>Top lift</h3><ul class="wr-tops">' + tops + '</ul></div>' : '') +
       '<div class="wr-pair">' +
         (bestDay ? '<div class="wr-box"><h3>Best day</h3><b class="wr-big">' + esc(fmtDay(bestDay[0], { weekday: 'long' })) + '</b><p>' + esc((bestDay[1].who.size > 1 ? 'You all lifted. ' : '') + C.compact(bestDay[1].lb) + ' lb.') + '</p></div>' : '') +
@@ -4691,6 +4722,24 @@ function renderWrapped(sn) {
       (stamps ? '<div class="wr-box"><h3>' + esc(T.stamps) + '</h3><div class="stamp-grid">' + stamps + '</div></div>' : '') +
       (isMine(sn) ? '<button class="btn primary block" data-sz-again="' + esc(sn.id) + '">Start the next season</button>' : '') +
     '</section>';
+}
+
+function myWrapped(sn) {
+  const m = mySeason(sn);
+  if (!m.sets) return '';
+  // One line per lift: its heaviest PR of the season, heaviest lifts first.
+  const lbOfSet = x => L.lbEquivalent({ [x.unit]: Number(x.weight) });
+  const perLift = new Map();
+  for (const x of m.prs) { const cur = perLift.get(x.exercise_id); if (!cur || lbOfSet(x) > lbOfSet(cur)) perLift.set(x.exercise_id, x); }
+  const topPrs = [...perLift.values()].sort((a, b) => lbOfSet(b) - lbOfSet(a)).slice(0, 6);
+  return '<div class="wr-pair">' +
+      '<div class="wr-box wr-faves"><h3>Your favourites</h3><ol class="wr-list">' + m.faves.map(([id, n]) =>
+        '<li><span>' + esc(exName(id)) + '</span><b>' + n + ' sets</b></li>').join('') + '</ol></div>' +
+      '<div class="wr-box wr-new"><h3>New to you</h3>' + (m.fresh.length
+        ? '<b class="wr-big">' + m.fresh.length + '</b><p>' + esc(m.fresh.slice(0, 4).map(exName).join(', ') + (m.fresh.length > 4 ? ' and ' + (m.fresh.length - 4) + ' more' : '')) + '</p>'
+        : '<p>Same lifts as before. Consistency.</p>') + '</div></div>' +
+    (m.prs.length ? '<div class="wr-box wr-myprs"><h3>Your PRs</h3><b class="wr-big">' + m.prs.length + '</b><p>new bests this season, on ' + perLift.size + (perLift.size === 1 ? ' lift' : ' lifts') + '. The heaviest:</p><ul class="wr-bests">' +
+      topPrs.map(x => '<li><i style="background:var(--gold)"></i><span>' + esc(exName(x.exercise_id)) + '</span><b>' + esc(L.fmtLoad(Number(x.weight)) + ' ' + x.unit + ' × ' + x.reps) + '</b></li>').join('') + '</ul></div>' : '');
 }
 
 // ===========================================================================

@@ -99,8 +99,14 @@
   .tabs a[aria-current="page"] { color: var(--accent); }
   .tabs a[aria-current="page"] svg { background: var(--accent-soft); border-radius: 99px; padding: 2px 14px; width: 52px; }
 
-  .fab { position: fixed; z-index: 7; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 17px; padding: 16px 28px; border-radius: 99px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; }
-  .fab:active { transform: translateX(-50%) scale(.97); }
+  /* Log a set: a round button in the bottom-right corner, out of the way of the cards. */
+  .fab { position: fixed; z-index: 7; right: calc(18px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); width: 62px; height: 62px; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; padding: 0; }
+  .fab svg { width: 28px; height: 28px; }
+  .fab .fab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .fab:active { transform: scale(.94); }
+  /* The PR next to a lift's name on the Log tab. */
+  .ex-pr { display: inline-block; margin-left: 10px; vertical-align: middle; font: 600 12px/1 var(--body); letter-spacing: 0; color: var(--muted); background: var(--chip); border-radius: 99px; padding: 5px 9px; white-space: nowrap; }
+  .ex-pr.new { background: var(--gold-soft); color: var(--ink); }
   /* Following a routine: the routine card has its own + Other exercise, so the button steps aside. */
   .fab.away { display: none; }
 
@@ -422,6 +428,9 @@
   .wr-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .wr-big { font-family: var(--display); font-size: 28px; line-height: 1.1; }
   .wr-tops, .wr-bests { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .wr-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .wr-list li span { margin-right: 8px; }
+  .wr-list li b { color: var(--muted); font-weight: 600; font-size: 13px; }
   .wr-tops li { display: flex; gap: 12px; align-items: stretch; }
   .wr-tops li i { width: 6px; border-radius: 3px; flex: none; }
   .wr-tops span { display: grid; }

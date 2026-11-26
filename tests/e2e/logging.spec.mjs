@@ -61,3 +61,36 @@ test('a hold logs a time, not reps', async ({ page }) => {
   await page.locator('#aIn').fill('1:15');
   await expect(page.locator('#saveBtn')).toContainText('1:15');
 });
+
+test('on a phone, Log a set is a round button in the bottom-right corner', async ({ page }, info) => {
+  test.skip(info.project.name !== 'phone', 'desktop has the sidebar button');
+  await openDemo(page);
+  const box = await page.locator('#fab').boundingBox(), vw = page.viewportSize().width;
+  expect(Math.abs(box.width - box.height)).toBeLessThan(2);
+  expect(box.width).toBeLessThan(80);
+  expect(vw - (box.x + box.width)).toBeLessThan(40);   // hugging the right edge
+  expect(box.x).toBeGreaterThan(vw / 2);
+  await expect(page.locator('#fab')).toHaveAccessibleName('Log a set');
+});
+
+test('an exercise card shows your PR next to its name', async ({ page }) => {
+  const errors = await openDemo(page);
+  await openPicker(page);
+  await page.locator('#exSearch').fill('bench press');
+  await page.waitForTimeout(250);
+  await page.locator('#exResults [data-pick]').first().click();
+  await page.locator('#wIn').fill('100');
+  await page.locator('#aIn').fill('5');
+  await page.locator('#saveBtn').click();
+  const card = page.locator('#view .ex-card', { hasText: 'Bench Press' });
+  await expect(card.locator('.ex-pr')).toHaveText(/^PR \d[\d.,]* × 5$/);   // a light set: the old best stands
+  await openPicker(page);
+  await page.locator('#exSearch').fill('bench press');
+  await page.waitForTimeout(250);
+  await page.locator('#exResults [data-pick]').first().click();
+  await page.locator('#wIn').fill('999');
+  await page.locator('#aIn').fill('5');
+  await page.locator('#saveBtn').click();
+  await expect(card.locator('.ex-pr')).toContainText('New PR');
+  expect(errors).toEqual([]);
+});

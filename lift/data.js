@@ -506,6 +506,8 @@ class DemoStore {
       const t = localDate();
       this.seasonRows = [
         { id: 's-fall', name: 'Fall block', starts_on: addDays(t, -40), ends_on: addDays(t, 20), is_shared: false, created_by: 'me' },
+        // A finished one, so its Wrapped can be seen (and tested).
+        { id: 's-oct', name: 'October block', starts_on: addDays(t, -49), ends_on: addDays(t, -9), is_shared: false, created_by: 'me' },
         { id: 's-crew', name: 'Crew winter challenge', starts_on: addDays(t, -30), ends_on: addDays(t, 30), is_shared: true, created_by: 'alex' },
       ];
       this.goalRows = [
