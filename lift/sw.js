@@ -7,7 +7,7 @@
 // files did change, the open page is told so it can offer a reload right away.
 const CACHE = 'lift-shell-v29';
 const SCOPE = new URL('./', self.location).href;
-const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'logic.js', 'charts.js', 'starters.js', 'generate.js', 'share.js', 'library.js', 'tracking.js', 'plans.js', 'themes.js', 'seasons.js', 'config.js', 'boot.js',
+const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'logic.js', 'charts.js', 'starters.js', 'generate.js', 'share.js', 'library.js', 'tracking.js', 'plans.js', 'themes.js', 'seasons.js', 'widgets/index.js', 'widgets/pet.js', 'config.js', 'boot.js',
   'icon.svg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'].map(p => new URL(p, SCOPE).href);
 const LIBS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 

@@ -16,7 +16,8 @@ The rules the app is built on, with no browser: dates (in a US time zone, so the
 saving), volume, milestones, PRs and bests, estimated maxes, plates, exercise search and near-match
 names (`logic.test.mjs`); reading and writing sets of reps, time and distance, and bests for holds and
 carries (`tracking.test.mjs`); following a plan week by week (`plans.test.mjs`); the library and the
-workout generator (`library.test.mjs`). The recipe parser's tests run here too.
+workout generator (`library.test.mjs`); the lifting pet widget: what feeds it, moods, devolving to an egg,
+the checkpoint (`pet.test.mjs`). The recipe parser's tests run here too.
 
 Add one when a rule changes, or when a bug turns out to be a rule: write the failing case first.
 
@@ -30,6 +31,8 @@ no account and no network. Any page error or console error fails a test.
 - `logging`: the picker lists results right under the filters with cardio behind a switch; search;
   opening a lift fills in last time straight away; logging returns to today with the set counted; a
   hold logs a time.
+- `widgets`: widgets are off until switched on in Settings; the pet hatches from a few sets, keeps
+  its name through a reload, and draws in another theme.
 - `speed`: budgets on three years of history (`?demo&big=3`): the picker and a lift open in under
   150 ms of work, each tab draws in under 400 ms. Today they take a few ms; the budgets catch a
   regression, not noise.
