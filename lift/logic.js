@@ -142,21 +142,22 @@ export function isPr(set, bests) {
 // PR count in a window, the same way the app counts a season: a set is a PR when it beats every
 // earlier set (including ones before the window) for that exercise, unit and rep count, or when
 // it's the first ever at that rep count. `before` = sets from before the window.
-export function countPrs(sets, before = []) {
+export function countPrs(sets, before = []) { return prSets(sets, before).length; }
+// The PR sets themselves, in the order lifted (same rule as countPrs).
+export function prSets(sets, before = []) {
   const byTime = (a, b) => (a.performed_on + a.logged_at).localeCompare(b.performed_on + b.logged_at);
-  const best = new Map();
+  const best = new Map(), out = [];
   for (const s of before) {
     if (s.deleted_at || s.is_warmup === true) continue;
     best.set(bestKey(s), Math.max(best.get(bestKey(s)) ?? -Infinity, Number(s.weight)));
   }
-  let n = 0;
   for (const s of [...sets].sort(byTime)) {
     if (s.deleted_at || s.is_warmup === true) continue;
     const k = bestKey(s), prev = best.get(k);
-    if (prev == null || Number(s.weight) > prev) n++;
+    if (prev == null || Number(s.weight) > prev) out.push(s);
     best.set(k, Math.max(prev ?? -Infinity, Number(s.weight)));
   }
-  return n;
+  return out;
 }
 
 // Estimated 1RM (Epley). An estimate, shown with its method, only from 1-12 rep sets.
