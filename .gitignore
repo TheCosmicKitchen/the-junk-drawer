@@ -2,3 +2,7 @@ node_modules/
 test-results/
 playwright-report/
 __pycache__/
+# Screenshot baseline (npm run shots): only the Plain set is committed; other themes stay local.
+docs/lift-baseline/*
+!docs/lift-baseline/plain_*
+!docs/lift-baseline/README.md
