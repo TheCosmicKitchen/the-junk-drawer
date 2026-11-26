@@ -10,6 +10,7 @@ import { shareCard } from './share.js';
 import * as LIB from './library.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
+import { WIDGETS, widgetById } from './widgets/index.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -440,6 +441,7 @@ function renderLog() {
   const sets = todaySets();
   const groups = groupByExercise(sets);
   view.innerHTML = themeHint() + heroHtml(sets, groups) +
+    widgetCards('log') +   // opt-in extras (Settings → Widgets), up top so you see them react as you log
     (todaysDays().length ? dayCard() : planCard()) +
     followCard() +
     cardioCard() +
@@ -455,6 +457,61 @@ function renderLog() {
   // routine card carries "+ Other exercise" instead.
   $('fab').classList.toggle('away', !!following());
 }
+// Widgets (lift/widgets/): opt-in extras switched on in Settings → Widgets, saved on this device.
+// Each gets today's date, the lifting history and its own saved data; it only ever reads.
+const widgetOn = id => !!(prefs.widgets && prefs.widgets[id]);
+function widgetCtx(w) {
+  const all = prefs.widgetData || (prefs.widgetData = {});
+  let facts = null;
+  const ctx = { today: today(), days: S.days, recent: S.recent, data: all[w.id] || {}, esc,
+    groupsOf: id => LIB.worked(S.byId.get(id)).main,   // a lift's main muscle groups (library.js)
+    get facts() { return facts || (facts = widgetFacts()); },
+    save: patch => { all[w.id] = { ...(all[w.id] || {}), ...patch }; ctx.data = all[w.id]; savePrefs(); } };
+  return ctx;
+}
+// What else the app tracks, for widgets that reward it (Kintoremon's hats and treats): clubs, streaks,
+// this week's challenges, season goals met, crew records held, seasons finished, stamps.
+function widgetFacts() {
+  let lb = 0, kg = 0;
+  for (const d of S.days) { lb += Number(d.volume_lb) || 0; kg += Number(d.volume_kg) || 0; }
+  const mine = (S.seasons || []).filter(inSeason), t = today();
+  const safe = (f, or) => { try { return f(); } catch (x) { return or; } };
+  const lifetimeLb = L.lbEquivalent({ lb, kg }), week = weekOf(t);
+  return {
+    lifetimeLb,
+    clubs: L.MILESTONES.filter(m => lifetimeLb >= m.lb).map(m => m.lb),
+    questsDone: safe(() => weekQuests().filter(q => q.done).map(q => week + ':' + q.id), []),
+    goalsMet: mine.flatMap(sn => safe(() => { const m = seasonM(sn); return goalsFor(sn, S.myId).filter(g => goalHave(g, m, { season: sn }) >= Number(g.target)).map(g => g.id); }, [])),
+    seasonsDone: mine.filter(sn => sn.ends_on < t).map(sn => ({ id: sn.id, ends_on: sn.ends_on })),
+    streakWeeks: safe(streakWeeks, 0),
+    questsAllDone: safe(() => { const q = weekQuests(); return q.length > 0 && q.every(x => x.done); }, false),
+    goalsDone: mine.reduce((n, sn) => n + safe(() => goalsDone(sn).done, 0), 0),
+    recordsHeld: (S.records || []).filter(r => r.user_id === S.myId).length,
+    seasonsFinished: mine.filter(sn => sn.ends_on < t).map(sn => sn.ends_on),
+    stamps: (S.stampRows || []).filter(x => x.created_by === S.myId).map(x => x.earned_on),
+  };
+}
+// A widget's own page, in the sheet. Taps on it go to the widget, which redraws it.
+function openWidgetPage(w) {
+  if (!w || !w.page) return;
+  LG.mode = 'widget'; LG.widget = w.id;
+  inner.innerHTML = w.page(widgetCtx(w));
+  openSheet();
+}
+function widgetSheetClick(b) {
+  const w = widgetById(LG.widget);
+  if (!w || !w.click(b, widgetCtx(w))) return;
+  const body = inner.querySelector('.sheet-body'), top = body ? body.scrollTop : 0;
+  inner.innerHTML = w.page(widgetCtx(w));
+  const again = inner.querySelector('.sheet-body'); if (again) again.scrollTop = top;
+  render();
+}
+// A widget that throws leaves its card out rather than taking the Log tab down with it.
+const widgetCards = where => WIDGETS.filter(w => w.where === where && widgetOn(w.id))
+  .map(w => { try { return w.card(widgetCtx(w)); } catch (x) { console.warn('widget ' + w.id, x); return ''; } }).join('');
+// Lines for the Finish recap, from widgets that have something to say about today.
+const widgetRecaps = () => WIDGETS.filter(w => w.recap && widgetOn(w.id))
+  .map(w => { try { return w.recap(widgetCtx(w)) || ''; } catch (x) { console.warn('widget ' + w.id, x); return ''; } }).join('');
 // First time in: a one-off note that there are other looks. Gone once you pick a theme or dismiss it.
 const themeHint = () => prefs.theme || prefs.themeHint ? '' :
   '<section class="card theme-hint"><p><b>Hey, there are color themes.</b> This is the plain one. There are ' + (ORDER.length - 1) +
@@ -564,6 +621,9 @@ function emptyToday() {
 view.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.widgetOpen) return openWidgetPage(widgetById(b.dataset.widgetOpen));
+  const wEl = b.closest('[data-widget]');
+  if (wEl) { const w = widgetById(wEl.dataset.widget); if (w && w.click(b, widgetCtx(w))) render(); return; }
   if (b.dataset.edit) openEditor(findSet(b.dataset.edit));
   else if (b.dataset.musWeek) { S.musWeek = b.dataset.musWeek; const box = $('musclesBox'); if (box) box.outerHTML = musclesCard(); }
   else if (b.dataset.themeHint) {
@@ -1132,9 +1192,10 @@ function openPicker(title, onPick, multi) {
     (multi ? '<div class="pick-foot"><button class="btn primary block" data-add-selected disabled>Tick exercises to add</button></div>' : '') + '</div>';
   openSheet();
   const input = $('exSearch');
-  // Search after a short pause in typing, not on every key.
+  // Search after a short pause in typing, not on every key. If a lift was picked in that pause the
+  // picker is gone by now (the sheet is the logger): nothing to redraw.
   let typing;
-  input.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { LG.pkAll = false; drawResults(input.value); }, 120); });
+  input.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { if (!input.isConnected) return; LG.pkAll = false; drawResults(input.value); }, 120); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { clearTimeout(typing); drawResults(input.value); const first = $('exResults').querySelector('button'); if (first) { e.preventDefault(); first.click(); } }
   });
@@ -1487,6 +1548,7 @@ inner.addEventListener('click', async e => {
     return drawResults($('exSearch').value);
   }
   if (LG.mode === 'exinfo' || LG.mode === 'libaddto' || LG.mode === 'newex') return libSheetClick(b);
+  if (LG.mode === 'widget') return widgetSheetClick(b);
   if (b.dataset.pick && LG.multi) {
     const id = b.dataset.pick, i = LG.multi.indexOf(id);
     if (i >= 0) LG.multi.splice(i, 1); else LG.multi.push(id);
@@ -3414,6 +3476,10 @@ function openSettings(note) {
       '<div class="skins" role="group" aria-label="Theme">' + ORDER.map(id => { const t = THEMES[id], c = swatch(id);
         return '<button type="button" class="skin" data-skin="' + id + '" aria-pressed="' + (T.id === id) + '"><span class="skin-sw" style="background:' + c[0] + '"><i style="background:' + c[1] + '"></i><i style="background:' + c[2] + '"></i></span>' +
           '<span><b>' + esc(t.name) + '</b><small>' + esc(t.blurb) + '</small></span></button>'; }).join('') + '</div>' +
+      '<div class="field-label" style="margin-top:22px"><span>Widgets</span><small>opt-in extras, on this device</small></div>' +
+      '<div class="skins widgets-list" role="group" aria-label="Widgets">' + WIDGETS.map(w =>
+        '<button type="button" class="skin widget-opt" data-widget-toggle="' + w.id + '" aria-pressed="' + widgetOn(w.id) + '">' +
+          '<span class="widget-switch" aria-hidden="true"><i></i></span><span><b>' + esc(w.name) + '</b><small>' + esc(w.blurb) + '</small></span></button>').join('') + '</div>' +
       (store.demo ? '<p class="hint-line"><b>This is the demo.</b> Nothing is saved; reload to start over.</p>'
         : '<div class="field-label" style="margin-top:22px"><span>Change password</span><small>12+ characters</small></div>' +
           '<form id="pwForm"><input class="plain-input" id="newPw" type="password" autocomplete="new-password" minlength="12" required aria-label="New password">' +
@@ -3444,6 +3510,15 @@ inner.addEventListener('click', async e => {
     prefs.theme = b.dataset.skin; savePrefs(); T = applyTheme(prefs.theme);
     inner.querySelectorAll('[data-skin]').forEach(x => x.setAttribute('aria-pressed', x.dataset.skin === T.id));
     if (currentTab) $('pageTitle').textContent = T.titles[currentTab];
+    render();
+  }
+  if (b.dataset.widgetToggle) {
+    const w = widgetById(b.dataset.widgetToggle);
+    prefs.widgets = { ...prefs.widgets, [w.id]: !widgetOn(w.id) };
+    // First time on: it starts fresh today (a pet hatches from an egg). Switching off keeps its data.
+    if (prefs.widgets[w.id] && !(prefs.widgetData && prefs.widgetData[w.id])) widgetCtx(w).save(w.start(widgetCtx(w)));
+    savePrefs();
+    b.setAttribute('aria-pressed', widgetOn(w.id));
     render();
   }
   if (b.id === 'signOutBtn') { sheet.close(); await store.signOut(); if (!store.demo) { S.recent = []; showSignIn(); } }
@@ -5392,6 +5467,7 @@ function openRecap() {
       (diff != null ? '<p class="hint-line">' + (diff >= 0 ? '▲ ' + diff + '% more' : '▼ ' + Math.abs(diff) + '% less') + ' than your last session (' + esc(fmtDay(r.prev.performed_on, { month: 'short', day: 'numeric' })) + ').</p>' : '') +
       (r.prs.length ? '<div class="recap-prs">' + r.prs.map(p => '<div class="pr-flag" style="animation:none">' + T.icons.pr + ' ' + esc(exName(p.exercise_id)) + ' ' + esc(L.fmtLoad(Number(p.heaviest)) + ' ' + p.unit + ' × ' + p.reps) + '</div>').join('') + '</div>' : '') +
       '<div class="chips" style="margin-top:14px">' + r.exIds.map(id => '<span class="chip">' + esc(exName(id)) + '</span>').join('') + '</div>' +
+      widgetRecaps() +
       '<button class="btn primary block big" id="recapFinish" style="margin-top:18px">' + esc(shareOn() ? (posted ? T.updateFeed : T.finishFeed) : T.finishPrivate) + '</button>' +
       (shareOn() ? '' : '<p class="hint-line">Your wins are private, so this stays with you.</p>') +
       '<button class="btn block" id="recapShare" style="margin-top:10px">Share a picture</button>' +
