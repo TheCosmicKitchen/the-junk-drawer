@@ -124,6 +124,15 @@
   .pad .go { font: 700 20px/1 Caveat, cursive; color: #1f2d4a; }
   .pencil { position: absolute; right: -22px; bottom: -18px; width: 150px; height: 26px; transform: rotate(-28deg); pointer-events: none; }
 
+  /* A factory parts ticket with a die riding a little conveyor belt. */
+  .ticket { --tilt: 1.5deg; }
+  .ticket .obj { position: relative; padding: 14px 16px 14px; border-radius: 6px; background: #f7f0e1; border-left: 10px solid #0f2d38; }
+  .ticket .stamp { margin: 0; font: 800 11px/1 system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: #2fae92; }
+  .ticket svg { display: block; width: 100%; height: 54px; margin: 8px 0 6px; }
+  .ticket h2 { margin: 0 0 4px; font: 400 26px/1.05 "Permanent Marker", "Comic Sans MS", cursive; color: #0f2d38; }
+  .ticket p.d { margin: 0; font-size: 15px; line-height: 1.4; color: var(--ink); }
+  .ticket .go { color: #c2412d; }
+
   /* Junk, just for looks, scattered under and between the things. */
   .junk { position: absolute; z-index: 1; pointer-events: none; filter: drop-shadow(0 3px 3px rgba(40,25,10,.3)); }
   .j-band { left: 2%; top: 62%; width: 88px; transform: rotate(18deg); }
@@ -148,7 +157,7 @@
     .front { margin: 12px -12px 0; }
     .inside { padding: 30px 22px 48px; }
     ul.things { grid-template-columns: 1fr; gap: 34px; max-width: 380px; margin: 0 auto; }
-    .recipe, .pad { margin-top: 0; }
+    .recipe, .pad, .ticket { margin-top: 0; }
     .pencil { right: -8px; width: 120px; }
     .j-band { left: -30px; top: 30%; } .j-key { right: -40px; top: 48%; } .j-battery { left: 52%; top: 0; width: 72px; }
     .j-coin { left: auto; right: 2px; top: 22%; } .j-twist { left: 32%; bottom: 1%; } .j-candle { left: -26px; bottom: 18%; }
@@ -215,6 +224,23 @@
               <span class="go">Keep writing →</span>
             </div>
             <svg class="pencil" viewBox="0 0 150 26" aria-hidden="true"><path d="M30 4 H132 V22 H30Z" fill="#f2b53a"/><path d="M30 4 H132 V9 H30Z" fill="#f7cb63"/><path d="M132 4 H146 V22 H132Z" fill="#e7a3a3"/><path d="M128 4 H134 V22 H128Z" fill="#b7b7b7"/><path d="M30 4 L6 13 L30 22Z" fill="#edd2a8"/><path d="M6 13 L14 10 L14 16Z" fill="#333"/></svg>
+          </a>
+        </li>
+        <li>
+          <a class="thing ticket" href="dice-factory/">
+            <div class="obj">
+              <p class="stamp">Prototype · on the line</p>
+              <svg viewBox="0 0 200 54" aria-hidden="true">
+                <rect x="0" y="38" width="200" height="12" rx="6" fill="#24596a"/>
+                <path d="M14 44h12M44 44h12M74 44h12M104 44h12M134 44h12M164 44h12" stroke="#123744" stroke-width="3" stroke-linecap="round"/>
+                <g transform="rotate(-8 52 22)"><rect x="34" y="4" width="34" height="34" rx="7" fill="#fffdf6" stroke="#0f2d38" stroke-width="2.5"/><circle cx="43" cy="13" r="3" fill="#0f2d38"/><circle cx="51" cy="21" r="3" fill="#0f2d38"/><circle cx="59" cy="29" r="3" fill="#0f2d38"/></g>
+                <path d="M84 22h22" stroke="#a9c1c6" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 7"/>
+                <rect x="116" y="8" width="58" height="30" rx="5" fill="#0f2d38"/><circle cx="133" cy="23" r="8" fill="#e2533d"/><circle cx="157" cy="23" r="8" fill="#f0b429"/>
+              </svg>
+              <h2>Dice Assembly Line</h2>
+              <p class="d">A mockup of an engine-building card game: watch your factory turn dice into attack, block and gold.</p>
+              <span class="go">Start the line →</span>
+            </div>
           </a>
         </li>
       </ul>
