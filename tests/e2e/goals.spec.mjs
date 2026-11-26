@@ -3,14 +3,14 @@
 import { test, expect } from '@playwright/test';
 import { openDemo, tab } from './helpers.mjs';
 
-// Your goals live on a card with an Edit / + Add button; find the tab it's on.
+// Your goals open from the "Your week" card on Routines (its Edit / + Plan it button). Wait for that
+// card itself: a tab draws a moment after its click, so checking #view straight away can find the
+// previous tab's button and click it just as it's replaced (flaky on CI's slower machines).
 async function openGoals(page) {
-  for (const name of ['log', 'routines', 'seasons', 'progress']) {
-    await tab(page, name).click();
-    const btn = page.locator('#view [data-core-edit]').first();
-    if (await btn.count()) { await btn.click(); await expect(page.locator('#gMetric')).toBeVisible(); return; }
-  }
-  throw new Error('no goals card on any tab');
+  await tab(page, 'routines').click();
+  await expect(page).toHaveURL(/#routines$/);
+  await page.locator('#view .week-home [data-core-edit]').click();
+  await expect(page.locator('#gMetric')).toBeVisible();
 }
 
 test('a lift goal: search, tap the exercise, add it', async ({ page }) => {
