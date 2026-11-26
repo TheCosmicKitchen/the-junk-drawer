@@ -822,6 +822,8 @@
   .pet-svg .pl-tail { fill: none; stroke: var(--liz); stroke-width: 7; stroke-linecap: round; }
   .pet-svg .pl-crest { fill: var(--accent); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
   .pet-svg .pl-wing { fill: var(--accent-soft); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-frill { fill: var(--accent); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .pet-svg .pl-casque { fill: var(--liz); stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
   .pet-svg .pl-egg { fill: var(--liz-belly); stroke: var(--ink); stroke-width: 2.5; }
   .pet-svg .pl-shell { fill: var(--card); stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
   .pet-svg .pl-spot { fill: var(--good); opacity: .6; }
@@ -861,6 +863,11 @@
   .pet-step.now { background: var(--accent-soft); border-radius: 10px; }
   .pet-step.now small { color: var(--ink); font-weight: 700; }
   .pet-step.later .pet-svg { opacity: .35; filter: grayscale(1); }
+  .pet-step.secret .pet-svg { opacity: .5; filter: brightness(0); }
+  .pet-lines { list-style: none; padding: 0; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+  .pet-lines li { padding: 2px 0; }
+  .pet-lines b { color: var(--ink); display: inline-block; min-width: 64px; }
+  .pet-lines li.now { color: var(--ink); font-weight: 600; }
   .pet-step .pl-me, .hat-tile .pl-me { animation: none; }
   .hat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
   .hat-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 8px 6px; text-align: center; color: var(--ink); }
