@@ -72,3 +72,25 @@ test('Kintoremon draws in another theme too', async ({ page }) => {
   await expect(petCard(page).locator('svg')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('hats: earned ones can be worn and show on the card after a reload; locked ones say how to earn them', async ({ page }) => {
+  const errors = await openDemo(page, { prefs: { themeHint: 1, widgets: { pet: true } } });
+  // The demo lifter's history has already earned some (the 100K Club, a 4-week streak...).
+  await expect(petCard(page).getByRole('button', { name: /Hats/ })).toContainText('new');
+  await petCard(page).getByRole('button', { name: /Hats/ }).click();
+  await expect(page.locator('#sheetTitle')).toHaveText('Iggy');
+  const viking = page.locator('#sheet .hat-tile[data-hat="viking"]'), halo = page.locator('#sheet .hat-tile[data-hat="halo"]');
+  await expect(viking).toBeEnabled();
+  await expect(halo).toBeDisabled();
+  await expect(halo).toContainText('Lift 12 weeks in a row');
+  await viking.click();
+  await expect(page.locator('#sheet .hat-tile[data-hat="viking"]')).toHaveAttribute('aria-pressed', 'true');
+  await closeSheet(page);
+  await expect(petCard(page).locator('svg')).toHaveAttribute('aria-label', /wearing a viking helmet/);
+
+  await page.reload();
+  await expect(page.locator('#view .hero')).toBeVisible();
+  await expect(petCard(page).locator('svg')).toHaveAttribute('aria-label', /wearing a viking helmet/);
+  await expect(petCard(page).getByRole('button', { name: /Hats/ })).toContainText('new');   // earned today
+  expect(errors).toEqual([]);
+});
