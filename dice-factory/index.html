@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dice Assembly Line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE occasion: a game mock-up, warm and toy-like
+   IDEA a workshop floor where illustrated machine cards are bolted down and linked by rubber conveyor belts
+   PICTURE the factory board itself: six cards, moving belts, dice riding through and being stamped into attack, block and gold
+   COLOUR petrol-blue floor, ivory cards, red attack, blue block, gold coin, teal utility
+   TYPE Lilita One for names and numbers + Nunito
+   LAYOUT modest title and live counters on top, the board full width, then foe, market and log in columns; board scrolls sideways on phones */
+:root{color-scheme:dark;--bg:#0f2d38;--floor:#123744;--ink:#f3ecdc;--mute:#a9c1c6;--panel:#16404d;--edge:#24596a;--atk:#e2533d;--def:#3d8be0;--gold:#f0b429;--util:#2fae92;--card:#f7f0e1}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:16px/1.5 Nunito,system-ui,sans-serif;overflow-x:clip}
+h1,h2,.num,.name{font-family:"Lilita One",Impact,sans-serif;font-weight:400}
+.band{padding:20px max(4vw,16px)}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px;max-width:1240px;margin:0 auto}
+.title{flex:1 1 300px}
+h1{font-size:clamp(32px,4vw,44px);line-height:1.05;margin:0;letter-spacing:-.01em}
+.title p{margin:4px 0 0;color:var(--mute);font-size:15px}
+.hud{display:flex;flex-wrap:wrap;gap:10px}
+.chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:6px 14px 6px 8px}
+.chip svg{width:30px;height:30px;flex:none}
+.chip .num{font-size:28px;line-height:1;min-width:1.4em;display:inline-block}
+.chip small{display:block;font-size:13px;color:var(--mute);line-height:1.1}
+.bump{animation:bump .35s ease-out}
+@keyframes bump{40%{transform:scale(1.35)}}
+.run{font:22px "Lilita One",sans-serif;color:#2a1a00;background:var(--gold);border:0;border-radius:14px;padding:12px 22px;min-height:52px;cursor:pointer;box-shadow:0 4px 0 #a8740a}
+.run:hover{filter:brightness(1.07)}
+.run:active{transform:translateY(3px);box-shadow:0 1px 0 #a8740a}
+.run:disabled{opacity:.55;cursor:default}
+.run:focus-visible,.buy:focus-visible,.speed button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.status{max-width:1240px;margin:12px auto 0;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--mute);font-size:15px}
+.status b{color:var(--ink)}
+.speed{display:flex;gap:6px;align-items:center}
+.speed button{font:700 14px Nunito,sans-serif;background:var(--panel);color:var(--ink);border:1px solid var(--edge);border-radius:10px;padding:6px 12px;min-height:36px;cursor:pointer}
+.speed button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.boardwrap{overflow-x:auto;background:var(--floor);border-block:1px solid var(--edge)}
+#board{display:block;width:100%;max-width:1240px;min-width:780px;margin:0 auto;height:auto}
+.belt-run{stroke-dasharray:8 12;animation:beltmove .6s linear infinite}
+.paused .belt-run{animation-play-state:paused}
+@keyframes beltmove{to{stroke-dashoffset:-20}}
+.card{transform-box:fill-box;transform-origin:center}
+.card.hit{animation:hit .35s ease-out}
+@keyframes hit{45%{transform:scale(1.05)}}
+.tool{transform-box:fill-box}
+.hit .swing{transform-origin:100% 100%;animation:swing .35s ease-in}
+@keyframes swing{50%{transform:rotate(-38deg)}}
+.hit .spin{transform-origin:center;animation:spin .5s linear}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hit .stamp{animation:stamp .3s ease-in}
+@keyframes stamp{50%{transform:translateY(14px)}}
+.hit .flip{transform-origin:50% 90%;animation:flip .35s}
+@keyframes flip{50%{transform:rotate(18deg)}}
+.hit .glow{animation:glow .4s}
+@keyframes glow{50%{opacity:.35}}
+svg text{font-family:Nunito,sans-serif}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px;max-width:1240px;margin:0 auto}
+.panel{background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:16px 18px}
+h2{font-size:24px;margin:0 0 10px;line-height:1.1}
+.foe{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center}
+.bar{height:14px;border-radius:7px;background:#0b222a;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--atk);transition:width .6s}
+.intent{display:inline-flex;align-items:center;gap:6px;background:#0b222a;border-radius:10px;padding:4px 10px;font-weight:800}
+.mk{display:grid;gap:10px}
+.offer{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;background:#0f3440;border-radius:12px;padding:10px 12px;border-left:6px solid var(--c)}
+.offer b{font-family:"Lilita One",sans-serif;font-weight:400;font-size:19px}
+.offer span{grid-column:1;color:var(--mute);font-size:14px;line-height:1.35}
+.buy{grid-row:1/3;grid-column:2;font:800 15px Nunito,sans-serif;background:var(--gold);color:#2a1a00;border:0;border-radius:10px;padding:8px 12px;min-height:44px;cursor:pointer;white-space:nowrap}
+.buy:disabled{background:#2a4f5b;color:var(--mute);cursor:default}
+#log{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto;font-size:14px}
+#log li{padding:5px 0;border-bottom:1px solid #1f4c5a;display:flex;gap:8px}
+#log li i{font-style:normal;font-weight:800;white-space:nowrap}
+.note{max-width:1240px;margin:14px auto 0;color:var(--mute);font-size:13px}
+@media(prefers-reduced-motion:reduce){.belt-run{animation:none}.card.hit,.hit *{animation:none!important}}
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="top">
+    <div class="title">
+      <h1>Dice Assembly Line</h1>
+      <p>Each turn a heap of dice pours onto your belts, and every machine card turns them into something.</p>
+    </div>
+    <div class="hud" aria-live="polite">
+      <div class="chip"><svg viewBox="0 0 32 32"><path d="M16 28s-11-6.5-11-14a6 6 0 0 1 11-3.3A6 6 0 0 1 27 14c0 7.5-11 14-11 14z" fill="#e2533d" stroke="#7a1d10" stroke-width="2"/></svg><div><span class="num" id="hp">30</span><small>health</small></div></div>
+      <div class="chip"><svg viewBox="0 0 32 32"><path d="M6 26 22 10l2-6 4-2-2 4-6 2L4 24z" fill="#dfe6ea" stroke="#5b6870" stroke-width="1.6"/><path d="M5 20l7 7M3 25l4 4" stroke="#e2533d" stroke-width="3.2" stroke-linecap="round"/></svg><div><span class="num" id="atk">0</span><small>attack</small></div></div>
+      <div class="chip"><svg viewBox="0 0 32 32"><path d="M16 3 27 7v8c0 7-5 12-11 14C10 27 5 22 5 15V7z" fill="#3d8be0" stroke="#163f6e" stroke-width="2"/><path d="M16 6v20" stroke="#bfe0ff" stroke-width="2"/></svg><div><span class="num" id="blk">0</span><small>block</small></div></div>
+      <div class="chip"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#f0b429" stroke="#9a6a05" stroke-width="2"/><circle cx="16" cy="16" r="7.5" fill="none" stroke="#9a6a05" stroke-width="1.6"/><path d="M13 13h6l-6 6h6" stroke="#9a6a05" stroke-width="1.6" fill="none"/></svg><div><span class="num" id="gold">6</span><small>gold</small></div></div>
+    </div>
+    <button class="run" id="run">Roll &amp; run factory</button>
+  </div>
+  <div class="status">
+    <span id="status"><b>Turn 3.</b> Press the button and watch the line work.</span>
+    <span class="speed" role="group" aria-label="Speed">Speed <button id="sp1" aria-pressed="true">1×</button><button id="sp2" aria-pressed="false">2×</button><button id="sp3" aria-pressed="false">4×</button></span>
+  </div>
+</header>
+
+<div class="boardwrap paused" id="wrap">
+  <svg id="board" viewBox="0 0 1200 660" role="img" aria-label="Factory board: Dice Chute feeds Sorting Gate, which splits dice to Ember Forge above and Bulwark Loom then Tumble Drum below; both lines end at Royal Mint.">
+    <defs>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0v40" fill="none" stroke="#174452" stroke-width="1.5"/></pattern>
+      <pattern id="hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="12" fill="#f0b429"/><rect x="6" width="6" height="12" fill="#1b1f22"/></pattern>
+    </defs>
+    <rect width="1200" height="660" fill="url(#grid)"/>
+    <g id="belts"></g>
+    <g id="cards"></g>
+    <g id="dice"></g>
+    <g id="fx"></g>
+  </svg>
+</div>
+
+<section class="band">
+  <div class="cols">
+    <div class="panel">
+      <h2>Opponent</h2>
+      <div class="foe">
+        <svg viewBox="0 0 96 96" aria-hidden="true"><rect x="22" y="30" width="52" height="46" rx="8" fill="#9c5a3c" stroke="#4d2615" stroke-width="3"/><rect x="30" y="10" width="36" height="26" rx="6" fill="#b36d4a" stroke="#4d2615" stroke-width="3"/><circle cx="40" cy="22" r="4" fill="#ffd04a"/><circle cx="56" cy="22" r="4" fill="#ffd04a"/><rect x="8" y="36" width="14" height="32" rx="6" fill="#8a4c31" stroke="#4d2615" stroke-width="3"/><rect x="74" y="36" width="14" height="32" rx="6" fill="#8a4c31" stroke="#4d2615" stroke-width="3"/><rect x="28" y="76" width="14" height="14" fill="#6e3a24"/><rect x="54" y="76" width="14" height="14" fill="#6e3a24"/><circle cx="34" cy="46" r="3" fill="#4d2615"/><circle cx="62" cy="60" r="3" fill="#4d2615"/><path d="M38 56h20" stroke="#4d2615" stroke-width="3"/></svg>
+        <div>
+          <div class="name" id="foeName" style="font-size:22px">Rust Golem</div>
+          <div class="bar"><i id="foeBar"></i></div>
+          <div style="font-size:14px;color:var(--mute)"><span id="foeHp">38</span> / <span id="foeMax">60</span> health</div>
+          <div style="margin-top:8px"><span class="intent">Will hit for <span id="intent">12</span></span></div>
+        </div>
+      </div>
+      <p style="font-size:14px;color:var(--mute);margin:12px 0 0">Attack your factory makes hits the golem. Block soaks its swing.</p>
+    </div>
+    <div class="panel">
+      <h2>Parts market</h2>
+      <div class="mk" id="market"></div>
+    </div>
+    <div class="panel">
+      <h2>Factory log</h2>
+      <ul id="log"><li><i>Turn 3</i> Line is idle. Six dice wait in the chute.</li></ul>
+    </div>
+  </div>
+  <p class="note">Mockup for feel only: every card name, picture and number here is a placeholder. <a href="../" style="color:inherit">Back to the junk drawer</a></p>
+</section>
+
+<script>
+{
+const NS='http://www.w3.org/2000/svg';
+const $=id=>document.getElementById(id);
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e};
+const COL={atk:'#e2533d',def:'#3d8be0',gold:'#e0a214',util:'#2fae92'};
+const TINT={atk:'#fde3d8',def:'#dfeafa',gold:'#fbefc8',util:'#d8f0ea'};
+const CW=190,CH=232;
+const state={turn:3,gold:6,hp:30,atk:0,blk:0,foe:{name:'Rust Golem',hp:38,max:60,intent:12},up:{},running:false,speed:1};
+
+const cards={
+ chute:{x:20,y:214,name:'Dice Chute',type:'util',tag:'Source'},
+ gate:{x:268,y:214,name:'Sorting Gate',type:'util',tag:'Router'},
+ forge:{x:510,y:28,name:'Ember Forge',type:'atk',tag:'Attack'},
+ loom:{x:510,y:400,name:'Bulwark Loom',type:'def',tag:'Defense'},
+ drum:{x:752,y:400,name:'Tumble Drum',type:'util',tag:'Modifier'},
+ mint:{x:990,y:214,name:'Royal Mint',type:'gold',tag:'Economy'}
+};
+const rules=k=>({
+ chute:['Rolls 6 dice onto','the line every turn.'],
+ gate:state.up.echo?['4 to 6 ride up.','1 to 3 ride down.','A 6 also sends','a copy down.']:['4 to 6 ride up.','1 to 3 ride down.'],
+ forge:state.up.bellows?['Gain attack equal','to the pips +2.','The die cools by 2.']:['Gain attack equal','to the pips.','The die cools by 2.'],
+ loom:['Gain block equal','to the pips × 2.'],
+ drum:['Reroll the die,','then pass it on.'],
+ mint:state.up.gilded?['Gain gold: half the','pips, rounded up,','plus 1.']:['Gain gold: half the','pips, rounded up.']
+}[k]);
+
+const art={
+ chute:`<polygon points="40,14 130,14 104,62 66,62" fill="#8ea3ab" stroke="#3e5058" stroke-width="3" stroke-linejoin="round"/><polygon points="40,14 130,14 124,24 46,24" fill="#b9c9cf"/><rect x="70" y="62" width="30" height="24" fill="#5f727a" stroke="#3e5058" stroke-width="3"/><g class="tool flip"><rect x="52" y="-2" width="20" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="2" transform="rotate(-18 62 8)"/><rect x="82" y="2" width="20" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="2" transform="rotate(14 92 12)"/><rect x="104" y="-4" width="18" height="18" rx="4" fill="#fff" stroke="#333" stroke-width="2" transform="rotate(30 113 5)"/><circle cx="62" cy="8" r="2.4" fill="#333"/><circle cx="88" cy="8" r="2.4" fill="#333"/><circle cx="96" cy="16" r="2.4" fill="#333"/></g>`,
+ gate:`<path d="M0 52H78L168 18M78 52L168 86" fill="none" stroke="#3e5058" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><path d="M0 52H78L168 18M78 52L168 86" fill="none" stroke="#8ea3ab" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><g class="tool flip"><path d="M80 50 98 14" stroke="#3e5058" stroke-width="6" stroke-linecap="round"/><circle cx="98" cy="14" r="8" fill="#e2533d" stroke="#7a1d10" stroke-width="2"/></g><circle cx="80" cy="52" r="11" fill="#f0b429" stroke="#7a5404" stroke-width="3"/><text x="128" y="20" font-size="14" font-weight="800" fill="#1d5c4d">4–6</text><text x="128" y="98" font-size="14" font-weight="800" fill="#1d5c4d">1–3</text>`,
+ forge:`<path class="glow" d="M30 92c-10-22 8-30 4-50 14 10 18 22 16 32 6-10 4-22 12-30 6 18 18 26 12 48z" fill="#ff7a2f"/><path class="glow" d="M40 92c-4-12 6-16 6-28 8 8 10 16 8 22 6-6 6-12 10-16 4 10 6 16 2 22z" fill="#ffd04a"/><path d="M62 54h86l-10 12h-14v12h12v12H72V78h12V66H70c-14 0-22-6-26-12z" fill="#3a4046" stroke="#1d2125" stroke-width="2.5" stroke-linejoin="round"/><path d="M62 54h86l-4 5H64z" fill="#6b747c"/><g class="tool swing"><rect x="112" y="6" width="44" height="18" rx="3" fill="#7b858c" stroke="#2b3136" stroke-width="2.5"/><rect x="128" y="22" width="9" height="34" rx="3" fill="#a5672f" stroke="#5a3412" stroke-width="2" transform="rotate(28 132 22)"/></g><circle cx="98" cy="48" r="3" fill="#ffd04a"/><circle cx="108" cy="40" r="2" fill="#ffb03a"/>`,
+ loom:`<rect x="20" y="6" width="10" height="90" fill="#8a5a33"/><rect x="140" y="6" width="10" height="90" fill="#8a5a33"/><rect x="14" y="4" width="142" height="10" rx="3" fill="#a5703f"/>${[24,36,48,60,72,84].map(y=>`<path d="M30 ${y}H140" stroke="#9fb6cf" stroke-width="2"/>`).join('')}<g class="tool stamp"><path d="M85 18 116 28v24c0 18-14 32-31 38-17-6-31-20-31-38V28z" fill="#3d8be0" stroke="#163f6e" stroke-width="3" stroke-linejoin="round"/><path d="M85 22v62" stroke="#bfe0ff" stroke-width="3"/><path d="M60 40h50" stroke="#2869b0" stroke-width="3"/></g>`,
+ drum:`<path d="M44 96 62 70M126 96 108 70" stroke="#3e5058" stroke-width="7" stroke-linecap="round"/><circle cx="85" cy="48" r="42" fill="#5d6e75" stroke="#2b373c" stroke-width="3"/><g class="tool spin"><circle cx="85" cy="48" r="32" fill="#2fae92" stroke="#1b6b59" stroke-width="3"/>${[0,60,120].map(a=>`<path d="M53 48h64" stroke="#1b6b59" stroke-width="4" transform="rotate(${a} 85 48)"/>`).join('')}<rect x="66" y="30" width="16" height="16" rx="3" fill="#fff" stroke="#333" stroke-width="2"/><rect x="88" y="52" width="16" height="16" rx="3" fill="#fff" stroke="#333" stroke-width="2"/></g><circle cx="85" cy="48" r="6" fill="#f0b429" stroke="#7a5404" stroke-width="2"/>`,
+ mint:`<rect x="20" y="4" width="14" height="90" fill="#6b5528"/><rect x="136" y="4" width="14" height="90" fill="#6b5528"/><rect x="16" y="2" width="138" height="14" rx="3" fill="#8d7440"/><g class="tool stamp"><rect x="78" y="16" width="14" height="24" fill="#9aa4aa"/><rect x="56" y="38" width="58" height="14" rx="3" fill="#c7a24a" stroke="#6b5528" stroke-width="2.5"/></g><ellipse cx="85" cy="88" rx="38" ry="7" fill="#9a6a05"/><ellipse cx="85" cy="82" rx="38" ry="7" fill="#f0b429" stroke="#9a6a05" stroke-width="2"/><ellipse cx="85" cy="74" rx="34" ry="7" fill="#f6c84d" stroke="#9a6a05" stroke-width="2"/><ellipse cx="85" cy="74" rx="18" ry="3.5" fill="none" stroke="#9a6a05" stroke-width="1.5"/>`
+};
+
+/* ports: in/out points in board coordinates */
+const P={};
+for(const k in cards){const c=cards[k];P[k]={c:[c.x+CW/2,c.y+92],in:[c.x,c.y+CH/2],out:[c.x+CW,c.y+CH/2]}}
+P.gate.outA=[cards.gate.x+CW,cards.gate.y+82];P.gate.outB=[cards.gate.x+CW,cards.gate.y+150];
+P.mint.inA=[cards.mint.x,cards.mint.y+82];P.mint.inB=[cards.mint.x,cards.mint.y+150];
+const curve=(a,b)=>{const m=(a[0]+b[0])/2;return `M${a[0]},${a[1]} C${m},${a[1]} ${m},${b[1]} ${b[0]},${b[1]}`};
+const beltDefs={
+ b1:[P.chute.out,P.gate.in],
+ up:[P.gate.outA,P.forge.in],
+ dn:[P.gate.outB,P.loom.in],
+ fm:[P.forge.out,P.mint.inA],
+ ld:[P.loom.out,P.drum.in],
+ dm:[P.drum.out,P.mint.inB]
+};
+const belts={};
+for(const k in beltDefs){
+  const d=curve(...beltDefs[k]),g=$('belts');
+  el('path',{d,fill:'none',stroke:'url(#hatch)','stroke-width':34,'stroke-linecap':'butt'},g);
+  el('path',{d,fill:'none',stroke:'#1b1f22','stroke-width':26},g);
+  el('path',{d,fill:'none',stroke:'#3c464c','stroke-width':18,class:'belt-run'},g);
+  belts[k]=el('path',{d,fill:'none',stroke:'none'},g);
+}
+
+function drawCard(k){
+  const c=cards[k],col=COL[c.type];
+  let g=$('card-'+k);
+  if(g)g.innerHTML='';else{g=el('g',{id:'card-'+k,class:'card'},$('cards'))}
+  g.innerHTML=`<rect x="${c.x+4}" y="${c.y+7}" width="${CW}" height="${CH}" rx="14" fill="#0a1e25" opacity=".55"/>
+  <rect x="${c.x}" y="${c.y}" width="${CW}" height="${CH}" rx="14" fill="var(--card)" stroke="${col}" stroke-width="4"/>
+  <path d="M${c.x} ${c.y+14}a14 14 0 0 1 14-14h${CW-28}a14 14 0 0 1 14 14v22H${c.x}z" fill="${col}"/>
+  <text x="${c.x+12}" y="${c.y+26}" font-family="'Lilita One',sans-serif" font-size="20" fill="#fff">${c.name}</text>
+  <rect x="${c.x+10}" y="${c.y+42}" width="${CW-20}" height="100" rx="8" fill="${TINT[c.type]}"/>
+  <g transform="translate(${c.x+10} ${c.y+42})">${art[k]}</g>
+  ${rules(k).map((l,i)=>`<text x="${c.x+12}" y="${c.y+164+i*17}" font-size="14.5" font-weight="700" fill="#2b2620">${l}</text>`).join('')}
+  <text x="${c.x+CW-12}" y="${c.y+CH-10}" text-anchor="end" font-size="13" font-weight="800" fill="${col}">${c.tag}</text>`;
+  const ports=[];
+  if(k!=='chute')ports.push(...(k==='mint'?[P.mint.inA,P.mint.inB]:[P[k].in]));
+  if(k!=='mint')ports.push(...(k==='gate'?[P.gate.outA,P.gate.outB]:[P[k].out]));
+  ports.forEach(p=>{el('circle',{cx:p[0],cy:p[1],r:11,fill:'#1b1f22',stroke:col,'stroke-width':4},g);el('circle',{cx:p[0],cy:p[1],r:4,fill:'#f7f0e1'},g)});
+  if(Object.keys(state.up).some(u=>UP[u].card===k&&state.up[u])){
+    const u=Object.keys(state.up).find(u=>UP[u].card===k);
+    el('rect',{x:c.x+CW-84,y:c.y-14,width:80,height:24,rx:12,fill:'#f0b429',stroke:'#7a5404','stroke-width':2},g);
+    const t=el('text',{x:c.x+CW-44,y:c.y+3,'text-anchor':'middle','font-size':13,'font-weight':800,fill:'#2a1a00'},g);t.textContent='+'+UP[u].name;
+  }
+}
+
+const UP={
+ bellows:{name:'Bellows',cost:4,card:'forge',c:'var(--atk)',txt:'Ember Forge gives +2 attack for every die.'},
+ gilded:{name:'Gilded Gears',cost:5,card:'mint',c:'var(--gold)',txt:'Royal Mint gives +1 extra gold per die.'},
+ echo:{name:'Echo Splitter',cost:6,card:'gate',c:'var(--util)',txt:'Sorting Gate copies every 6 onto the low belt too.'}
+};
+for(const k in cards)drawCard(k);
+
+function renderMarket(){
+  $('market').innerHTML=Object.entries(UP).map(([k,u])=>`<div class="offer" style="--c:${u.c}"><b>${u.name}</b><button class="buy" id="buy-${k}" ${state.up[k]||state.running||state.gold<u.cost?'disabled':''}>${state.up[k]?'Installed':'Buy · '+u.cost+' gold'}</button><span>${u.txt}</span></div>`).join('');
+  for(const k in UP)$('buy-'+k).onclick=()=>buy(k);
+}
+function buy(k){
+  const u=UP[k];if(state.gold<u.cost||state.up[k]||state.running)return;
+  state.gold-=u.cost;state.up[k]=true;setNum('gold',state.gold);drawCard(u.card);renderMarket();
+  log('Market',`Installed ${u.name} on ${cards[u.card].name}.`);
+  setStatus(`<b>${u.name} installed.</b> Run the line to see it work.`);
+}
+
+/* HUD */
+function setNum(id,v){const e=$(id);e.textContent=v;e.classList.remove('bump');void e.offsetWidth;e.classList.add('bump')}
+function setFoe(){const f=state.foe;$('foeName').textContent=f.name;$('foeHp').textContent=f.hp;$('foeMax').textContent=f.max;$('intent').textContent=f.intent;$('foeBar').style.width=(100*f.hp/f.max)+'%'}
+function log(who,msg){const li=document.createElement('li');li.innerHTML=`<i></i><span></span>`;li.firstChild.textContent=who;li.lastChild.textContent=msg;$('log').prepend(li);while($('log').children.length>60)$('log').lastChild.remove()}
+function setStatus(h){$('status').innerHTML=h}
+setFoe();renderMarket();
+
+/* dice */
+const PIPS={1:[[0,0]],2:[[-7,-7],[7,7]],3:[[-7,-7],[0,0],[7,7]],4:[[-7,-7],[7,-7],[-7,7],[7,7]],5:[[-7,-7],[7,-7],[0,0],[-7,7],[7,7]],6:[[-7,-7],[7,-7],[-7,0],[7,0],[-7,7],[7,7]]};
+const roll=()=>1+Math.floor(Math.random()*6);
+function makeDie(v,x,y){
+  const g=el('g',{},$('dice'));
+  const d={g,v,x,y,rot:Math.random()*40-20,s:1,fill:'#ffffff'};
+  el('rect',{x:-15,y:-12,width:30,height:30,rx:7,fill:'#0a1e25',opacity:.35},g);
+  d.body=el('rect',{x:-15,y:-15,width:30,height:30,rx:7,fill:d.fill,stroke:'#2b2620','stroke-width':2.5},g);
+  d.pips=el('g',{},g);face(d,v);place(d,x,y);return d;
+}
+function face(d,v,fill){d.v=v;if(fill){d.fill=fill;d.body.setAttribute('fill',fill)}d.pips.innerHTML=PIPS[v].map(([a,b])=>`<circle cx="${a}" cy="${b}" r="3.2" fill="#2b2620"/>`).join('')}
+function place(d,x,y){d.x=x;d.y=y;d.g.setAttribute('transform',`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${d.rot.toFixed(1)}) scale(${d.s})`)}
+const wait=ms=>new Promise(r=>setTimeout(r,ms/state.speed));
+function anim(ms,f){ms/=state.speed;return new Promise(r=>{const t0=performance.now();const step=n=>{const t=Math.min(1,(n-t0)/ms);f(t);t<1?requestAnimationFrame(step):r()};requestAnimationFrame(step)})}
+const SPD=230;
+function line(d,b){const a=[d.x,d.y],L=Math.hypot(b[0]-a[0],b[1]-a[1]),r0=d.rot;return anim(L/SPD*1000,t=>{d.rot=r0*(1-t);place(d,a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t)})}
+function ride(d,k){const p=belts[k],L=p.getTotalLength();return anim(L/SPD*1000,t=>{const q=p.getPointAtLength(L*t);place(d,q.x,q.y)})}
+const jit=()=>[Math.random()*36-18,Math.random()*20-10];
+async function enter(d,k){const j=jit();await line(d,[P[k].c[0]+j[0],P[k].c[1]+j[1]])}
+
+function hit(k){const g=$('card-'+k);g.classList.remove('hit');void g.getBBox();g.classList.add('hit');setTimeout(()=>g.classList.remove('hit'),450)}
+function pop(k,txt,col){
+  const c=cards[k],x=c.x+CW/2+(Math.random()*40-20),y=c.y-8;
+  const t=el('text',{x,y,'text-anchor':'middle','font-family':"'Lilita One',sans-serif",'font-size':24,fill:col,stroke:'#0f2d38','stroke-width':5,'paint-order':'stroke'},$('fx'));t.textContent=txt;
+  anim(900,p=>{t.setAttribute('y',y-p*34);t.setAttribute('opacity',1-p*p)}).then(()=>t.remove());
+}
+function gain(kind,n,k,label){
+  state[kind]+=n;setNum(kind==='atk'?'atk':kind==='blk'?'blk':'gold',state[kind]);
+  pop(k,`+${n} ${label}`,kind==='atk'?'#ff8a73':kind==='blk'?'#8cc2ff':'#ffd25e');
+}
+
+async function process(d,k){
+  hit(k);await wait(260);
+  if(k==='forge'){
+    const n=d.v+(state.up.bellows?2:0);gain('atk',n,k,'attack');
+    const nv=Math.max(1,d.v-2);log('Ember Forge',`Die ${d.v} → ${n} attack, cools to ${nv}.`);face(d,nv,'#ffc2a6');
+  }else if(k==='loom'){
+    const n=d.v*2;gain('blk',n,k,'block');log('Bulwark Loom',`Die ${d.v} → ${n} block.`);face(d,d.v,'#cfe3ff');
+  }else if(k==='drum'){
+    const old=d.v;for(let i=0;i<6;i++){face(d,roll());d.rot+=40;place(d,d.x,d.y);await wait(55)}
+    const nv=roll();d.rot=0;face(d,nv,'#d4f3ea');place(d,d.x,d.y);pop(k,`${old} → ${nv}`,'#7fe0c6');log('Tumble Drum',`Rerolled ${old} into ${nv}.`);
+  }else if(k==='mint'){
+    const n=Math.ceil(d.v/2)+(state.up.gilded?1:0);gain('gold',n,k,'gold');log('Royal Mint',`Die ${d.v} → ${n} gold.`);
+    face(d,d.v,'#f6c84d');
+    await anim(320,t=>{d.s=1-t;place(d,d.x,d.y+t*16)});d.g.remove();return;
+  }
+  await wait(260);
+}
+
+async function runDie(d,clone){
+  if(!clone){await enter(d,'chute');await wait(150);await line(d,P.chute.out);await ride(d,'b1');await enter(d,'gate');await process(d,'gate')}
+  const high=!clone&&d.v>=4;
+  if(!clone){log('Sorting Gate',`Die ${d.v} goes ${high?'up to the forge':'down to the loom'}.`)}
+  if(!clone&&state.up.echo&&d.v===6){
+    const c=makeDie(6,d.x,d.y);face(c,6,'#d4f3ea');pop('gate','copy!','#7fe0c6');log('Echo Splitter','A 6 was copied onto the low belt.');
+    jobs.push(runDie(c,true));
+  }
+  if(high){
+    await line(d,P.gate.outA);await ride(d,'up');await enter(d,'forge');await process(d,'forge');
+    await line(d,P.forge.out);await ride(d,'fm');
+  }else{
+    await line(d,P.gate.outB);await ride(d,'dn');await enter(d,'loom');await process(d,'loom');
+    await line(d,P.loom.out);await ride(d,'ld');await enter(d,'drum');await process(d,'drum');
+    await line(d,P.drum.out);await ride(d,'dm');
+  }
+  await enter(d,'mint');await process(d,'mint');
+}
+
+let jobs=[];
+async function runFactory(){
+  if(state.running)return;
+  state.running=true;$('run').disabled=true;renderMarket();$('wrap').classList.remove('paused');
+  state.atk=0;state.blk=0;setNum('atk',0);setNum('blk',0);
+  $('dice').innerHTML='';
+  const vals=Array.from({length:6},roll);
+  log('Turn '+state.turn,`Rolled ${vals.join(', ')}.`);
+  setStatus(`<b>Turn ${state.turn}.</b> Rolled ${vals.join(' · ')}. The line is running.`);
+  hit('chute');
+  jobs=[];
+  for(let i=0;i<vals.length;i++){
+    const d=makeDie(vals[i],cards.chute.x+40+i*22,cards.chute.y+40);
+    jobs.push(runDie(d,false));await wait(700);
+  }
+  let n=0;while(n<jobs.length){n=jobs.length;await Promise.all(jobs)}
+  $('wrap').classList.add('paused');
+  resolve();
+}
+function resolve(){
+  const f=state.foe,dealt=Math.min(state.atk,f.hp),taken=Math.max(0,f.intent-state.blk);
+  f.hp-=dealt;state.hp=Math.max(0,state.hp-taken);setNum('hp',state.hp);
+  let msg=`<b>Turn ${state.turn} done.</b> Hit ${f.name} for ${state.atk}. Blocked ${Math.min(state.blk,f.intent)} of ${f.intent}${taken?`, took ${taken}`:', took nothing'}. Gold is ${state.gold}.`;
+  log('Combat',`Hit for ${state.atk}, blocked ${Math.min(state.blk,f.intent)} of ${f.intent}, took ${taken}.`);
+  if(f.hp<=0){msg+=` ${f.name} is scrap!`;log('Combat',`${f.name} falls apart. A Brass Wyrm rolls in.`);state.foe={name:'Brass Wyrm',hp:80,max:80,intent:14}}
+  else f.intent=8+Math.floor(Math.random()*9);
+  if(state.hp<=0){state.hp=30;setNum('hp',30);msg+=' You were knocked out, so the mockup patched you back to 30.'}
+  state.turn++;setFoe();setStatus(msg);
+  state.running=false;$('run').disabled=false;renderMarket();
+}
+
+$('run').onclick=runFactory;
+[1,2,4].forEach((s,i)=>{$('sp'+(i+1)).onclick=()=>{state.speed=s;[1,2,3].forEach(j=>$('sp'+j).setAttribute('aria-pressed',j===i+1))}});
+
+/* opening pose: a few dice mid-line so the board reads at a glance */
+[[4,'up',.55,'#fff'],[2,'dn',.4,'#fff'],[3,'fm',.35,'#ffc2a6'],[5,'dm',.6,'#d4f3ea'],[6,'b1',.5,'#fff']].forEach(([v,k,t,f])=>{
+  const p=belts[k],q=p.getPointAtLength(p.getTotalLength()*t);const d=makeDie(v,q.x,q.y);face(d,v,f);
+});
+}
+</script>
+</body>
+</html>
