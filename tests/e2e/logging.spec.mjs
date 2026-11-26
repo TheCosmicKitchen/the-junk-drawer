@@ -51,6 +51,19 @@ test('opening a lift fills in last time straight away, and logging puts the set 
   expect(errors).toEqual([]);
 });
 
+test('picking a lift straight after typing does not throw', async ({ page }) => {
+  // Search waits 120 ms after the last key. A quick tap (easy with reduced motion) used to open the
+  // lift first, then the late search tried to redraw a picker that was gone.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const errors = await openDemo(page);
+  await openPicker(page);
+  await page.locator('#exSearch').fill('bench');
+  await page.locator('#exResults [data-pick]').first().click();
+  await expect(page.locator('#lastLine')).toBeVisible();
+  await page.waitForTimeout(300);   // past the search delay
+  expect(errors).toEqual([]);
+});
+
 test('a hold logs a time, not reps', async ({ page }) => {
   await openDemo(page);
   await openPicker(page);
