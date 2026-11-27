@@ -136,6 +136,28 @@ test('plates: fewest per side, never over the target', () => {
   assert.deepEqual(L.plateLoadout(100, L.BAR.kg, L.PLATES.kg).perSide, [25, 15]);
 });
 
+test('exercise search forgives a letter wrong, missing, extra or swapped, below exact matches', () => {
+  const ex = [
+    { id: 'sq', name: 'Barbell Squat' }, { id: 'lp', name: 'Lat Pulldown' }, { id: 'dc', name: 'Dumbbell Curl' },
+    { id: 'rdf', name: 'Cable Rear Delt Fly' }, { id: 'row', name: 'Seated Row' }, { id: 'bow', name: 'Bow Pose' },
+    { id: 'bp', name: 'Bench Press' }, { id: 'dl', name: 'Deadlift' },
+  ];
+  const ids = q => L.searchExercises(q, ex, new Map()).map(e => e.id);
+  assert.deepEqual(ids('sqaut'), ['sq']);            // swapped letters
+  assert.deepEqual(ids('lat puldown'), ['lp']);      // a letter missing
+  assert.deepEqual(ids('latpulldown'), ['lp']);      // no space
+  assert.deepEqual(ids('dumbell curl'), ['dc']);     // the classic
+  assert.deepEqual(ids('rear delt fly'), ['rdf']);
+  assert.deepEqual(ids('reer delt'), ['rdf']);
+  assert.deepEqual(ids('deadlfit'), ['dl']);
+  assert.deepEqual(ids('bench pres'), ['bp']);       // still typing
+  assert.deepEqual(ids('row'), ['row']);             // short words stay exact: not Bow Pose
+  assert.deepEqual(ids('zzzz'), []);
+  // An exact match always comes first.
+  const two = [{ id: 'curl', name: 'Curl' }, { id: 'cur', name: 'Cure' }];
+  assert.deepEqual(L.searchExercises('curl', two, new Map()).map(e => e.id), ['curl', 'cur']);
+});
+
 test('exercise search: exact, then starts-with, then a word; aliases count; deleted lifts never show', () => {
   const ex = [
     { id: 'b', name: 'Bench Press' }, { id: 'ib', name: 'Incline Bench Press' }, { id: 'db', name: 'Dumbbell Bench Press' },

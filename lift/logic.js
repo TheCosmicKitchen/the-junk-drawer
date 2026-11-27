@@ -289,20 +289,71 @@ export function searchExercises(query, exercises, aliasesById, recentIds = []) {
   const recentRank = new Map(recentIds.map((id, i) => [id, i]));
   const live = exercises.filter(e => !e.deleted_at);
   if (!q) return recentIds.map(id => live.find(e => e.id === id)).filter(Boolean);
-  const words = q.split(' ');
+  const words = q.split(' '), compact = q.replace(/[^a-z0-9]/g, '');
   const scored = [];
   for (const e of live) {
     const names = [e.name, ...(aliasesById.get(e.id) || [])].map(norm);
     let best = 0;
     for (const n of names) {
-      if (!words.every(w => n.includes(w))) continue;
-      let s = 1;
-      if (n === q) s = 100; else if (n.startsWith(q)) s = 50; else if (n.split(/[^a-z0-9]+/).some(t => t.startsWith(words[0]))) s = 20;
+      let s = 0;
+      if (words.every(w => n.includes(w))) {
+        s = 1;
+        if (n === q) s = 100; else if (n.startsWith(q)) s = 50; else if (n.split(/[^a-z0-9]+/).some(t => t.startsWith(words[0]))) s = 20;
+      } else if (compact.length >= 4 && n.replace(/[^a-z0-9]/g, '').includes(compact)) s = 10;   // "latpulldown", "pull down"
+      else {
+        // A letter wrong, missing, extra or swapped: each word close to a word of the name. Below
+        // any exact match, fewer typos first.
+        const toks = n.split(/[^a-z0-9]+/).filter(Boolean);
+        let typos = 0;
+        for (const w of words) {
+          if (n.includes(w)) continue;
+          const d = nearWord(w, toks);
+          if (d == null) { typos = -1; break; }
+          typos += d;
+        }
+        if (typos > 0) s = Math.max(0.1, 0.9 - typos * 0.2);
+      }
       best = Math.max(best, s);
     }
-    if (best) scored.push({ e, s: best + (recentRank.has(e.id) ? 30 - Math.min(20, recentRank.get(e.id)) : 0) - e.name.length / 100 });
+    if (!best) continue;
+    const rec = recentRank.has(e.id) ? 30 - Math.min(20, recentRank.get(e.id)) : 0;
+    // Typo matches stay below every exact match, but still prefer what you do often and shorter names.
+    scored.push({ e, s: best >= 1 ? best + rec - e.name.length / 100 : best + rec / 1000 - e.name.length / 10000 });
   }
   return scored.sort((a, b) => b.s - a.s).slice(0, 40).map(x => x.e);
+}
+// How many typos a typed word is from the nearest word of a name (or from the start of one, for a
+// word still being typed), or null if none is close. Short words must be exact: "row" isn't "bow".
+function nearWord(w, toks) {
+  const lim = w.length <= 3 ? 0 : w.length <= 6 ? 1 : 2;
+  if (!lim) return null;
+  let best = null;
+  for (const t of toks) {
+    // A whole word that's too long or short can't be close; a longer one may be half typed.
+    let d = Math.abs(t.length - w.length) <= lim ? typoDist(w, t, lim) : Infinity;
+    if (d > 0 && t.length > w.length) d = Math.min(d, typoDist(w, t.slice(0, w.length), lim));
+    if (d <= lim && (best == null || d < best)) best = d;
+  }
+  return best;
+}
+// Edits between two words, counting two letters swapped ("sqaut") as one. Gives up (Infinity) once
+// every path is over `max`.
+const ROWS = [[], [], []];
+export function typoDist(a, b, max = Infinity) {
+  const m = a.length, n = b.length;
+  let [p2, p1, cur] = ROWS;
+  for (let j = 0; j <= n; j++) p1[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i; let low = i;
+    for (let j = 1; j <= n; j++) {
+      let v = Math.min(p1[j] + 1, cur[j - 1] + 1, p1[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, p2[j - 2] + 1);
+      cur[j] = v; if (v < low) low = v;
+    }
+    if (low > max) return Infinity;
+    [p2, p1, cur] = [p1, cur, p2];
+  }
+  return p1[n];
 }
 
 // Which of your recent days should finish themselves: the last `back` days (today included) with
