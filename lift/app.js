@@ -11,6 +11,7 @@ import * as LIB from './library.js';
 import { THEMES, ORDER, swatch, applyTheme } from './themes.js';
 import { PACKS, PACK_ORDER, progress as packProgressOf, runWindow, eventDates } from './seasons.js';
 import { WIDGETS, widgetById } from './widgets/index.js';
+import * as Y from './year.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -685,6 +686,8 @@ view.addEventListener('click', async e => {
   else if (b.dataset.feedDay) { const k = b.dataset.feedDay; if (feedOpen.has(k)) feedOpen.delete(k); else feedOpen.add(k); render(); }
   else if (b.dataset.wrapped) { S.wrappedOpen = b.dataset.wrapped; openSeason(b.dataset.wrapped); }
   else if (b.hasAttribute('data-wrapped-back')) { S.wrappedOpen = null; renderSeasons(); window.scrollTo(0, 0); }
+  else if (b.dataset.yearWrapped) { S.yearOpen = Number(b.dataset.yearWrapped); renderSeasons(); window.scrollTo(0, 0); }
+  else if (b.hasAttribute('data-year-back')) { S.yearOpen = null; renderSeasons(); window.scrollTo(0, 0); }
   else if (b.dataset.szAgain) openSeasonStart(seasonById(b.dataset.szAgain));
   else if (b.hasAttribute('data-programs')) openStarters();
   else if (b.dataset.editSeason) openSeasonSheet(b.dataset.editSeason);
@@ -4408,7 +4411,73 @@ function renderPackPage(pack) {
   view.innerHTML = html;
 }
 
+// ===========================================================================
+// Your Year (year.js): one level for the calendar year from everything you do, in a season or not,
+// with the year's seasons as its chapters and Year Wrapped from January 1st. Past years stay as badges,
+// worked out again from their days. Here: only gathering the facts and putting the result on the page.
+// ===========================================================================
+function yearFacts() {
+  const t = today(), mine = (S.seasons || []).filter(inSeason);
+  const safe = (f, or) => { try { return f(); } catch (x) { return or; } };
+  // What can't be worked out again later (planned workouts beyond the phone's 120 days of sets, last
+  // week's challenges, goals measured from those sets) is noted on this device the first time it's seen.
+  const plans = [...new Set((S.plan || []).map(p => p.template_id))].filter(id => tplById(id)).map(id => ({ template_id: id }));
+  const exs = rotExercises(plans), week = weekOf(t);
+  const seen = (plans.length ? [...new Set(S.recent.map(x => x.performed_on))] : []).filter(d => matchRoutine(plans, d, exs) >= 0).map(d => ({ key: 'w:' + d, on: d }))
+    .concat(safe(() => weekQuests().filter(q => q.done).map(q => ({ key: 'q:' + week + ':' + q.id, on: t })), []))
+    .concat(mine.flatMap(sn => safe(() => { const m = seasonM(sn), on = sn.ends_on < t ? sn.ends_on : t;
+      return goalsFor(sn, S.myId).filter(g => goalHave(g, m, { season: sn }) >= Number(g.target)).map(g => ({ key: 'g:' + g.id, on })); }, [])));
+  const logs = prefs.yearLog && typeof prefs.yearLog === 'object' ? prefs.yearLog : (prefs.yearLog = {});
+  const log = Y.remember(logs[S.myId], seen);
+  if (log !== logs[S.myId]) { logs[S.myId] = log; savePrefs(); }
+  return {
+    days: S.days.filter(d => d.sets > 0).map(d => d.performed_on),
+    prs: (S.bestRows || []).map(r => r.first_lifted_on),
+    workouts: Y.fromLog(log, 'w:'), challenges: Y.fromLog(log, 'q:'), goals: Y.fromLog(log, 'g:'),
+    stamps: (S.stampRows || []).filter(x => x.created_by === S.myId).map(x => x.earned_on),
+    seasons: mine.filter(sn => !isCore(sn) && sn.ends_on < t && seasonM(sn).visits > 0).map(sn => sn.ends_on),
+  };
+}
+const shortDates = (a, b) => fmtDay(a, { month: 'short', day: 'numeric' }) + ' – ' + fmtDay(b, { month: 'short', day: 'numeric' });
+const stampsIn = (from, to, key) => (S.stampRows || []).filter(s => s.created_by === S.myId && s.earned_on >= from && s.earned_on <= to && PACKS[s.season_key] && (!key || s.season_key === key))
+  .map(s => { const pk = PACKS[s.season_key], def = pk.stamps.find(x => x.key === s.stamp_key); return def ? stampHtml(pk, def, true) : ''; }).join('');
+// The year's chapters: your seasons and the season packs you ran, each with how it went.
+function yearChapters(y) {
+  const own = (S.seasons || []).filter(x => inSeason(x) && !isCore(x)).map(sn => ({ sn, starts_on: sn.starts_on, ends_on: sn.ends_on }));
+  const runs = (S.runs || []).filter(r => r.created_by === S.myId && PACKS[r.season_key])
+    .map(run => { const pack = PACKS[run.season_key], w = runWindow(pack, run, L.addDays); return { pack, starts_on: w.from, ends_on: w.to }; });
+  return Y.chaptersOf(own.concat(runs), y).map(c => {
+    const when = shortDates(c.starts_on, c.ends_on), ph = today() < c.starts_on ? 'upcoming' : today() > c.ends_on ? 'done' : 'live';
+    if (c.pack) {
+      const n = (S.stampRows || []).filter(s => s.created_by === S.myId && s.season_key === c.pack.key && s.earned_on >= c.starts_on && s.earned_on <= c.ends_on).length;
+      return { name: c.pack.name, when, phase: ph, result: n + ' of ' + c.pack.stamps.length + ' ' + T.stamps.toLowerCase(), stamps: stampsIn(c.starts_on, c.ends_on, c.pack.key), open: 'data-pack="' + esc(c.pack.key) + '"' };
+    }
+    const sn = c.sn, m = seasonM(sn), gd = goalsDone(sn);
+    const result = (ph === 'done' ? 'Finished' : ph === 'live' ? 'Live' : 'Coming up') + ' · ' + m.visits + ' gym day' + (m.visits === 1 ? '' : 's') + (gd.of ? ' · ' + gd.done + ' of ' + gd.of + ' ' + T.goals.toLowerCase() : '');
+    return { name: sn.name, when, phase: ph, result, stamps: stampsIn(sn.starts_on, sn.ends_on), open: (ph === 'done' ? 'data-wrapped="' : 'data-season="') + esc(sn.id) + '"' };
+  });
+}
+// The card at the top of Seasons, and the chapters under it.
+function yearHtml() {
+  try {
+    const t = today(), y = Number(t.slice(0, 4)), facts = yearFacts(), badges = Y.pastYears(facts, y), c = coreNow();
+    const ms = L.milestoneProgress(L.lbEquivalent(totals().volume));
+    const wrapped = Y.wrappedFresh(t) && badges.some(b => b.year === Y.wrappedYear(t)) ? Y.wrappedYear(t) : null;
+    return Y.yearCardHtml({ sum: Y.yearSummary(facts, y), streak: streakWeeks(), goals: c ? goalsDone(c) : null, badges, wrapped,
+      club: ms.next ? { title: ms.next.title, left: C.compact(ms.remaining) + ' lb' } : null }, T, esc) + Y.chaptersHtml(yearChapters(y), y, T, esc);
+  } catch (x) { console.warn('your year', x); return ''; }   // never takes the Seasons tab down with it
+}
+function renderYearWrapped(y) {
+  const facts = yearFacts(), rows = S.days.filter(d => d.sets > 0 && Y.inYear(d.performed_on, y));
+  const lb = rows.reduce((a, d) => a + lbOf(d), 0), bm = Y.bestMonth(S.days, y, lbOf);
+  view.innerHTML = Y.yearWrappedHtml({ sum: Y.yearSummary(facts, y), days: rows.length, sets: rows.reduce((a, d) => a + Number(d.sets), 0), lb, heavy: heavyLine(lb),
+    prs: facts.prs.filter(d => Y.inYear(d, y)).length, streak: Y.longestStreak(facts.days, y),
+    month: bm && { name: L.fmtDate(L.parseDate(bm.month + '-01'), { month: 'long' }), days: bm.days, lb: bm.lb },
+    chapters: yearChapters(y), stamps: stampsIn(y + '-01-01', y + '-12-31') }, T, esc, C.compact);
+}
+
 function renderSeasons() {
+  if (S.yearOpen) return renderYearWrapped(S.yearOpen);
   if (S.packOpen && PACKS[S.packOpen]) return renderPackPage(PACKS[S.packOpen]);
   const sn = S.seasonOpen && seasonById(S.seasonOpen);
   if (sn && inSeason(sn)) return renderSeasonPage(sn);
@@ -4439,6 +4508,7 @@ function renderSeasons() {
       '<h3 class="section-title">' + esc(T.seasonsWord) + '</h3><p class="hint-line" style="margin-top:-4px">Start any time, at your own pace.</p><div class="season-grid">' + kinds('season') + '</div>' : '');
   view.innerHTML =
     '<div class="row page-actions"><h2 style="font-size:28px">' + esc(T.titles.seasons) + '</h2><span class="head-actions"><button class="btn primary" data-new-any>+ New</button></span></div>' +
+    yearHtml() +
     '<p class="hint-line" style="margin-top:0">A season is a group lifting over the same dates. Everyone picks their own program, or none, and everything you log in between counts. Wrapped comes at the end.</p>' +
     group('Live now', mine.filter(x => phaseOf(x) === 'live')) +
     (invites.length ? '<h3 class="section-title">Join the crew</h3><div class="season-grid">' + invites.map(x => '<section class="card sbanner">' + bannerHtml(x) +

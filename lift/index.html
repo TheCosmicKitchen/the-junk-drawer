@@ -35,6 +35,7 @@
 <link rel="modulepreload" href="charts.js">
 <link rel="modulepreload" href="themes.js">
 <link rel="modulepreload" href="seasons.js">
+<link rel="modulepreload" href="year.js">
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm" crossorigin>
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/auth-js@2.118.0/+esm" crossorigin>
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/postgrest-js@2.118.0/+esm" crossorigin>
@@ -662,6 +663,35 @@
   .sb-stats small { color: var(--muted); font-size: 12.5px; font-weight: 600; }
   .sbanner .actions { margin-top: 12px; }
   .sbanner.big { margin-top: 10px; }
+  /* Your Year (year.js): the year's level at the top of Seasons, its chapters beside or under it. */
+  .year-card { display: grid; gap: 10px; border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); background: linear-gradient(160deg, var(--gold-soft), var(--card) 70%); }
+  .yc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  .yc-kicker { margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+  .yc-level { margin: 2px 0 0; font-family: var(--headfont, var(--display)); font-size: 30px; line-height: 1.05; }
+  .yc-level span { display: block; font-size: 18px; color: var(--muted); font-weight: 700; margin-top: 2px; }
+  .yc-pts { text-align: right; flex: none; }
+  .yc-pts b { display: block; font-family: var(--display); font-size: 26px; font-weight: 800; line-height: 1; }
+  .yc-pts small, .yc-stat small { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .yc-next { margin: -2px 0 0; }
+  .yc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .yc-stat { display: flex; flex-direction: column; min-width: 0; }
+  .yc-stat b { font-family: var(--display); font-size: 22px; font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
+  .yc-stat .linkbtn { padding: 0; text-align: left; font-weight: 700; }
+  .yc-how summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--muted); }
+  .yc-how ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+  .yc-how li { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+  .yc-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .yc-badge { font: 700 12.5px/1 var(--body, inherit); padding: 7px 11px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--line)); background: var(--card); color: var(--ink); cursor: pointer; }
+  .yc-chapters { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; counter-reset: ch; }
+  .yc-chapters li { counter-increment: ch; }
+  .yc-chapter { width: 100%; text-align: left; display: grid; gap: 4px; padding: 10px 12px 10px 40px; position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
+  .yc-chapter::before { content: counter(ch); position: absolute; left: 10px; top: 10px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--chip); color: var(--muted); }
+  .yc-chapters .done .yc-chapter::before { background: var(--gold); color: var(--card); }
+  .yc-chapters .live .yc-chapter::before { background: var(--accent); color: var(--accent-ink); }
+  .yc-ch-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .yc-ch-top small, .yc-ch-result { color: var(--muted); font-size: 13px; }
+  .yc-chapter .pack-mini { margin-top: 2px; }
+  .yc-chapter .stamp-face { width: 30px !important; height: 30px !important; font-size: 12px; }
   .linkbtn.back { padding: 6px 0 0; color: var(--muted); }
   .goal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
   .goal-tile { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--bg); }
@@ -954,6 +984,8 @@
     #view > .hero.compact, #view > .hero.compact + .follow { grid-column: 1 / -1; }
     #view > .wins { grid-column: span 7; }
     #view > .quests { grid-column: span 5; }
+    #view > .year-card { grid-column: span 7; }
+    #view > .year-chapters { grid-column: span 5; }
     #view > .plan-card + .plan-card { grid-column: span 5; }
     #view > .ex-card, #view > .routine, #view > .season, #view > .day { grid-column: span 6; }
     #view > .cal-card { grid-column: span 7; }
