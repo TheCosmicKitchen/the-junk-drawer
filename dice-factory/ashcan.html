@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b222a">
 <title>Dice Factory · ashcan sandbox</title>
 <style>
 :root{--bg:#0b222a;--ink:#eaf3f5;--mute:#9fb8bf}
@@ -18,9 +21,26 @@ kbd{background:#16394a;border:1px solid #2b5566;border-bottom-width:2px;border-r
 .touchbar button:active{transform:translateY(1px)}
 .portrait-note{display:none;margin:10px 4px 0;padding:10px 12px;border-radius:10px;background:#16394a;color:var(--mute);font-size:14px}
 @media (orientation:portrait) and (max-width:820px){.portrait-note{display:block}}
+/* Phone mode: the board is the whole screen, turned sideways if the phone is upright. */
+body.phone{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+body.phone .wrap{padding:0;max-width:none}
+body.phone .help,body.phone .touchbar,body.phone .portrait-note{display:none}
+body.phone canvas{position:fixed;margin:0;border-radius:0;box-shadow:none;aspect-ratio:auto;max-width:none;transform-origin:50% 50%}
+.start{display:none;position:fixed;inset:0;z-index:5;background:rgba(6,18,22,.94);color:var(--ink);align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:24px}
+body.phone .start.show{display:flex}
+.start h1{margin:0;font:900 30px system-ui,sans-serif;color:#ffd25e}
+.start p{margin:0;max-width:420px;color:var(--mute);font-size:15px}
+.start button{min-width:220px;min-height:56px;border-radius:16px;border:2px solid #7fe0c6;background:#2fae92;color:#06201a;font:900 19px system-ui,sans-serif;touch-action:manipulation}
+.start a{color:var(--mute);font-size:13px}
 </style>
 </head>
 <body>
+<div class="start" id="start">
+  <h1>DICE FACTORY</h1>
+  <p>Build a dice line, then hold off the Rust Colossus. Turn your phone sideways.</p>
+  <button id="start-btn" type="button">Tap to play</button>
+  <a href="?desktop">Use the desktop layout instead</a>
+</div>
 <div class="wrap">
 <canvas id="c" width="1280" height="720" aria-label="Dice factory sandbox"></canvas>
 <div class="touchbar" aria-label="Touch controls">
@@ -40,22 +60,63 @@ kbd{background:#16394a;border:1px solid #2b5566;border-bottom-width:2px;border-r
 <script>
 "use strict";
 // ============================================================ setup
-const W = 1280, H = 720;
+// Phone mode: a full-screen landscape stage with a wider, shorter board, a
+// compact top bar, a tabbed palette with big tiles and buttons on the board.
+// On by default for touch phones; ?phone or ?desktop forces either.
+const QS = new URLSearchParams(location.search);
+const PHONE = QS.has('phone') || (!QS.has('desktop') && matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600);
+if (PHONE) document.body.classList.add('phone');
+
+const W = 1280;
+let H = 720;
+const CELL = 64, HC = CELL / 2, GW = 9, GH = 6, GX = 24;
+let GY = 104, GROUND = GY + GH * CELL;
+const WALL_X0 = 612, WALL_X1 = 690, FIELD_X1 = 1258;
+const REACH_X = WALL_X1 + 8;
+const BLUNDER_RANGE = 230;           // Blunderbuss is strong while the foe is this close
+let PAL_Y = 512, PAL_ROW = 50, PAL_X = 118, PAL_W = 84, PAL_H = 44, PAL_GAP = 3;
+if (PHONE) {
+  H = 600; GY = 56; GROUND = GY + GH * CELL;
+  PAL_Y = GROUND + 14; PAL_X = 132; PAL_W = 130; PAL_H = 62; PAL_ROW = 68; PAL_GAP = 6;
+}
+
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let stageRotated = false;
 function fitCanvas() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (PHONE) {
+    // fill the screen; if the phone is upright, lay the board on its side
+    const vw = window.innerWidth, vh = window.innerHeight;
+    stageRotated = vh > vw;
+    const long = stageRotated ? vh : vw, short = stageRotated ? vw : vh;
+    const s = Math.min(long / W, short / H);
+    const cw = W * s, ch = H * s;
+    Object.assign(cv.style, {width: cw + 'px', height: ch + 'px', left: (vw - cw) / 2 + 'px', top: (vh - ch) / 2 + 'px',
+      transform: stageRotated ? 'rotate(90deg)' : 'none'});
+    cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+    ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    return;
+  }
   cv.width = W * dpr; cv.height = H * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 fitCanvas();
 window.addEventListener('resize', fitCanvas);
+window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
 
-const CELL = 64, HC = CELL / 2, GW = 9, GH = 6, GX = 24, GY = 104;
-const GROUND = GY + GH * CELL;
-const WALL_X0 = 612, WALL_X1 = 690, FIELD_X1 = 1258;
-const REACH_X = WALL_X1 + 8;
-const BLUNDER_RANGE = 230;           // Blunderbuss is strong while the foe is this close
-const PAL_Y = 512, PAL_ROW = 50, PAL_X = 118, PAL_W = 84, PAL_H = 44, PAL_GAP = 3;
+// "Tap to play": go full screen and lock landscape where the browser allows it
+// (Android). iPhones allow neither, so there the board turns itself sideways.
+if (PHONE) {
+  const st = document.getElementById('start');
+  st.classList.add('show');
+  document.getElementById('start-btn').addEventListener('click', async () => {
+    st.classList.remove('show');
+    S.paused = false;
+    try { await document.documentElement.requestFullscreen({navigationUI: 'hide'}); } catch (_) { /* not allowed here */ }
+    try { await screen.orientation.lock('landscape'); } catch (_) { /* not allowed here */ }
+    setTimeout(fitCanvas, 250);
+  });
+}
 
 const BELT_SPEED = 150;
 const ROLL_EVERY = 4.2, ROLL_COUNT = 6, HOPPER_MAX = 10;
@@ -1588,21 +1649,21 @@ function rotateAt(c) {
 // ============================================================ input
 function toLocal(e) {
   const r = cv.getBoundingClientRect();
+  // turned 90° clockwise: the board's x runs down the screen, its y runs right to left
+  if (stageRotated) return {x: (e.clientY - r.top) * W / r.height, y: (r.right - e.clientX) * H / r.width};
   return {x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height};
 }
 const cellAt = p => ({x: Math.floor((p.x - GX) / CELL), y: Math.floor((p.y - GY) / CELL)});
 
 function paletteAt(p) {
-  for (let r = 0; r < CATS.length; r++) {
-    const list = PALETTE[CATS[r]];
-    for (let i = 0; i < list.length; i++) {
-      const x = PAL_X + i * (PAL_W + PAL_GAP), y = PAL_Y + r * PAL_ROW;
-      if (p.x >= x && p.x <= x + PAL_W && p.y >= y && p.y <= y + PAL_H) return list[i];
-    }
-  }
+  for (const t of paletteTiles()) if (p.x >= t.x && p.x <= t.x + PAL_W && p.y >= t.y && p.y <= t.y + PAL_H) return t.k;
   return null;
 }
-function buttonAt(p) { return S.buttons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h); }
+function buttonAt(p) {
+  // an open Tools menu takes every tap until it closes
+  if (S.toolsOpen) return S.menuButtons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) || {fn: () => { S.toolsOpen = false; }};
+  return S.buttons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h);
+}
 
 const capture = e => { try { cv.setPointerCapture(e.pointerId); } catch (_) { /* pointer already gone */ } };
 cv.addEventListener('contextmenu', e => e.preventDefault());
@@ -1665,7 +1726,7 @@ document.getElementById('tb-drop').addEventListener('click', () => { S.pal = nul
 
 function pickPal(k) {
   if (opts.erase) setErase(false);
-  S.pal = k;
+  S.pal = k; S.palPickT = S.t;
   S.recent = [k, ...S.recent.filter(x => x !== k)].slice(0, 5);
 }
 
@@ -1718,7 +1779,7 @@ function dragTo(c) {
 // ============================================================ update
 function update(rawDt) {
   // time slows while you place parts over the floor
-  const placing = S.pal && inGrid(mouse.cell) && opts.slow;
+  const placing = S.pal && (PHONE || inGrid(mouse.cell)) && opts.slow;
   S.timeScale = lerp(S.timeScale, placing ? .3 : 1, 1 - Math.exp(-10 * rawDt));
   const dt = rawDt * S.timeScale * opts.speed;
   S.t += dt;
@@ -2580,30 +2641,37 @@ function button(x, y, w, label, on, fn) {
   S.buttons.push({x, y, w, h: 22, fn});
 }
 
+// Sandbox controls: a toolbar row on desktop, the ☰ Tools menu on phones.
+function toolbarItems() {
+  return [
+    {w: 58, label: S.paused ? 'Paused' : 'Pause', on: S.paused, fn: () => { S.paused = !S.paused; }},
+    {w: 62, toggle: true, label: 'Speed ' + opts.speed + 'x', on: opts.speed > 1, fn: () => { opts.speed = opts.speed === 1 ? 2 : (opts.speed === 2 ? 3 : 1); }},
+    {w: 98, toggle: true, label: 'Slow-mo build', on: opts.slow, fn: () => { opts.slow = !opts.slow; }},
+    {w: 84, toggle: true, label: opts.holdFoe ? 'Foe frozen' : 'Freeze foe', on: opts.holdFoe, fn: () => { opts.holdFoe = !opts.holdFoe; }},
+    {w: 72, toggle: true, label: 'God mode', on: opts.god, fn: () => { opts.god = !opts.god; if (opts.god) S.hp = S.maxHp; }},
+    {w: 64, label: 'Roll now', on: false, fn: () => rollNow()},
+    {w: 72, toggle: true, label: 'Free build', on: opts.free, fn: () => { opts.free = !opts.free; }},
+    {w: 68, label: 'Phase ▸', on: false, fn: () => {
+      if (S.mode === 'build') { startFight(false); return; }
+      const f = S.foe;
+      if (f.phase + 1 < PHASES.length) f.hp = Math.min(f.hp, f.max * PHASES[f.phase + 1].at - 1);
+      else f.hp = Math.min(f.hp, 60);
+    }},
+    {w: 70, label: 'Flyers +4', on: false, fn: () => spawnFlyers(4)},
+    {w: 68, label: 'New foe', on: false, fn: () => newGame('keep')},
+    {w: 76, label: 'Clear floor', on: false, fn: () => newGame('blank')},
+    {w: 58, label: 'Starter', on: false, fn: () => newGame('starter')},
+  ];
+}
+
 function drawHud() {
   S.buttons = [];
+  if (PHONE) { drawHudPhone(); return; }
   txt('DICE FACTORY', 24, 22, 20, COL.gold, 'left', 800);
   txt('ashcan sandbox', 176, 23, 12, 'rgba(255,255,255,.5)', 'left', 600);
   // toolbar
   let bx = 330;
-  const tb = (w, label, on, fn) => { button(bx, 10, w, label, on, fn); bx += w + 5; };
-  tb(58, S.paused ? 'Paused' : 'Pause', S.paused, () => { S.paused = !S.paused; });
-  tb(62, 'Speed ' + opts.speed + 'x', opts.speed > 1, () => { opts.speed = opts.speed === 1 ? 2 : (opts.speed === 2 ? 3 : 1); });
-  tb(98, 'Slow-mo build', opts.slow, () => { opts.slow = !opts.slow; });
-  tb(84, opts.holdFoe ? 'Foe frozen' : 'Freeze foe', opts.holdFoe, () => { opts.holdFoe = !opts.holdFoe; });
-  tb(72, 'God mode', opts.god, () => { opts.god = !opts.god; if (opts.god) S.hp = S.maxHp; });
-  tb(64, 'Roll now', false, () => rollNow());
-  tb(72, 'Free build', opts.free, () => { opts.free = !opts.free; });
-  tb(68, 'Phase ▸', false, () => {
-    if (S.mode === 'build') { startFight(false); return; }
-    const f = S.foe;
-    if (f.phase + 1 < PHASES.length) f.hp = Math.min(f.hp, f.max * PHASES[f.phase + 1].at - 1);
-    else f.hp = Math.min(f.hp, 60);
-  });
-  tb(70, 'Flyers +4', false, () => spawnFlyers(4));
-  tb(68, 'New foe', false, () => newGame('keep'));
-  tb(76, 'Clear floor', false, () => newGame('blank'));
-  tb(58, 'Starter', false, () => newGame('starter'));
+  for (const it of toolbarItems()) { button(bx, 10, it.w, it.label, it.on, it.fn); bx += it.w + 5; }
   // factory health
   txt('Factory', 24, 60, 13, 'rgba(255,255,255,.65)', 'left', 600);
   bar(84, 52, 200, 16, S.hp / S.maxHp, S.hitFlash > 0 ? '#ffffff' : '#ff7a6a');
@@ -2662,50 +2730,148 @@ function drawHud() {
   if (S.timeScale < .9) txt('slow-mo', 318, 23, 11, '#7fe0c6', 'right', 800);
 }
 
-function drawPalette() {
-  rr(16, PAL_Y - 8, W - 32, H - PAL_Y + 2, 12, 'rgba(0,0,0,.2)');
-  let hover = null;
-  CATS.forEach((cat, r) => {
-    const y = PAL_Y + r * PAL_ROW;
-    txt(CAT_LABEL[cat], 28, y + PAL_H / 2, 11, COL[cat], 'left', 800);
-    PALETTE[cat].forEach((k, i) => {
-      const x = PAL_X + i * (PAL_W + PAL_GAP);
-      const sel = S.pal === k;
-      const hov = mouse.x >= x && mouse.x <= x + PAL_W && mouse.y >= y && mouse.y <= y + PAL_H;
-      if (hov) hover = {k, x, y};
-      rr(x, y, PAL_W, PAL_H, 7, sel ? '#fff6d8' : (hov ? '#ffffff' : COL.card), sel ? COL.gold : COL[cat], sel ? 3 : 1.5);
-      ctx.save(); ctx.translate(x + 21, y + PAL_H / 2); ctx.scale(.62, .62);
-      rr(-28, -28, 56, 56, 9, TINT[cat]);
-      drawIcon(dummyMachine(k));
-      ctx.restore();
-      const name = KINDS[k].short;
-      ctx.font = '700 10.5px system-ui,sans-serif';
-      if (ctx.measureText(name).width > PAL_W - 44) {
-        const parts = name.split(/[\s-]/);
-        txt(parts[0], x + 41, y + 16, 10, COL.ink, 'left', 700);
-        txt(parts.slice(1).join(' '), x + 41, y + 29, 10, COL.ink, 'left', 700);
-      } else txt(name, x + 41, y + PAL_H / 2 + 1, 10.5, COL.ink, 'left', 700);
-      // gold star: answers the current phase; hollow star: answers the next one
-      const ph = PHASES[S.foe.phase], nx = PHASES[S.foe.phase + 1];
-      if (ph.good.includes(k)) { circle(x + PAL_W - 8, y + 8, 7 + Math.sin(S.t * 5) * .8, COL.gold); txt('★', x + PAL_W - 8, y + 8.5, 10, '#7a5404', 'center', 900); }
-      else if (nx && nx.good.includes(k)) { ringStroke(x + PAL_W - 8, y + 8, 6, COL.gold, 1.5); }
-      const ri_ = S.recent.indexOf(k);
-      if (ri_ >= 0) { rr(x + 2, y + 2, 13, 13, 3, '#2b373c'); txt(String(ri_ + 1), x + 8.5, y + 9, 9.5, '#fff', 'center', 800); }
-      // cost; dimmed when you can't afford it
-      const cost = COST[k] || 0, ok = canAfford(k);
-      if (!opts.free) {
-        rr(x + PAL_W - 26, y + PAL_H - 15, 24, 13, 6, ok ? '#f0b429' : '#5a4a46');
-        txt(`${cost}⚙`, x + PAL_W - 14, y + PAL_H - 8, 9.5, ok ? '#2a1a00' : '#c9b8b4', 'center', 900);
-      }
-      if (!ok) rr(x, y, PAL_W, PAL_H, 7, 'rgba(10,25,30,.45)');
-    });
+// One compact row on phones: factory, gears, line health, then the Colossus.
+function foeStatus() {
+  const f = S.foe;
+  if (S.mode === 'build') return 'Waiting while you build';
+  if (f.stun > 0) return 'Stunned';
+  if (f.state === 'march') { const front = foeFront(); return front > REACH_X + 2 ? `Reaches wall in ${Math.ceil(Math.max(0, (front - REACH_X) / f.speed))}s` : 'At your wall'; }
+  if (f.state === 'windup') return 'Winding up!';
+  if (f.state === 'shift') return 'Changing…';
+  return 'Recovering';
+}
+function drawHudPhone() {
+  const f = S.foe, ph = PHASES[f.phase];
+  // factory health
+  bar(12, 8, 170, 18, S.hp / S.maxHp, S.hitFlash > 0 ? '#ffffff' : '#ff7a6a');
+  txt(`Factory ${Math.ceil(S.hp)}/${S.maxHp}`, 97, 18, 12, '#fff', 'center', 800, 3);
+  // gears
+  S.gearFlash = Math.max(0, (S.gearFlash || 0) - 1 / 30);
+  rr(190, 4, 86, 40, 9, `rgba(224,162,20,${.18 + .3 * S.gearFlash})`, COL.gold, 1.5);
+  txt(`⚙ ${opts.free ? '∞' : Math.floor(S.gears)}`, 233, 25, 21 + 4 * S.gearFlash, COL.gold, 'center', 900);
+  // line health
+  const jams = S.dice.filter(d => d.state === 'stop' && d.wait > JAM_TIME).length;
+  const hop = Math.max(0, ...[...S.machines.values()].filter(m => m.kind === 'chute').map(m => m.hopper.length));
+  const wallHp = Math.round(S.bricks.reduce((a, b) => a + b.hp, 0));
+  const floor = [...S.piles.values()].reduce((a, p) => a + p.dice.length, 0);
+  const chips = [['Hopper', `${hop}/${HOPPER_MAX}`, hop >= HOPPER_MAX - 2], ['Jammed', String(jams), jams > 3], ['Wall', String(wallHp), false], ['Floor', String(floor), false]];
+  chips.forEach(([l, v, bad], i) => {
+    const x = 284 + i * 74;
+    rr(x, 4, 68, 40, 8, 'rgba(0,0,0,.28)');
+    txt(l, x + 34, 15, 11, 'rgba(255,255,255,.6)', 'center', 600);
+    txt(v, x + 34, 32, 16, bad ? '#ff8a73' : (l === 'Wall' ? COL.blk : '#e9fbff'), 'center', 800);
   });
-  txt('★ helps this phase    ○ helps next phase    1-5 picks a recent part', W - 30, PAL_Y + 3 * PAL_ROW + PAL_H / 2, 11.5, 'rgba(255,255,255,.5)', 'right', 600);
-  if (!hover && S.pal) {
-    // keep the picked part's description up (phones have no hover)
-    const r = CATS.indexOf(KINDS[S.pal].cat), i = PALETTE[KINDS[S.pal].cat].indexOf(S.pal);
-    hover = {k: S.pal, x: PAL_X + i * (PAL_W + PAL_GAP), y: PAL_Y + r * PAL_ROW};
+  // the Colossus
+  const fx = 590, fw = 380;
+  txt(`Phase ${f.phase + 1}: ${ph.name}`, fx, 14, 14, f.enraged ? '#ff8a73' : '#fff', 'left', 800);
+  bar(fx, 24, fw, 16, f.hp / f.max, f.enraged ? '#ff5a4a' : '#e2533d');
+  for (let i = 1; i < PHASES.length; i++) line(fx + fw * PHASES[i].at, 21, fx + fw * PHASES[i].at, 43, i <= f.phase ? 'rgba(255,255,255,.25)' : '#ffd25e', 2);
+  txt(`${Math.ceil(f.hp)} / ${f.max}`, fx + fw / 2, 33, 11, '#fff', 'center', 800, 3);
+  const nx = PHASES[f.phase + 1];
+  const soon = nx && S.mode !== 'build' && f.hp / f.max - nx.at < .07 && f.state !== 'shift';
+  txt(soon ? `Phase ${f.phase + 2} soon: ${nx.name}` : foeStatus(), 1268, 14, 12.5, soon ? COL.gold : (f.state === 'windup' ? '#ff8a73' : 'rgba(255,255,255,.75)'), 'right', 700);
+  const tags = [f.pinned > 0 ? 'pinned' : '', f.chill > 0 ? 'chilled' : '', f.burn > 0 ? 'burning' : '', S.timeScale < .9 ? 'slow-mo' : ''].filter(Boolean).join(' · ');
+  if (tags) txt(tags, 1268, 33, 11.5, '#7fe0c6', 'right', 700);
+}
+
+// Phone: category tabs on the left, big buttons on the right of the palette.
+function bigButton(x, y, w, h, label, sub, on, fn, col = '#16394a') {
+  rr(x, y, w, h, 10, on ? '#2fae92' : col, on ? '#7fe0c6' : 'rgba(255,255,255,.2)', 1.5);
+  txt(label, x + w / 2, y + h / 2 - (sub ? 7 : 0), 20, on ? '#06201a' : '#fff', 'center', 800);
+  if (sub) txt(sub, x + w / 2, y + h / 2 + 15, 10.5, on ? '#06201a' : 'rgba(255,255,255,.7)', 'center', 700);
+  S.buttons.push({x, y, w, h, fn});
+}
+function drawPhoneControls() {
+  CATS.forEach((cat, i) => {
+    const on = (S.palCat || 'route') === cat, y = PAL_Y - 2 + i * 34;
+    rr(14, y, 112, 30, 8, on ? COL[cat] : 'rgba(0,0,0,.25)', COL[cat], 1.5);
+    txt(CAT_LABEL[cat].replace(' & SPLIT', ''), 70, y + 15.5, 12, on ? '#06201a' : COL[cat], 'center', 900);
+    S.buttons.push({x: 14, y, w: 112, h: 30, fn: () => { S.palCat = cat; }});
+  });
+  const bx = 1094, bw = 56, by = PAL_Y - 2, bh = 62;
+  bigButton(bx, by, bw, bh, '↻', 'rotate', false, () => { if (S.pal) S.placeDir = rotCW(S.placeDir); else if (S.lastTap) rotateAt(S.lastTap); });
+  bigButton(bx + 60, by, bw, bh, '✕', 'erase', opts.erase, () => setErase(!opts.erase));
+  bigButton(bx + 120, by, bw, bh, '🛡', 'parry', false, () => raiseParry());
+  bigButton(bx, by + 68, bw, bh, '✋', 'drop', false, () => { S.pal = null; setErase(false); });
+  bigButton(bx + 60, by + 68, bw, bh, '☰', 'tools', S.toolsOpen, () => { S.toolsOpen = true; });
+  bigButton(bx + 120, by + 68, bw, bh, S.paused ? '▶' : '❚❚', S.paused ? 'play' : 'pause', S.paused, () => { S.paused = !S.paused; });
+}
+function drawToolsMenu() {
+  if (!S.toolsOpen) return;
+  S.menuButtons = [];
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, H);
+  const items = toolbarItems(), cols = 3, w = 220, h = 54, gap = 10;
+  const rows = Math.ceil(items.length / cols), pw = cols * w + (cols - 1) * gap + 40, ph = rows * h + (rows - 1) * gap + 84;
+  const px = (W - pw) / 2, py = (H - ph) / 2;
+  rr(px, py, pw, ph, 16, 'rgba(6,18,22,.97)', COL.gold, 2);
+  txt('Sandbox tools', px + 20, py + 26, 18, COL.gold, 'left', 900);
+  txt('tap outside to close', px + pw - 20, py + 26, 12, 'rgba(255,255,255,.5)', 'right', 600);
+  items.forEach((it, i) => {
+    const x = px + 20 + (i % cols) * (w + gap), y = py + 52 + Math.floor(i / cols) * (h + gap);
+    rr(x, y, w, h, 10, it.on ? '#2fae92' : '#16394a', it.on ? '#7fe0c6' : 'rgba(255,255,255,.2)', 1.5);
+    txt(it.label, x + w / 2, y + h / 2 + 1, 17, it.on ? '#06201a' : '#fff', 'center', 800);
+    S.menuButtons.push({x, y, w, h, fn: () => { it.fn(); if (!it.toggle) S.toolsOpen = false; }});
+  });
+}
+
+// Where each palette tile sits. Desktop: every category, a row each.
+// Phone: tabs pick a category and its parts fill two rows of big tiles.
+function paletteTiles() {
+  const out = [];
+  if (!PHONE) {
+    CATS.forEach((cat, r) => PALETTE[cat].forEach((k, i) => out.push({k, cat, x: PAL_X + i * (PAL_W + PAL_GAP), y: PAL_Y + r * PAL_ROW})));
+  } else {
+    const cat = S.palCat || 'route';
+    PALETTE[cat].forEach((k, i) => out.push({k, cat, x: PAL_X + (i % 7) * (PAL_W + PAL_GAP), y: PAL_Y + Math.floor(i / 7) * PAL_ROW}));
   }
+  return out;
+}
+
+function drawPalette() {
+  rr(8, PAL_Y - 8, W - 16, H - PAL_Y + 4, 12, 'rgba(0,0,0,.2)');
+  let hover = null;
+  if (PHONE) drawPhoneControls();
+  else CATS.forEach((cat, r) => txt(CAT_LABEL[cat], 28, PAL_Y + r * PAL_ROW + PAL_H / 2, 11, COL[cat], 'left', 800));
+  const iconS = PAL_H / 72, nameSize = PHONE ? 14 : 10.5, badge = PHONE ? 1.35 : 1;
+  for (const {k, cat, x, y} of paletteTiles()) {
+    const sel = S.pal === k;
+    const hov = !PHONE && mouse.x >= x && mouse.x <= x + PAL_W && mouse.y >= y && mouse.y <= y + PAL_H;
+    if (hov) hover = {k, x, y};
+    rr(x, y, PAL_W, PAL_H, 7, sel ? '#fff6d8' : (hov ? '#ffffff' : COL.card), sel ? COL.gold : COL[cat], sel ? 3 : 1.5);
+    ctx.save(); ctx.translate(x + PAL_H / 2 - 1, y + PAL_H / 2); ctx.scale(iconS, iconS);
+    rr(-28, -28, 56, 56, 9, TINT[cat]);
+    drawIcon(dummyMachine(k));
+    ctx.restore();
+    const name = KINDS[k].short, nx0 = x + PAL_H + 1;
+    ctx.font = `700 ${nameSize}px system-ui,sans-serif`;
+    if (ctx.measureText(name).width > PAL_W - PAL_H - 4) {
+      const parts = name.split(/[\s-]/);
+      txt(parts[0], nx0, y + PAL_H * .36, nameSize - .5, COL.ink, 'left', 700);
+      txt(parts.slice(1).join(' '), nx0, y + PAL_H * .64, nameSize - .5, COL.ink, 'left', 700);
+    } else txt(name, nx0, y + PAL_H / 2 + 1, nameSize, COL.ink, 'left', 700);
+    // gold star: answers the current phase; hollow star: answers the next one
+    const ph = PHASES[S.foe.phase], nxp = PHASES[S.foe.phase + 1];
+    const sx = x + PAL_W - 8 * badge, sy = y + 8 * badge;
+    if (ph.good.includes(k)) { circle(sx, sy, (7 + Math.sin(S.t * 5) * .8) * badge, COL.gold); txt('★', sx, sy + .5, 10 * badge, '#7a5404', 'center', 900); }
+    else if (nxp && nxp.good.includes(k)) ringStroke(sx, sy, 6 * badge, COL.gold, 1.5);
+    const ri_ = S.recent.indexOf(k);
+    if (ri_ >= 0 && !PHONE) { rr(x + 2, y + 2, 13, 13, 3, '#2b373c'); txt(String(ri_ + 1), x + 8.5, y + 9, 9.5, '#fff', 'center', 800); }
+    // cost; dimmed when you can't afford it
+    const cost = COST[k] || 0, ok = canAfford(k);
+    if (!opts.free) {
+      const bw = 24 * badge, bh = 13 * badge;
+      rr(x + PAL_W - bw - 2, y + PAL_H - bh - 2, bw, bh, bh / 2, ok ? '#f0b429' : '#5a4a46');
+      txt(`${cost}⚙`, x + PAL_W - bw / 2 - 2, y + PAL_H - bh / 2 - 1.5, 9.5 * badge, ok ? '#2a1a00' : '#c9b8b4', 'center', 900);
+    }
+    if (!ok) rr(x, y, PAL_W, PAL_H, 7, 'rgba(10,25,30,.45)');
+  }
+  if (!PHONE) txt('★ helps this phase    ○ helps next phase    1-5 picks a recent part', W - 30, PAL_Y + 3 * PAL_ROW + PAL_H / 2, 11.5, 'rgba(255,255,255,.5)', 'right', 600);
+  // keep the picked part's description up for a moment (phones have no hover)
+  if (!hover && S.pal && (!PHONE || S.t - (S.palPickT || 0) < 2.5)) {
+    const tile = paletteTiles().find(t => t.k === S.pal);
+    if (tile) hover = {k: S.pal, x: tile.x, y: tile.y};
+  }
+  if (PHONE && hover) hover.y = PAL_Y;            // above the palette, not over a tile row
   if (hover) {
     const info = KINDS[hover.k];
     const w = 300, x = clamp(hover.x - 20, 16, W - w - 16), y = hover.y - 64;
@@ -2794,11 +2960,13 @@ function draw() {
   drawBuildUI();
   drawPalette();
   drawBanner();
+  drawToolsMenu();
   if (S.over) drawOverlay();
 }
 
 // ============================================================ loop
 newGame('blank');
+if (PHONE) S.paused = true;          // waits behind "Tap to play"
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
