@@ -131,6 +131,12 @@ class SupaStore {
     return rows.map((r, i) => out.find(o => t(o.logged_at) === t(r.logged_at) && o.exercise_id === r.exercise_id) || out[i]);
   }
   async updateSet(id, patch) { return must(await this.sb.from('lift_sets').update(patch).eq('id', id).select(SET_COLS).single()); }
+  // Merge a duplicate: every one of your sets on one exercise moves to another (deleted ones too, so
+  // an undo brings them back in the right place). The bests trigger works each moved best out again.
+  async moveSets(fromId, toId) {
+    const me = await this.userId();
+    return must(await this.sb.from('lift_sets').update({ exercise_id: toId }).eq('created_by', me).eq('exercise_id', fromId).select('id')).length;
+  }
   deleteSet(id) { return this.updateSet(id, { deleted_at: new Date().toISOString() }); }
   restoreSet(id) { return this.updateSet(id, { deleted_at: null }); }
   async addExercise(name, fields) {
@@ -427,6 +433,7 @@ class DemoStore {
   }
   deleteSet(id) { return this.updateSet(id, { deleted_at: new Date().toISOString() }); }
   restoreSet(id) { return this.updateSet(id, { deleted_at: null }); }
+  async moveSets(fromId, toId) { let n = 0; for (const s of this.sets) if (s.exercise_id === fromId) { s.exercise_id = toId; n++; } return n; }
   async addExercise(name, fields) {
     const e = { id: uid(), name, supports_bodyweight: false, kind: 'strength', log_type: 'reps', deleted_at: null, ...fields };
     this.exercises.push(e);

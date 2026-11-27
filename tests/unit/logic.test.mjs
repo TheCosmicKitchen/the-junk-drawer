@@ -52,14 +52,50 @@ test('milestones: the Elephant Club at 10,000 lb, then every 50K', () => {
   assert.equal(L.milestoneProgress(9e6).next, null);
 });
 
-test('a PR beats your best at that rep count; a first-ever lift counts, a new rep count does not', () => {
+test('a PR beats your best at that many reps or more; a first-ever lift counts', () => {
   const bests = L.bestsMap([{ exercise_id: 'bench', unit: 'lb', reps: 5, heaviest: 185 }]);
   const set = o => ({ exercise_id: 'bench', unit: 'lb', reps: 5, weight: 185, ...o });
   assert.equal(L.isPr(set({ weight: 190 }), bests), true);
   assert.equal(L.isPr(set({ weight: 185 }), bests), false);    // a tie is not a PR
   assert.equal(L.isPr(set({ weight: 190, is_warmup: true }), bests), false);
-  assert.equal(L.isPr(set({ reps: 3, weight: 200 }), bests), false);   // a lift you've done, a new rep count
+  assert.equal(L.isPr(set({ reps: 3, weight: 200 }), bests), true);    // heavier than anything for 3+ reps
+  assert.equal(L.isPr(set({ reps: 3, weight: 180 }), bests), false);   // you've done more for more reps
+  assert.equal(L.isPr(set({ reps: 8, weight: 185 }), bests), true);    // more reps than ever, as heavy
+  assert.equal(L.isPr(set({ reps: 8, weight: 100 }), bests), false);   // more reps, much lighter: not a PR
   assert.equal(L.isPr(set({ exercise_id: 'squat' }), bests), true);    // never done squats
+  assert.equal(L.isPr(set({ unit: 'kg', weight: 100 }), bests), false);   // a unit switch is not a first time
+});
+
+test('a curl at a new rep count, heavier than ever, is a PR (70 × 6 after 60 × 10)', () => {
+  const bests = L.bestsMap([{ exercise_id: 'curl', unit: 'lb', reps: 10, heaviest: 60 }, { exercise_id: 'curl', unit: 'lb', reps: 12, heaviest: 50 }]);
+  assert.equal(L.isPr({ exercise_id: 'curl', unit: 'lb', reps: 6, weight: 70 }, bests), true);
+});
+
+test('a likely typo is flagged against your own bests; a fair jump is not', () => {
+  const bests = L.bestsMap([{ exercise_id: 'curl', unit: 'lb', reps: 12, heaviest: 60 }, { exercise_id: 'curl', unit: 'lb', reps: 8, heaviest: 70 }]);
+  const s = o => ({ exercise_id: 'curl', unit: 'lb', reps: 12, weight: 60, ...o });
+  assert.match(L.oddSet(s({ weight: 160 }), bests), /far above your best/);   // 160 for 60
+  assert.equal(L.oddSet(s({ weight: 75 }), bests), null);                    // a real PR
+  const light = L.bestsMap([{ exercise_id: 'fly', unit: 'lb', reps: 12, heaviest: 20 }]);
+  assert.equal(L.oddSet({ exercise_id: 'fly', unit: 'lb', reps: 12, weight: 30 }, light), null);   // 20 → 30 on light dumbbells is real
+  assert.equal(L.oddSet(s({ reps: 6, weight: 85 }), bests), null);           // heavier, fewer reps: plausible
+  assert.match(L.oddSet(s({ reps: 100, weight: 20 }), bests), /100 reps/);
+  assert.equal(L.oddSet(s({ exercise_id: 'new' , weight: 500 }), bests), null);   // nothing to judge
+  assert.equal(L.oddSet(s({ weight: 160, is_warmup: true }), bests), null);
+});
+
+test('a set stands as its day’s PR only while it holds the best and beat what came before', () => {
+  const rows = [
+    { exercise_id: 'fly', unit: 'lb', reps: 12, heaviest: 30, first_lifted_on: '2026-11-27' },
+    { exercise_id: 'row', unit: 'lb', reps: 10, heaviest: 180, first_lifted_on: '2026-11-20' },
+    { exercise_id: 'row', unit: 'lb', reps: 8, heaviest: 170, first_lifted_on: '2026-11-27' },
+  ];
+  const bests = L.bestsMap(rows), on = L.bestDaysMap(rows);
+  const s = o => ({ unit: 'lb', performed_on: '2026-11-27', ...o });
+  assert.equal(L.standsAsPr(s({ exercise_id: 'fly', reps: 12, weight: 30 }), bests, on), true);    // first time on the lift
+  assert.equal(L.standsAsPr(s({ exercise_id: 'fly', reps: 12, weight: 20 }), bests, on), false);   // edited past: no longer the best
+  assert.equal(L.standsAsPr(s({ exercise_id: 'row', reps: 8, weight: 170 }), bests, on), false);   // 180 × 10 came first
+  assert.equal(L.standsAsPr(s({ exercise_id: 'row', reps: 10, weight: 180, performed_on: '2026-11-20' }), bests, on), true);
 });
 
 test('PRs in a window count against everything before it, in the order lifted', () => {
@@ -98,6 +134,28 @@ test('plates: fewest per side, never over the target', () => {
   assert.equal(lb(47).total, 45);       // can't make 47: the bar alone, under the target
   assert.equal(lb(40), null);           // less than the bar
   assert.deepEqual(L.plateLoadout(100, L.BAR.kg, L.PLATES.kg).perSide, [25, 15]);
+});
+
+test('exercise search forgives a letter wrong, missing, extra or swapped, below exact matches', () => {
+  const ex = [
+    { id: 'sq', name: 'Barbell Squat' }, { id: 'lp', name: 'Lat Pulldown' }, { id: 'dc', name: 'Dumbbell Curl' },
+    { id: 'rdf', name: 'Cable Rear Delt Fly' }, { id: 'row', name: 'Seated Row' }, { id: 'bow', name: 'Bow Pose' },
+    { id: 'bp', name: 'Bench Press' }, { id: 'dl', name: 'Deadlift' },
+  ];
+  const ids = q => L.searchExercises(q, ex, new Map()).map(e => e.id);
+  assert.deepEqual(ids('sqaut'), ['sq']);            // swapped letters
+  assert.deepEqual(ids('lat puldown'), ['lp']);      // a letter missing
+  assert.deepEqual(ids('latpulldown'), ['lp']);      // no space
+  assert.deepEqual(ids('dumbell curl'), ['dc']);     // the classic
+  assert.deepEqual(ids('rear delt fly'), ['rdf']);
+  assert.deepEqual(ids('reer delt'), ['rdf']);
+  assert.deepEqual(ids('deadlfit'), ['dl']);
+  assert.deepEqual(ids('bench pres'), ['bp']);       // still typing
+  assert.deepEqual(ids('row'), ['row']);             // short words stay exact: not Bow Pose
+  assert.deepEqual(ids('zzzz'), []);
+  // An exact match always comes first.
+  const two = [{ id: 'curl', name: 'Curl' }, { id: 'cur', name: 'Cure' }];
+  assert.deepEqual(L.searchExercises('curl', two, new Map()).map(e => e.id), ['curl', 'cur']);
 });
 
 test('exercise search: exact, then starts-with, then a word; aliases count; deleted lifts never show', () => {

@@ -123,21 +123,74 @@ export function achievements(m) {
     .concat(MILESTONES.map(ms => ({ id: 'vol_' + ms.lb, title: ms.title, desc: 'Move ' + fmtNum(ms.lb, 0) + ' lb equivalent.', have: lbEq, need: ms.lb, unit: 'lb eq', earned: lbEq >= ms.lb - 1e-6, milestone: true })));
 }
 
-// ---------- PRs: a heavier load than ever before for the same exercise, unit and rep count ----------
+// ---------- PRs: heavier than you've ever lifted for this many reps or more ----------
+// Bests are kept per exercise, unit and rep count (lift_bests). A set is a PR when it beats every
+// best at its rep count or more: 70 × 6 counts when the most you'd done for 6+ reps was 60 × 10.
+// At a rep count higher than you've ever done, it counts when it's at least as heavy as anything
+// you've done for fewer (50 × 12 after 50 × 8), and the first time on a lift always counts.
 export const bestKey = s => s.exercise_id + '|' + s.unit + '|' + s.reps;
 export function bestsMap(rows) {   // rows from lift_bests
   const m = new Map();
   for (const r of rows) m.set(bestKey(r), Number(r.heaviest));
   return m;
 }
+export function bestDaysMap(rows) {   // the day each best was first lifted
+  const m = new Map();
+  for (const r of rows) m.set(bestKey(r), r.first_lifted_on);
+  return m;
+}
+// The best to beat for a set: { weight, reps } at its rep count or more, else at fewer (beat = tie
+// is enough), else null (a lift you've never done in this unit). `on` limits it to bests first
+// lifted before that day. `other` says whether the lift has any best at all (any unit).
+export function prBar(set, bests, bestOn, before) {
+  const lift = set.exercise_id + '|', unit = lift + set.unit + '|';
+  let up = null, down = null, other = false;
+  for (const [k, v] of bests) {
+    if (!k.startsWith(lift)) continue;
+    if (before && !(bestOn.get(k) < before)) continue;
+    other = true;
+    if (!k.startsWith(unit)) continue;
+    const r = Number(k.slice(unit.length));
+    if (r >= set.reps) { if (!up || v > up.weight) up = { weight: v, reps: r }; }
+    else if (!down || v > down.weight) down = { weight: v, reps: r };
+  }
+  return up ? { ...up, strict: true } : down ? { ...down, strict: false } : { weight: null, reps: null, strict: true, other };
+}
+const beatsBar = (w, bar) => (bar.weight == null ? !bar.other : bar.strict ? w > bar.weight : w >= bar.weight);
 export function isPr(set, bests) {
-  if (set.is_warmup === true) return false;
-  const prev = bests.get(bestKey(set));
-  if (prev != null) return Number(set.weight) > prev;
-  // The first time you ever do a lift is a PR. A new rep count on a lift you've done is just a start.
-  const lift = set.exercise_id + '|';
-  for (const k of bests.keys()) if (k.startsWith(lift)) return false;
-  return true;
+  if (set.is_warmup === true || set.reps == null) return false;
+  return beatsBar(Number(set.weight), prBar(set, bests));
+}
+// A set that's probably a typo, judged against your own bests for that lift in that unit: far over
+// your best estimated 1-rep max (a slipped digit: 160 for 60), or far more reps than you've ever done.
+// Returns a short reason, or null. Nothing to judge on a lift you've never done. The app asks once
+// and logs it anyway on the second tap: a real jump in strength is allowed, just double-checked.
+export function oddSet(set, bests) {
+  if (set.reps == null || set.is_warmup === true) return null;
+  const unit = set.exercise_id + '|' + set.unit + '|', w = Number(set.weight);
+  let top = null, topE = 0, most = 0;
+  for (const [k, v] of bests) {
+    if (!k.startsWith(unit)) continue;
+    const r = Number(k.slice(unit.length)), e = e1rm(v, r) || 0;
+    most = Math.max(most, r);
+    if (e > topE) { topE = e; top = { weight: v, reps: r }; }
+  }
+  const e = e1rm(w, set.reps) || (set.reps > 12 && w > 0 ? w * (1 + 12 / 30) : 0);
+  // 1.6× and 15 lb (7 kg) over: light dumbbells jump 20 → 30 for real; typos look like 160 for 60.
+  if (top && e > topE * 1.6 && w - top.weight >= (set.unit === 'kg' ? 7 : 15)) {
+    return 'That’s far above your best (' + fmtLoad(top.weight) + ' ' + set.unit + ' × ' + top.reps + '). A typo?';
+  }
+  if (most && set.reps >= 25 && set.reps >= most * 2.5) return set.reps + ' reps is a lot more than you’ve done before (' + most + '). A typo?';
+  return null;
+}
+// Whether a logged set still stands as its day's PR: it holds the best at its rep count, that best
+// was first lifted that day, and it beat what stood before that day. (A later, heavier best hides
+// what came before, so an older day's PR that has since been beaten no longer shows.)
+export function standsAsPr(set, bests, bestOn) {
+  if (set.is_warmup === true || set.reps == null) return false;
+  const k = bestKey(set), w = Number(set.weight);
+  if (bests.get(k) !== w || bestOn.get(k) !== set.performed_on) return false;
+  return beatsBar(w, prBar(set, bests, bestOn, set.performed_on));
 }
 // PR count in a window, the same way the app counts a season: a set is a PR when it beats every
 // earlier set (including ones before the window) for that exercise, unit and rep count, or when
@@ -236,20 +289,71 @@ export function searchExercises(query, exercises, aliasesById, recentIds = []) {
   const recentRank = new Map(recentIds.map((id, i) => [id, i]));
   const live = exercises.filter(e => !e.deleted_at);
   if (!q) return recentIds.map(id => live.find(e => e.id === id)).filter(Boolean);
-  const words = q.split(' ');
+  const words = q.split(' '), compact = q.replace(/[^a-z0-9]/g, '');
   const scored = [];
   for (const e of live) {
     const names = [e.name, ...(aliasesById.get(e.id) || [])].map(norm);
     let best = 0;
     for (const n of names) {
-      if (!words.every(w => n.includes(w))) continue;
-      let s = 1;
-      if (n === q) s = 100; else if (n.startsWith(q)) s = 50; else if (n.split(/[^a-z0-9]+/).some(t => t.startsWith(words[0]))) s = 20;
+      let s = 0;
+      if (words.every(w => n.includes(w))) {
+        s = 1;
+        if (n === q) s = 100; else if (n.startsWith(q)) s = 50; else if (n.split(/[^a-z0-9]+/).some(t => t.startsWith(words[0]))) s = 20;
+      } else if (compact.length >= 4 && n.replace(/[^a-z0-9]/g, '').includes(compact)) s = 10;   // "latpulldown", "pull down"
+      else {
+        // A letter wrong, missing, extra or swapped: each word close to a word of the name. Below
+        // any exact match, fewer typos first.
+        const toks = n.split(/[^a-z0-9]+/).filter(Boolean);
+        let typos = 0;
+        for (const w of words) {
+          if (n.includes(w)) continue;
+          const d = nearWord(w, toks);
+          if (d == null) { typos = -1; break; }
+          typos += d;
+        }
+        if (typos > 0) s = Math.max(0.1, 0.9 - typos * 0.2);
+      }
       best = Math.max(best, s);
     }
-    if (best) scored.push({ e, s: best + (recentRank.has(e.id) ? 30 - Math.min(20, recentRank.get(e.id)) : 0) - e.name.length / 100 });
+    if (!best) continue;
+    const rec = recentRank.has(e.id) ? 30 - Math.min(20, recentRank.get(e.id)) : 0;
+    // Typo matches stay below every exact match, but still prefer what you do often and shorter names.
+    scored.push({ e, s: best >= 1 ? best + rec - e.name.length / 100 : best + rec / 1000 - e.name.length / 10000 });
   }
   return scored.sort((a, b) => b.s - a.s).slice(0, 40).map(x => x.e);
+}
+// How many typos a typed word is from the nearest word of a name (or from the start of one, for a
+// word still being typed), or null if none is close. Short words must be exact: "row" isn't "bow".
+function nearWord(w, toks) {
+  const lim = w.length <= 3 ? 0 : w.length <= 6 ? 1 : 2;
+  if (!lim) return null;
+  let best = null;
+  for (const t of toks) {
+    // A whole word that's too long or short can't be close; a longer one may be half typed.
+    let d = Math.abs(t.length - w.length) <= lim ? typoDist(w, t, lim) : Infinity;
+    if (d > 0 && t.length > w.length) d = Math.min(d, typoDist(w, t.slice(0, w.length), lim));
+    if (d <= lim && (best == null || d < best)) best = d;
+  }
+  return best;
+}
+// Edits between two words, counting two letters swapped ("sqaut") as one. Gives up (Infinity) once
+// every path is over `max`.
+const ROWS = [[], [], []];
+export function typoDist(a, b, max = Infinity) {
+  const m = a.length, n = b.length;
+  let [p2, p1, cur] = ROWS;
+  for (let j = 0; j <= n; j++) p1[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i; let low = i;
+    for (let j = 1; j <= n; j++) {
+      let v = Math.min(p1[j] + 1, cur[j - 1] + 1, p1[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, p2[j - 2] + 1);
+      cur[j] = v; if (v < low) low = v;
+    }
+    if (low > max) return Infinity;
+    [p2, p1, cur] = [p1, cur, p2];
+  }
+  return p1[n];
 }
 
 // Which of your recent days should finish themselves: the last `back` days (today included) with
