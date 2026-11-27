@@ -86,6 +86,39 @@ test('on a phone, Log a set is a round button in the bottom-right corner', async
   await expect(page.locator('#fab')).toHaveAccessibleName('Log a set');
 });
 
+test('editing a set works its PR out again: up to a PR gets the crown, back down loses it', async ({ page }) => {
+  // What happened with a new lift logged 3 × 20 and two edited to 30: the crown stayed on the 20.
+  const errors = await openDemo(page);
+  for (let i = 0; i < 3; i++) {
+    await openPicker(page);
+    await page.locator('#exSearch').fill('lateral raise');
+    await page.waitForTimeout(250);
+    await page.locator('#exResults [data-pick]').first().click();
+    await page.locator('#wIn').fill('20');
+    await page.locator('#aIn').fill('12');
+    await page.locator('#saveBtn').click();
+  }
+  const card = page.locator('#view .ex-card', { hasText: 'Lateral Raise' });
+  const chips = card.locator('.chip[data-edit]'), crowned = card.locator('.chip[data-edit].pr');
+  await expect(chips).toHaveCount(3);
+  await expect(crowned).toHaveCount(1);   // a first time on a lift: only the first of equal sets
+
+  await chips.last().click();
+  await page.locator('#wIn').fill('30');
+  await page.locator('#saveBtn').click();
+  await expect(crowned).toHaveCount(1);
+  await expect(crowned).toContainText('30 × 12');   // the 30 is the PR now, not the 20
+  await expect(card.locator('.ex-pr')).toContainText('New PR');
+
+  await card.locator('.chip[data-edit]', { hasText: '30 × 12' }).click();
+  await page.locator('#wIn').fill('20');
+  await page.locator('#saveBtn').click();
+  await expect(card.locator('.chip[data-edit]', { hasText: '30 × 12' })).toHaveCount(0);
+  await expect(crowned).toHaveCount(1);
+  await expect(crowned).toContainText('20 × 12');
+  expect(errors).toEqual([]);
+});
+
 test('an exercise card shows your PR next to its name', async ({ page }) => {
   const errors = await openDemo(page);
   await openPicker(page);
@@ -103,6 +136,10 @@ test('an exercise card shows your PR next to its name', async ({ page }) => {
   await page.locator('#exResults [data-pick]').first().click();
   await page.locator('#wIn').fill('999');
   await page.locator('#aIn').fill('5');
+  await page.locator('#saveBtn').click();
+  // Far over your best: asked once, logged on the second tap.
+  await expect(page.locator('#formErr')).toContainText('A typo?');
+  await expect(page.locator('#saveBtn')).toHaveText('Log it anyway');
   await page.locator('#saveBtn').click();
   await expect(card.locator('.ex-pr')).toContainText('New PR');
   expect(errors).toEqual([]);

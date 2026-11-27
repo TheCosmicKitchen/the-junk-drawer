@@ -34,7 +34,7 @@ const S = {
   exercises: [], byId: new Map(), aliases: new Map(),
   recent: [],          // own sets from the last RECENT_DAYS days, newest first
   days: [],            // lift_days: one row per day ever
-  bests: new Map(), bestRows: [],
+  bests: new Map(), bestOn: new Map(), bestRows: [],
   dayCache: new Map(), open: new Set(), historyLimit: 40,
   period: 'all', bestQuery: '',
 };
@@ -364,11 +364,11 @@ function applyData({ cat, recent, days, bests, routines, seasons, names, myId, w
   for (const d of [...S.dayCache.keys()]) if (d >= cut) S.dayCache.delete(d);
   S.days = days;
   S.bestRows = bests;
-  S.bests = L.bestsMap(bests);
+  S.bests = L.bestsMap(bests); S.bestOn = L.bestDaysMap(bests);
   S.feats = TR.featsMap(feats);   // longest, farthest and heaviest, for sets without reps
 }
 async function refreshBests() {
-  try { S.bestRows = await store.bests(); S.bests = L.bestsMap(S.bestRows); } catch (e) {}
+  try { S.bestRows = await store.bests(); S.bests = L.bestsMap(S.bestRows); S.bestOn = L.bestDaysMap(S.bestRows); } catch (e) {}
   try { S.feats = TR.featsMap(await store.feats()); } catch (e) {}
 }
 
@@ -588,13 +588,13 @@ function exPr(g) {
   const top = work.reduce((a, x) => (Number(x.weight) > Number(a.weight) ? x : a));
   const best = S.bests.get(L.bestKey(top));
   if (best == null) return '';
-  if (work.some(x => x._pr && x.reps === top.reps && Number(x.weight) >= best)) return '<span class="ex-pr new">' + esc(T.icons.pr) + ' New PR</span>';
+  if (work.some(prOf)) return '<span class="ex-pr new">' + esc(T.icons.pr) + ' New PR</span>';
   return '<span class="ex-pr">PR ' + esc(L.fmtLoad(best) + unitTag(top.unit) + ' × ' + top.reps) + '</span>';
 }
 function exCard(g) {
   const v = L.volumeByUnit(g.sets);
   return '<section class="card ex-card"><div class="row"><h3>' + esc(exName(g.exercise_id)) + exPr(g) + '</h3><span class="muted num">' + (L.lbEquivalent(v) > 0 ? esc(volText(v)) : '') + '</span></div>' +   // holds and carries move no volume
-    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') +
+    '<div class="chips">' + g.sets.map(s => '<button class="chip' + (prOf(s) ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '" aria-label="Edit ' + esc(setText(s)) + '">' + (prOf(s) ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</button>').join('') +
       // One small button: log another set, the logger opening with your last one filled in.
       '<button class="chip dup" data-more="' + esc(g.exercise_id) + '" aria-label="Log another set of ' + esc(exName(g.exercise_id)) + ', filled in from your last">' +
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="3"/><path d="M16 8V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h2"/><path d="M14.5 12v6M11.5 15h6"/></svg></button>' +
@@ -950,7 +950,7 @@ function editSet(old, patch) {
   if (add) Object.assign(add.rows.find(r => r.id === cur.id), patch);
   else if (prev) { for (const k in patch) if (!(k in prev.before)) prev.before[k] = cur[k]; Object.assign(prev.patch, patch); }
   else { const before = {}; for (const k in patch) before[k] = cur[k]; Q.box.push({ kind: 'edit', id: cur.id, patch: { ...patch }, before }); }
-  show({ ...plain(cur), ...patch }, cur);
+  raiseBest(show({ ...plain(cur), ...patch }, cur));   // a lower best waits for the database's word
   saveBox(); syncWaiting(); flush();
 }
 async function flush() {
@@ -993,15 +993,19 @@ function landed(e, res) {
       if (!cur || cur._sync === 'gone') continue;   // deleted while it was on its way (the delete follows it out)
       for (const o of opsFor(real.id, true)) if (o.kind === 'edit') Object.assign(real, o.patch);   // edited while on its way
       show(real, cur);
-      if (cur._pr) postWin('pr', exName(real.exercise_id) + ' PR', { weight: Number(real.weight), reps: real.reps, duration_s: real.duration_s ?? null,
-        distance_m: real.distance_m == null ? null : Number(real.distance_m), count_bodyweight: !!real.count_bodyweight, unit: real.unit });
       if (cur._crossed) postWin('club', cur._crossed.title, {});
       checkRecord(real);
     }
+    for (const k of new Set((res || []).map(r => r.exercise_id + '|' + r.performed_on))) { const [ex, day] = k.split('|'); syncPrWin(ex, day); }
   } else if (!opsFor(e.id, true).length) {   // nothing newer waiting for this set: the database's copy is the truth
     const cur = findSet(e.id);
     if (e.kind !== 'del' && res && cur && cur._sync !== 'gone') show(res, cur);
-    refreshBests().then(() => { if (!sheet.open) render(); });
+    const old = e.kind === 'edit' && cur ? { ...plain(cur), ...e.before } : e.row;
+    refreshBests().then(() => {   // then the feed's PR line follows what the day's sets now say
+      if (old) syncPrWin(old.exercise_id, old.performed_on, e.kind === 'undel' ? null : old);
+      if (cur && old && cur.performed_on !== old.performed_on) syncPrWin(cur.exercise_id, cur.performed_on);
+      if (!sheet.open) render();
+    });
   } else { const cur = findSet(e.id); if (cur) cur._sync = syncOf(e.id); }
   refreshLoggerList();
   if (e.kind === 'add') checkStamps();
@@ -1046,6 +1050,39 @@ function restoreOutbox() {
   saveBox(); syncWaiting();
   if (Q.box.length) { refreshBests(); flush(); }
 }
+// A set on screen can only raise a best (an edit down or a delete waits for the database's copy).
+function raiseBest(t) {
+  if (!t || t.reps == null || t.is_warmup === true) return t;
+  const k = L.bestKey(t), w = Number(t.weight), was = S.bests.get(k);
+  if (was == null || w > was || (w === was && t.performed_on < S.bestOn.get(k))) { S.bests.set(k, w); S.bestOn.set(k, t.performed_on); }
+  return t;
+}
+// Whether a set wears the PR crown: worked out from your bests every time, so it's right after an
+// edit, a delete or a reload. Only the first of equal sets that day gets it. Holds and carries (no
+// reps) keep what was decided when they were logged.
+function prOf(s) {
+  if (s.reps == null) return !!s._pr;
+  if (s._sync === 'gone' || !L.standsAsPr(s, S.bests, S.bestOn)) return false;
+  const k = L.bestKey(s), w = Number(s.weight), at = String(s.logged_at || '');
+  return !S.recent.some(x => x.id !== s.id && x._sync !== 'gone' && x.is_warmup !== true && x.performed_on === s.performed_on &&
+    L.bestKey(x) === k && Number(x.weight) === w && String(x.logged_at || '') < at);
+}
+const winSummary = r => ({ weight: Number(r.weight), reps: r.reps, duration_s: r.duration_s ?? null,
+  distance_m: r.distance_m == null ? null : Number(r.distance_m), count_bodyweight: !!r.count_bodyweight, unit: r.unit });
+// Keep a lift's "PR" line in the feed true to the day's sets after a log, an edit or a delete.
+// Today's can be worked out exactly. On an older day a later best hides what came before, so there
+// a changed or deleted set (`old`) only takes back the line that described it.
+function syncPrWin(exId, day, old) {
+  const title = exName(exId) + ' PR';
+  if (day === today()) {
+    const prs = S.recent.filter(x => x.exercise_id === exId && x.performed_on === day && x._sync !== 'gone' && prOf(x));
+    const top = prs.reduce((a, x) => (!a || (L.e1rm(Number(x.weight), x.reps) || Number(x.weight)) > (L.e1rm(Number(a.weight), a.reps) || Number(a.weight)) ? x : a), null);
+    return top ? postWin('pr', title, winSummary(top), day) : unpostWin('pr', title, day);
+  }
+  if (!old) return;
+  const w = (S.wins || []).find(x => x.created_by === S.myId && x.kind === 'pr' && x.title === title && x.performed_on === day);
+  if (w && w.summary && Number(w.summary.weight) === Number(old.weight) && w.summary.reps === old.reps) unpostWin('pr', title, day);
+}
 // Everything a new set changes on screen, done straight away with the stand-in row.
 function applyNewSet(t) {
   t._pr = TR.isPr(t, S.bests, S.feats);
@@ -1053,7 +1090,7 @@ function applyNewSet(t) {
   syncCaches(t, false);
   bumpDay(t, +1);
   if (t.reps == null) TR.raiseFeats(t, S.feats);
-  else { const k = L.bestKey(t); if (t.is_warmup !== true && !(S.bests.get(k) >= Number(t.weight))) S.bests.set(k, Number(t.weight)); }
+  else raiseBest(t);
   const after = lbEqAll();
   t._crossed = L.MILESTONES.filter(m => before < m.lb && after >= m.lb).pop();
   vibrate(t._pr || t._crossed ? [20, 40, 20] : 12);
@@ -1083,7 +1120,6 @@ function dropSets(list, quiet) {
   for (const s of list) {
     const cur = findSet(s.id) || s;
     if (cur._sync === 'gone') continue;
-    if (cur._pr) unpostWin('pr', exName(cur.exercise_id) + ' PR', cur.performed_on);   // undoing a PR takes its line back
     const row = plain(cur), add = Q.box.find(e => e.kind === 'add' && e !== Q.inflight && e.rows.some(r => r.id === cur.id));
     hide(cur); s._sync = 'gone';
     if (add) {   // never sent: take it (and anything queued for it) back out
@@ -1495,7 +1531,8 @@ function updateLive() {
   const flag = $('prFlag'), live = LG.mode === 'entry' && !s.warm;
   if (probe.reps != null) {
     const prev = S.bests.get(L.bestKey(probe)), est = prev != null ? L.e1rm(prev, probe.reps) : null;
-    flag.innerHTML = live && prev != null && probe.weight > prev ? '<div class="pr-flag">' + T.icons.pr + ' ' + esc(T.prFlag(probe.reps, L.fmtLoad(prev) + ' ' + s.unit)) + '</div>' : '';
+    const bar = L.prBar(probe, S.bests);   // the same rule as the crown: your best at this many reps or more
+    flag.innerHTML = live && bar.weight != null && L.isPr(probe, S.bests) ? '<div class="pr-flag">' + T.icons.pr + ' ' + esc(T.prFlag(bar.reps, L.fmtLoad(bar.weight) + ' ' + s.unit)) + '</div>' : '';
     if ($('bestLine')) $('bestLine').innerHTML = prev != null ? '<p class="hint-line">Best at ' + probe.reps + ' reps: <b>' + esc(L.fmtLoad(prev) + ' ' + s.unit) + '</b>' +
       (est ? ' · estimated 1-rep max ' + esc(L.fmtLoad(Math.round(est))) + ' ' + s.unit : '') + '</p>' : '';
   } else {
@@ -1523,7 +1560,7 @@ function refreshLoggerList() {
     } else next = '<p class="hint-line">' + working + ' of ' + LG.item.sets + ' sets done for this step.</p>';
   }
   box.innerHTML = (sets.length
-    ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (s._pr ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '">' + (s._pr ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
+    ? '<div class="section-title">Today</div><div class="chips">' + sets.map(s => '<span class="chip' + (prOf(s) ? ' pr' : '') + (s.is_warmup ? ' warm' : '') + (unsaved(s) ? ' pending' : '') + '" data-edit="' + esc(s.id) + '">' + (prOf(s) ? T.icons.pr + ' ' : '') + esc(setText(s)) + '</span>').join('') + '</div>' +
       (next ? '' : '<button class="btn block" style="margin-top:14px" data-close>Done with ' + esc(exName(LG.exId)) + '</button>')
     : '') + next;
   updateLive();
@@ -1547,7 +1584,7 @@ inner.addEventListener('click', async e => {
     LG.pkAll = false;
     return drawResults($('exSearch').value);
   }
-  if (LG.mode === 'exinfo' || LG.mode === 'libaddto' || LG.mode === 'newex') return libSheetClick(b);
+  if (LG.mode === 'exinfo' || LG.mode === 'libaddto' || LG.mode === 'newex' || LG.mode === 'libmerge') return libSheetClick(b);
   if (LG.mode === 'widget') return widgetSheetClick(b);
   if (b.dataset.pick && LG.multi) {
     const id = b.dataset.pick, i = LG.multi.indexOf(id);
@@ -1651,6 +1688,15 @@ async function saveEntry(btn) {
   $('formErr').textContent = '';
   let fields;
   try { fields = readForm(); } catch (x) { $('formErr').textContent = x.message; return; }
+  // Probably a typo? Say so once; the same numbers again log as they are.
+  const exId = LG.mode === 'edit' ? LG.editing.exercise_id : LG.exId, sig = exId + JSON.stringify(fields);
+  const odd = L.oddSet({ exercise_id: exId, ...fields }, S.bests);
+  if (odd && LG.oddOk !== sig) {
+    LG.oddOk = sig;
+    $('formErr').textContent = odd + ' Tap again to keep it.';
+    btn.textContent = LG.mode === 'edit' ? 'Save it anyway' : 'Log it anyway';
+    return;
+  }
   btn.disabled = true;
   try {
     if (LG.mode === 'edit') {
@@ -5244,9 +5290,35 @@ function openExInfo(id) {
       '<div class="ex-actions"><button class="btn primary" data-lib-log="' + esc(id) + '">Log it</button>' +
         '<button class="btn" data-lib-addto="' + esc(id) + '">+ Add to a workout</button>' +
         (r && r.ever ? '<button class="btn ghost" data-lib-trend="' + esc(id) + '">See the trend</button>' : '') + '</div>' +
+      (r && r.ever ? '<p class="hint-line">Logged this under two names? <button class="linkbtn" data-lib-merge="' + esc(id) + '">Move your sets into another exercise…</button></p>' : '') +
     '</div>';
   openSheet();
   if (!last) fetchLast(id);
+}
+// Merging a duplicate: every set of yours on one exercise moves to another, so history, bests and
+// "last time" live in one place. The exercise itself stays in the library; other people's sets
+// aren't touched. The database works the bests out again as the sets move.
+function openMerge(from, to) {
+  if (!to || to === from) return openExInfo(from);
+  LG.mode = 'libmerge'; LG.exInfo = from;
+  const a = S.byId.get(from), z = S.byId.get(to), clash = a && z && TR.typeOf(a).id !== TR.typeOf(z).id;
+  inner.innerHTML = '<div class="sheet-head"><div><button class="linkbtn" data-lib-back>← ' + esc(exName(from)) + '</button><h2 id="sheetTitle">Move your sets?</h2></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>' +
+    '<div class="sheet-body"><p>Every set you’ve logged as <b>' + esc(exName(from)) + '</b> moves to <b>' + esc(exName(to)) + '</b>. Your history, bests and trend join up there.</p>' +
+      '<p class="muted">' + esc(exName(from)) + ' stays in the library, and nobody else’s sets change. There’s no undo: the sets become ' + esc(exName(to)) + ' sets for good.</p>' +
+      (clash ? '<p class="warn">These two are measured differently (' + esc(TR.typeOf(a).name) + ' and ' + esc(TR.typeOf(z).name) + '). Check it’s really the same exercise.</p>' : '') +
+      '<div class="ex-actions"><button class="btn primary" data-lib-merge-go="' + esc(to) + '">Move them to ' + esc(exName(to)) + '</button><button class="btn ghost" data-lib-back>Cancel</button></div></div>';
+  openSheet();
+}
+async function doMerge(from, to, btn) {
+  if (Q.box.length) return toast('One moment: some sets are still saving. Try again once they’re in.');
+  btn.disabled = true;
+  try {
+    const n = await store.moveSets(from, to);
+    S.dayCache.clear(); S.lastOld.delete(from); S.lastOld.delete(to); if (S.hist) S.hist.clear(); LIBSTATS = null;
+    applyData(await fetchAll()); replay(); render(); writeSnap();
+    toast('Moved ' + n + ' set' + (n === 1 ? '' : 's') + ' to ' + exName(to));
+    openExInfo(to);
+  } catch (x) { fail(x); btn.disabled = false; }
 }
 function openAddTo(id) {
   LG.mode = 'libaddto'; LG.exInfo = id;
@@ -5283,6 +5355,8 @@ async function libSheetClick(b) {
   if (b.dataset.libAddto) return openAddTo(b.dataset.libAddto);
   if (b.hasAttribute('data-lib-back')) return openExInfo(id);
   if (b.dataset.libOpenRt) return openDesigner(b.dataset.libOpenRt);
+  if (b.dataset.libMerge) { const from = b.dataset.libMerge; return openPicker('Move ' + exName(from) + ' sets to…', to => openMerge(from, to)); }
+  if (b.dataset.libMergeGo) return doMerge(id, b.dataset.libMergeGo, b);
   if (b.dataset.libTrend) {
     sheet.close(); S.trendEx = b.dataset.libTrend; S.hist = S.hist || new Map(); location.hash = '#progress';
     return setTimeout(() => { const t = $('trendBox'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 200);

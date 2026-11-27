@@ -123,21 +123,74 @@ export function achievements(m) {
     .concat(MILESTONES.map(ms => ({ id: 'vol_' + ms.lb, title: ms.title, desc: 'Move ' + fmtNum(ms.lb, 0) + ' lb equivalent.', have: lbEq, need: ms.lb, unit: 'lb eq', earned: lbEq >= ms.lb - 1e-6, milestone: true })));
 }
 
-// ---------- PRs: a heavier load than ever before for the same exercise, unit and rep count ----------
+// ---------- PRs: heavier than you've ever lifted for this many reps or more ----------
+// Bests are kept per exercise, unit and rep count (lift_bests). A set is a PR when it beats every
+// best at its rep count or more: 70 × 6 counts when the most you'd done for 6+ reps was 60 × 10.
+// At a rep count higher than you've ever done, it counts when it's at least as heavy as anything
+// you've done for fewer (50 × 12 after 50 × 8), and the first time on a lift always counts.
 export const bestKey = s => s.exercise_id + '|' + s.unit + '|' + s.reps;
 export function bestsMap(rows) {   // rows from lift_bests
   const m = new Map();
   for (const r of rows) m.set(bestKey(r), Number(r.heaviest));
   return m;
 }
+export function bestDaysMap(rows) {   // the day each best was first lifted
+  const m = new Map();
+  for (const r of rows) m.set(bestKey(r), r.first_lifted_on);
+  return m;
+}
+// The best to beat for a set: { weight, reps } at its rep count or more, else at fewer (beat = tie
+// is enough), else null (a lift you've never done in this unit). `on` limits it to bests first
+// lifted before that day. `other` says whether the lift has any best at all (any unit).
+export function prBar(set, bests, bestOn, before) {
+  const lift = set.exercise_id + '|', unit = lift + set.unit + '|';
+  let up = null, down = null, other = false;
+  for (const [k, v] of bests) {
+    if (!k.startsWith(lift)) continue;
+    if (before && !(bestOn.get(k) < before)) continue;
+    other = true;
+    if (!k.startsWith(unit)) continue;
+    const r = Number(k.slice(unit.length));
+    if (r >= set.reps) { if (!up || v > up.weight) up = { weight: v, reps: r }; }
+    else if (!down || v > down.weight) down = { weight: v, reps: r };
+  }
+  return up ? { ...up, strict: true } : down ? { ...down, strict: false } : { weight: null, reps: null, strict: true, other };
+}
+const beatsBar = (w, bar) => (bar.weight == null ? !bar.other : bar.strict ? w > bar.weight : w >= bar.weight);
 export function isPr(set, bests) {
-  if (set.is_warmup === true) return false;
-  const prev = bests.get(bestKey(set));
-  if (prev != null) return Number(set.weight) > prev;
-  // The first time you ever do a lift is a PR. A new rep count on a lift you've done is just a start.
-  const lift = set.exercise_id + '|';
-  for (const k of bests.keys()) if (k.startsWith(lift)) return false;
-  return true;
+  if (set.is_warmup === true || set.reps == null) return false;
+  return beatsBar(Number(set.weight), prBar(set, bests));
+}
+// A set that's probably a typo, judged against your own bests for that lift in that unit: far over
+// your best estimated 1-rep max (a slipped digit: 160 for 60), or far more reps than you've ever done.
+// Returns a short reason, or null. Nothing to judge on a lift you've never done. The app asks once
+// and logs it anyway on the second tap: a real jump in strength is allowed, just double-checked.
+export function oddSet(set, bests) {
+  if (set.reps == null || set.is_warmup === true) return null;
+  const unit = set.exercise_id + '|' + set.unit + '|', w = Number(set.weight);
+  let top = null, topE = 0, most = 0;
+  for (const [k, v] of bests) {
+    if (!k.startsWith(unit)) continue;
+    const r = Number(k.slice(unit.length)), e = e1rm(v, r) || 0;
+    most = Math.max(most, r);
+    if (e > topE) { topE = e; top = { weight: v, reps: r }; }
+  }
+  const e = e1rm(w, set.reps) || (set.reps > 12 && w > 0 ? w * (1 + 12 / 30) : 0);
+  // 1.6× and 15 lb (7 kg) over: light dumbbells jump 20 → 30 for real; typos look like 160 for 60.
+  if (top && e > topE * 1.6 && w - top.weight >= (set.unit === 'kg' ? 7 : 15)) {
+    return 'That’s far above your best (' + fmtLoad(top.weight) + ' ' + set.unit + ' × ' + top.reps + '). A typo?';
+  }
+  if (most && set.reps >= 25 && set.reps >= most * 2.5) return set.reps + ' reps is a lot more than you’ve done before (' + most + '). A typo?';
+  return null;
+}
+// Whether a logged set still stands as its day's PR: it holds the best at its rep count, that best
+// was first lifted that day, and it beat what stood before that day. (A later, heavier best hides
+// what came before, so an older day's PR that has since been beaten no longer shows.)
+export function standsAsPr(set, bests, bestOn) {
+  if (set.is_warmup === true || set.reps == null) return false;
+  const k = bestKey(set), w = Number(set.weight);
+  if (bests.get(k) !== w || bestOn.get(k) !== set.performed_on) return false;
+  return beatsBar(w, prBar(set, bests, bestOn, set.performed_on));
 }
 // PR count in a window, the same way the app counts a season: a set is a PR when it beats every
 // earlier set (including ones before the window) for that exercise, unit and rep count, or when

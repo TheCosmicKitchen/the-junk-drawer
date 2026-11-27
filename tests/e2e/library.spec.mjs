@@ -35,3 +35,24 @@ test('filtering the library by muscle uses real data', async ({ page }) => {
   await page.locator('#libFilters [data-lib-mus="posterior"]').click();
   await expect(page.locator('#libList')).toContainText('RDL');   // hamstrings, from its data
 });
+
+test('a duplicate lift merges: its sets move to the other one, with their bests', async ({ page }) => {
+  const errors = await openDemo(page);
+  await tab(page, 'library').click();
+  const row = name => page.locator('#libList [data-lib-ex]', { hasText: name });
+  await expect(row('Bicep Curl')).toContainText('best');
+  await expect(row('Lateral Raise')).not.toContainText('best');
+  await row('Bicep Curl').click();
+  await page.locator('[data-lib-merge]').click();
+  await page.locator('#exSearch').fill('lateral raise');
+  await page.waitForTimeout(250);
+  await page.locator('#exResults [data-pick]', { hasText: 'Lateral Raise' }).first().click();
+  await expect(page.locator('#sheetTitle')).toHaveText('Move your sets?');
+  await page.locator('[data-lib-merge-go]').click();
+  await expect(page.locator('#sheetTitle')).toHaveText('Lateral Raise');
+  await expect(page.locator('#sheet')).toContainText('Your bests');
+  await page.locator('#sheet .sheet-head [data-close]').click();
+  await expect(row('Lateral Raise')).toContainText('best 55 lb');
+  await expect(row('Bicep Curl')).not.toContainText('best');
+  expect(errors).toEqual([]);
+});
