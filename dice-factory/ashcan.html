@@ -148,7 +148,7 @@ const COL = {
   ground: '#3a4a33', grass: '#46593c',
 };
 const TINT = {route: '#d8f0ea', mod: '#eedff8', weapon: '#fde3d8', defense: '#dfeafa', pool: '#fbefc8'};
-const CAT_LABEL = {route: 'ROUTE & SPLIT', mod: 'MODIFY', weapon: 'WEAPONS', defense: 'DEFENSE', pool: 'POOLS'};
+const CAT_LABEL = {route: 'ROUTE & SPLIT', mod: 'MODIFY', weapon: 'WEAPONS', defense: 'DEFENSE', pool: 'COMPANIES'};
 
 // ============================================================ parts
 // role: source | manip (takes a die, sends dice out) | term (eats the die)
@@ -198,20 +198,21 @@ const KINDS = {
   cryo:    {cat: 'defense', role: 'term', name: 'Cryo Vent', short: 'Cryo', text: 'Chills the foe: slower walk and windup for pips x0.7 s.'},
   // ---------------------------------------------------- economy
   mint:    {cat: 'mod', role: 'term', name: 'Gear Mint', short: 'Mint', text: 'Turns a die into gears: a quarter of its pips, rounded up. Big dice pay more.'},
-  // ---------------------------------------------------- build pools
-  // Grind: strip dice down into pips (◆, a tank shared by the factory)
-  grinder:   {cat: 'pool', pool: 'grind', role: 'manip', proc: .3, name: 'Grinder', short: 'Grinder', text: 'GRIND. Grinds a die into its pips (into your tank ◆) and lets a 1 go on.'},
-  pipgat:    {cat: 'pool', pool: 'grind', role: 'term', name: 'Pip Gatling', short: 'Pip Gatling', text: 'GRIND. Sprays pips from the tank: 2 dmg to mites and flyers, 1 to the foe. Dice fed in become pips. Armor stops pips.'},
-  sandblast: {cat: 'pool', pool: 'grind', role: 'term', name: 'Sandblaster', short: 'Sandblast', text: 'GRIND → ARMOR. A 1 or 2 strips 1 armor off the foe (it grows back 1 every 6 s). Bigger dice just hit.'},
-  // Mega: pump one die huge
-  pipforge:  {cat: 'pool', pool: 'mega', role: 'manip', proc: .3, name: 'Pip Forge', short: 'Pip Forge', text: 'GRIND → MEGA. Pours up to 4 pips from the tank into each die.'},
-  compressor:{cat: 'pool', pool: 'mega', role: 'manip', proc: .35, name: 'Compressor', short: 'Compress', text: 'MEGA. Squeezes 3 dice into one: their total +2. Dice of 15+ become crowned Mega dice (x1.5).'},
-  meteor:    {cat: 'pool', pool: 'mega', role: 'term', name: 'Meteor', short: 'Meteor', text: 'MEGA. Damage = pips² ÷ 8 with a little splash. Under 8 pips it fizzles for 1. Slow.'},
-  // Venom: stack poison on the foe
-  venomvat:  {cat: 'pool', pool: 'venom', role: 'manip', proc: .3, name: 'Venom Vat', short: 'Venom Vat', text: 'VENOM. Coats the die. Hits stack poison = pips. Poison ignores armor and locks, but builds slowly.'},
-  catalyst:  {cat: 'pool', pool: 'venom', role: 'term', name: 'Catalyst Cannon', short: 'Catalyst', text: 'VENOM. Hits for the pips and multiplies the poison on the foe by 1.5.'},
-  // Fortress: your wall is ammo
-  rampart:   {cat: 'pool', pool: 'fortress', role: 'term', name: 'Rampart Cannon', short: 'Rampart', text: 'FORTRESS. Each die fires the top brick of your dice wall: 3x its HP + the die.'},
+  // ---------------------------------------------------- companies
+  // Each build pool is a supplier with its own parts (see COMPANIES).
+  // Grindwell & Sons: strip dice down into pips (◆, a tank shared by the factory)
+  grinder:   {cat: 'pool', pool: 'grind', role: 'manip', proc: .3, name: 'Grinder', short: 'Grinder', text: 'Grinds a die into its pips (into the pip tank ◆) and lets a 1 go on.'},
+  pipgat:    {cat: 'pool', pool: 'grind', role: 'term', name: 'Pip Gatling', short: 'Pip Gatling', text: 'Sprays pips from the tank: 2 dmg to mites and flyers, 1 to the foe. Dice fed in become pips. Armor stops pips.'},
+  sandblast: {cat: 'pool', pool: 'grind', role: 'term', name: 'Sandblaster', short: 'Sandblast', text: 'A 1 or 2 strips 1 armor off the foe (it grows back 1 every 6 s). Bigger dice just hit. Feed it from a Grinder.'},
+  // Titan Foundry Co.: pump one die huge
+  pipforge:  {cat: 'pool', pool: 'mega', role: 'manip', proc: .3, name: 'Pip Forge', short: 'Pip Forge', text: 'Pours up to 4 pips from the pip tank into each die. Fill the tank with a Grindwell Grinder.'},
+  compressor:{cat: 'pool', pool: 'mega', role: 'manip', proc: .35, name: 'Compressor', short: 'Compress', text: 'Squeezes 3 dice into one: their total +2. Dice of 15+ become crowned Mega dice (x1.5).'},
+  meteor:    {cat: 'pool', pool: 'mega', role: 'term', name: 'Meteor', short: 'Meteor', text: 'Damage = pips² ÷ 8 with a little splash. Under 8 pips it fizzles for 1. Slow.'},
+  // Viper Chemical: stack poison on the foe
+  venomvat:  {cat: 'pool', pool: 'venom', role: 'manip', proc: .3, name: 'Venom Vat', short: 'Venom Vat', text: 'Coats the die. Hits stack poison = pips. Poison ticks, fades slowly and ignores armor.'},
+  catalyst:  {cat: 'pool', pool: 'venom', role: 'term', name: 'Catalyst Cannon', short: 'Catalyst', text: 'Hits for the pips and multiplies the poison on the foe by 1.5.'},
+  // Bastion Masonry: your wall is ammo
+  rampart:   {cat: 'pool', pool: 'fortress', role: 'term', name: 'Rampart Cannon', short: 'Rampart', text: 'Each die fires the top brick of your dice wall: 3x its HP + the die. Build the wall with a Bulwark.'},
   furnace: {cat: 'route', role: 'term', fixed: true, hidden: true, name: 'Gear Furnace', short: 'Furnace', text: 'Part of the floor. Melts a die into gears: a third of its pips, rounded up. Route dice here to earn.'},
 };
 // What each part costs in gears. Belts are free, so re-routing never costs.
@@ -222,6 +223,23 @@ const COST = {
   bulwark: 5, thorns: 6, parry: 8, patch: 6, ram: 7, cryo: 6,
   grinder: 4, pipgat: 9, sandblast: 6, pipforge: 6, compressor: 6, meteor: 10, venomvat: 5, catalyst: 8, rampart: 8,
 };
+// The suppliers. Each sells the parts of one build pool; later, a run could
+// have you sign contracts with them.
+const COMPANIES = {
+  grind:    {name: 'Grindwell & Sons', short: 'Grindwell', mark: 'G', col: '#b8892e', ink: '#fff6e0', motto: 'Every pip counts.'},
+  mega:     {name: 'Titan Foundry Co.', short: 'Titan', mark: 'T', col: '#c0392b', ink: '#ffe07a', motto: 'Bigger is better.'},
+  venom:    {name: 'Viper Chemical', short: 'Viper', mark: 'V', col: '#4f8f2a', ink: '#e4ffcc', motto: 'Slow, sure, deadly.'},
+  fortress: {name: 'Bastion Masonry', short: 'Bastion', mark: 'B', col: '#2f5f9e', ink: '#dfeaff', motto: 'The wall is the weapon.'},
+};
+// a company's round stamp, centred at (x, y)
+function stamp(co, x, y, r = 9) {
+  const c = COMPANIES[co];
+  circle(x, y, r + 1.5, 'rgba(0,0,0,.35)');
+  circle(x, y, r, c.col);
+  ringStroke(x, y, r - 2, c.ink, 1);
+  txt(c.mark, x, y + .5, r * 1.15, c.ink, 'center', 900);
+}
+
 const START_GEARS = 40, BUILD_TIME = 60, PHASE_BONUS = 15;
 const PIP_MAX = 99;      // the pip tank ◆
 const MEGA = 15;         // dice this big are crowned Mega dice: x1.5
@@ -298,6 +316,14 @@ const LOCK_PHASES = [
    intents: [{type: 'slam', dmg: 14, wind: 2.4}, {type: 'rocks', dmg: 5, n: 3, wind: 2.0}]},
 ];
 
+// Free play: a practice dummy that never moves, never hits back and can't die.
+// Its rules can be switched to test a build against armor or a lock.
+const DUMMY_RULES = {
+  plain: {name: 'Free play', at: 1.0, speed: 0, roll: 6, flyEvery: 0, desc: 'Build anything. The dummy never fights back.', good: [], intents: []},
+  armor: {name: 'Free play · armor 8', at: 1.0, speed: 0, roll: 6, flyEvery: 0, armor: 8, desc: 'Armor 8, like the Ironshell (it never opens).', good: ['fuser', 'compressor', 'pipforge', 'meteor', 'sandblast', 'spiker', 'venomvat'], intents: []},
+  lock:  {name: 'Free play · lock', at: 1.0, speed: 0, roll: 6, flyEvery: 0, locks: 1, lockEvery: 8, match: 3, desc: 'A lock face, like the Lockbox.', good: ['sorter', 'oddeven', 'flipper', 'drum', 'switch', 'silo'], intents: []},
+};
+
 const FOES = {
   colossus: {name: 'The Rust Colossus', hp: 1400, tag: 'ALL-ROUNDER', phases: COLOSSUS_PHASES,
     desc: 'Slams and rocks, then flyers, armor and boulders as it breaks down.',
@@ -308,6 +334,9 @@ const FOES = {
   shell: {name: 'The Ironshell', hp: 900, tag: 'ARMORED', phases: SHELL_PHASES,
     desc: 'Armor 8: small dice bounce off. Opens its shell to attack.',
     counters: 'Fuser, Forge, Inflator, Doubler, Spikes. A Silo to flood it when it opens.'},
+  dummy: {name: 'Scrap Dummy', hp: 99999, tag: 'FREE PLAY', phases: [DUMMY_RULES.plain],
+    desc: "Never moves, never hits back, can't die. No timer; free build and god mode are on.",
+    counters: 'Switch it to armor or a lock, and send mites, from the panel at the top.'},
   lock: {name: 'The Lockbox', hp: 800, tag: 'PRECISION', phases: LOCK_PHASES,
     desc: 'Only dice showing its lock face hurt it. The face keeps changing.',
     counters: 'Hi/Lo, Odd/Even, Flipper, Reroll, Switch. Dump misses into the Furnace.'},
@@ -324,10 +353,13 @@ const opts = {slow: true, holdFoe: false, god: false, speed: 1, free: false};
 // Set up the chosen foe (its phases, health and quirks).
 function chooseFoe(id, closePicker = true) {
   const def = FOES[id];
+  // free play switches free build and god mode on; leaving it switches them off
+  if (id === 'dummy' && closePicker) { opts.free = true; opts.god = true; }
+  else if (S.enc === 'dummy' && id !== 'dummy') { opts.free = false; opts.god = false; }
   S.enc = id;
-  PHASES = def.phases;
+  PHASES = id === 'dummy' ? [DUMMY_RULES[S.dummyRule || 'plain']] : def.phases;
   const f = S.foe;
-  Object.assign(f, {hp: def.hp, max: def.hp, phase: 0, intent: 0, speed: PHASES[0].speed, x: id === 'swarm' ? 1150 : 1175,
+  Object.assign(f, {hp: def.hp, max: def.hp, phase: 0, intent: 0, speed: PHASES[0].speed, x: id === 'swarm' ? 1150 : (id === 'dummy' ? 1060 : 1175),
     locks: [], nextLocks: [], lockT: 0, enraged: false, state: 'march', shred: 0, poison: 0, poisonT: 0});
   if (PHASES[0].locks) { f.locks = rollLocks(PHASES[0].locks); f.nextLocks = rollLocks(PHASES[0].locks); f.lockT = PHASES[0].lockEvery; }
   S.units = []; S.waveT = 4;
@@ -862,7 +894,7 @@ function launchRocket(m) {
 
 function foeTarget(spread = 40) {
   const f = S.foe;
-  return {x: f.x - 10 + rnd(-spread, spread) * .6, y: GROUND - 95 + rnd(-spread, spread)};
+  return {x: f.x - 10 + rnd(-spread, spread) * .6, y: GROUND - (S.enc === 'dummy' ? 150 : 95) + rnd(-spread, spread)};
 }
 const foeFront = () => S.foe.x - 70;
 
@@ -2223,7 +2255,7 @@ function update(rawDt) {
   }
   updateParticles(dt);
   if (S.paused || S.picker) return;
-  if (S.mode === 'build' && !S.over) {
+  if (S.mode === 'build' && !S.over && S.enc !== 'dummy') {
     S.buildT -= dt;
     if (S.buildT <= 0) startFight(false);
   }
@@ -2427,7 +2459,7 @@ function arrowsFor(m) {
 }
 
 function drawMachine(m, cx, cy, ghost) {
-  const info = KINDS[m.kind], col = COL[info.cat];
+  const info = KINDS[m.kind], col = info.pool ? COMPANIES[info.pool].col : COL[info.cat];
   if (m.pop < 0) return;
   const b = m.work > 0 ? Math.sin((1 - m.work) * Math.PI) : 0;
   const s = easeOutBack(m.pop);
@@ -2437,6 +2469,7 @@ function drawMachine(m, cx, cy, ghost) {
   rr(-28, -28, 56, 56, 9, TINT[info.cat], col, 3);
   if (m.work > 0) rr(-28, -28, 56, 56, 9, `rgba(255,255,255,${.25 * m.work})`);
   drawIcon(m);
+  if (info.pool) stamp(info.pool, -21, 21, 7);          // the maker's stamp
   const base = Math.atan2(m.dir.y, m.dir.x);
   for (const o of arrowsFor(m)) {
     const a = m.ang + angDiff(base, Math.atan2(o.y, o.x));
@@ -2888,8 +2921,41 @@ function drawPiles() {
 }
 
 // While building: a countdown, what to do, and a button to start early.
+// Free play: switch the dummy's rules, send mites, see how the line does.
+function setDummyRule(rule) {
+  S.dummyRule = rule;
+  PHASES = [DUMMY_RULES[rule]];
+  const f = S.foe;
+  f.shred = 0; f.poison = 0;
+  if (rule === 'lock') { f.locks = rollLocks(1); f.nextLocks = rollLocks(1); f.lockT = DUMMY_RULES.lock.lockEvery; } else f.locks = [];
+  S.dmgLog = [];
+}
+function drawFreePlayUI() {
+  const x = WALL_X1 + 12, y = GY + 4, w = FIELD_X1 - x - 6, h = 78;
+  rr(x, y, w, h, 12, 'rgba(6,18,22,.9)', '#7fe0c6', 2);
+  txt('FREE PLAY', x + 16, y + 20, 18, '#7fe0c6', 'left', 900);
+  txt('Build anything: free build', x + 16, y + 44, 12.5, '#e9fbff', 'left', 600);
+  txt('and god mode are on.', x + 16, y + 60, 12.5, '#e9fbff', 'left', 600);
+  txt('Change foe to fight', x + 140, y + 20, 11, 'rgba(255,255,255,.55)', 'left', 600);
+  const rule = S.dummyRule || 'plain';
+  let bx = x + 240;
+  const btn = (label, on, fn, bw = 70) => {
+    const hov = mouse.x >= bx && mouse.x <= bx + bw && mouse.y >= y + 12 && mouse.y <= y + 66;
+    rr(bx, y + 12, bw, 54, 9, on ? '#2fae92' : (hov ? '#1f4d5c' : '#16394a'), on ? '#7fe0c6' : 'rgba(255,255,255,.25)', 1.5);
+    const parts = label.split('\n');
+    parts.forEach((p, i) => txt(p, bx + bw / 2, y + 39 + (i - (parts.length - 1) / 2) * 15, 12.5, on ? '#06201a' : '#fff', 'center', 800));
+    S.buttons.push({x: bx, y: y + 12, w: bw, h: 54, fn});
+    bx += bw + 6;
+  };
+  btn('Plain', rule === 'plain', () => setDummyRule('plain'));
+  btn('Armor\n8', rule === 'armor', () => setDummyRule('armor'));
+  btn('Lock', rule === 'lock', () => setDummyRule('lock'));
+  btn('Send\nmites', false, () => spawnWave(12, {miteHp: 7, bigEvery: 0}), 76);
+}
+
 function drawBuildUI() {
   if (S.mode !== 'build' || S.over) return;
+  if (S.enc === 'dummy') { drawFreePlayUI(); return; }
   const x = WALL_X1 + 12, y = GY + 4, w = FIELD_X1 - x - 6, h = 78;
   rr(x, y, w, h, 12, 'rgba(6,18,22,.9)', COL.gold, 2);
   const s = Math.ceil(S.buildT);
@@ -3077,11 +3143,41 @@ function drawLockbox() {
   circle(x - 62, gy - 196 + bob, 8, f.stun > 0 ? '#9aa4aa' : '#ff4a3a');
 }
 
+// The Scrap Dummy: a sack on a post with a painted target. Plates when it has
+// armor, a lock plate with the face when it has a lock.
+function drawDummy() {
+  const f = S.foe, x = f.x, gy = GROUND, ph = PHASES[f.phase];
+  const wob = Math.sin(S.t * 3) * .03 + (f.hit > 0 ? Math.sin(S.t * 60) * .06 : 0);
+  ctx.beginPath(); ctx.ellipse(x, gy, 60, 10, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+  rr(x - 6, gy - 120, 12, 120, 3, '#6b5236');
+  rr(x - 40, gy - 6, 80, 10, 3, '#4a3424');
+  ctx.save(); ctx.translate(x, gy - 150); ctx.rotate(wob);
+  const body = foeBody('#d8c79a', '#d8c79a');
+  ctx.beginPath(); ctx.ellipse(0, 0, 62, 78, 0, 0, Math.PI * 2); ctx.fillStyle = body; ctx.fill(); ctx.strokeStyle = '#8a7a58'; ctx.lineWidth = 4; ctx.stroke();
+  for (let i = 0; i < 4; i++) line(-50 + i * 10, -40 + i * 26, -30 + i * 10, -36 + i * 26, '#a8966e', 2);   // stitches
+  if (ph.locks) {
+    rr(-48, -48, 96, 96, 12, '#2b2b2b', COL.gold, 3);
+    f.locks.forEach(v => drawDie(0, 0, {v, show: v}, 0, 1, 0, 54));
+    const k = 1 - f.lockT / ph.lockEvery;
+    ctx.beginPath(); ctx.arc(0, 0, 44, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.strokeStyle = '#8fe08f'; ctx.lineWidth = 4; ctx.stroke();
+    txt('next', -22, 64, 11, 'rgba(255,255,255,.7)', 'center', 700, 3);
+    f.nextLocks.forEach((v, i) => drawDie(8 + i * 24, 64, {v, show: v}, 0, 1, 0, 20));
+  } else {
+    for (const [r, c] of [[46, '#e2533d'], [34, '#f7f0e1'], [22, '#e2533d'], [10, '#f7f0e1'], [4, '#e2533d']]) circle(0, 0, r, c);
+  }
+  if (ph.armor) {
+    for (const [px, py] of [[-62, -60], [18, -60], [-62, 22], [18, 22]]) rr(px, py, 44, 38, 6, 'rgba(107,118,125,.92)', '#2b373c', 3);
+    txt(String(effArmor()), 0, 2, 26, '#fff', 'center', 900, 4);
+  }
+  ctx.restore();
+}
+
 function drawFoe() {
   const f = S.foe, x = f.x, gy = GROUND;
   if (S.enc === 'swarm') drawMother();
   else if (S.enc === 'shell') drawShell();
   else if (S.enc === 'lock') drawLockbox();
+  else if (S.enc === 'dummy') drawDummy();
   else drawColossus();
   if (f.burn > 0) for (let i = 0; i < 5; i++) { const fy = (S.t * 40 + i * 13) % 30; circle(x - 60 + i * 28, gy - 170 - fy, 5 - fy * .15, COL.ember); }
   if (f.stagger > 0 || f.stun > 0) for (let i = 0; i < 3; i++) { const a = S.t * 5 + i * 2.1; circle(x - 30 + Math.cos(a) * 40, gy - 245 + Math.sin(a) * 8, 4, '#ffe27a'); }
@@ -3128,7 +3224,7 @@ function drawLensBeams() {
 
 function drawTelegraph() {
   const f = S.foe, it = curIntent();
-  const bx = f.x - 20, by = GROUND - 250;
+  const bx = f.x - 20, by = GROUND - (S.enc === 'dummy' && S.mode === 'build' ? 262 : 250);
   if (S.mode === 'build') {
     // practice meter: damage per second over the last 5 seconds
     S.dmgLog = S.dmgLog.filter(e => S.t - e.t < 5);
@@ -3281,6 +3377,7 @@ function toolbarItems() {
     {w: 64, label: 'Roll now', on: false, fn: () => rollNow()},
     {w: 72, toggle: true, label: 'Free build', on: opts.free, fn: () => { opts.free = !opts.free; }},
     {w: 68, label: 'Phase ▸', on: false, fn: () => {
+      if (S.enc === 'dummy') return;           // free play has no phases
       if (S.mode === 'build') { startFight(false); return; }
       const f = S.foe;
       if (f.phase + 1 < PHASES.length) f.hp = Math.min(f.hp, f.max * PHASES[f.phase + 1].at - 1);
@@ -3343,7 +3440,7 @@ function drawHud() {
     line(px, 59, px, 79, i <= f.phase ? 'rgba(255,255,255,.25)' : '#ffd25e', 2);
     txt(String(i + 1), px, 86, 9, i <= f.phase ? 'rgba(255,255,255,.3)' : COL.gold, 'center', 800);
   }
-  txt(`${Math.ceil(f.hp)} / ${f.max}`, 1080, 70, 11, '#fff', 'center', 800, 3);
+  txt(S.enc === 'dummy' ? 'practice target' : `${Math.ceil(f.hp)} / ${f.max}`, 1080, 70, 11, '#fff', 'center', 800, 3);
   // heads-up when the next phase is close
   const nx = PHASES[f.phase + 1];
   if (nx && f.hp / f.max - nx.at < .07 && f.state !== 'shift') {
@@ -3394,7 +3491,7 @@ function drawHudPhone() {
   txt(`Phase ${f.phase + 1}: ${ph.name}`, fx, 14, 14, f.enraged ? '#ff8a73' : '#fff', 'left', 800);
   bar(fx, 24, fw, 16, f.hp / f.max, f.enraged ? '#ff5a4a' : '#e2533d');
   for (let i = 1; i < PHASES.length; i++) line(fx + fw * PHASES[i].at, 21, fx + fw * PHASES[i].at, 43, i <= f.phase ? 'rgba(255,255,255,.25)' : '#ffd25e', 2);
-  txt(`${Math.ceil(f.hp)} / ${f.max}`, fx + fw / 2, 33, 11, '#fff', 'center', 800, 3);
+  txt(S.enc === 'dummy' ? 'practice target' : `${Math.ceil(f.hp)} / ${f.max}`, fx + fw / 2, 33, 11, '#fff', 'center', 800, 3);
   const nx = PHASES[f.phase + 1];
   const soon = nx && S.mode !== 'build' && f.hp / f.max - nx.at < .07 && f.state !== 'shift';
   txt(soon ? `Phase ${f.phase + 2} soon: ${nx.name}` : foeStatus(), 1268, 14, 12.5, soon ? COL.gold : (f.state === 'windup' ? '#ff8a73' : 'rgba(255,255,255,.75)'), 'right', 700);
@@ -3425,14 +3522,14 @@ function drawPhoneControls() {
   bigButton(bx + 120, by + 68, bw, bh, S.paused ? '▶' : '❚❚', S.paused ? 'play' : 'pause', S.paused, () => { S.paused = !S.paused; });
 }
 // Choose what you are building against: each foe wants a different factory.
-const FOE_ART = {colossus: '#9a6a48', swarm: '#b0845c', shell: '#5d6e75', lock: '#6b767d'};
+const FOE_ART = {colossus: '#9a6a48', swarm: '#b0845c', shell: '#5d6e75', lock: '#6b767d', dummy: '#7a6a4a'};
 function drawPicker() {
   if (!S.picker) return;
   S.menuButtons = [];
   ctx.fillStyle = 'rgba(4,14,18,.82)'; ctx.fillRect(0, 0, W, H);
   txt('CHOOSE YOUR FOE', W / 2, PHONE ? 40 : 70, PHONE ? 30 : 34, COL.gold, 'center', 900, 6);
   txt('Each one needs a different factory. You get a build phase first.', W / 2, PHONE ? 72 : 104, 15, '#e9fbff', 'center', 600, 4);
-  const ids = Object.keys(FOES), gap = 18, cw = (W - 80 - gap * 3) / 4, ch = PHONE ? 440 : 470, cy = PHONE ? 100 : 136;
+  const ids = ['colossus', 'swarm', 'shell', 'lock', 'dummy'], gap = 14, cw = (W - 80 - gap * (ids.length - 1)) / ids.length, ch = PHONE ? 440 : 470, cy = PHONE ? 100 : 136;
   ids.forEach((id, i) => {
     const d = FOES[id], cx = 40 + i * (cw + gap);
     const hov = !PHONE && mouse.x >= cx && mouse.x <= cx + cw && mouse.y >= cy && mouse.y <= cy + ch;
@@ -3443,6 +3540,7 @@ function drawPicker() {
     if (id === 'swarm') { circle(10, -6, 34, '#9a6a48'); for (let k = 0; k < 5; k++) circle(-50 + k * 18, 34, 7, '#6b4a30'); circle(-32, -8, 14, '#6b4a30'); circle(-36, -10, 3, '#ff4a3a'); }
     else if (id === 'shell') { ctx.beginPath(); ctx.ellipse(0, 20, 70, 50, 0, Math.PI, 0); ctx.fillStyle = '#3d4c52'; ctx.fill(); txt('8', 0, -4, 30, 'rgba(255,255,255,.6)', 'center', 900); }
     else if (id === 'lock') { rr(-44, -40, 88, 80, 10, '#3d4649', COL.gold, 3); drawDie(0, 0, {v: 4, show: 4}, 0, 1, 0, 44); }
+    else if (id === 'dummy') { rr(-4, -10, 8, 60, 3, '#6b5236'); circle(0, -12, 30, '#d8c79a'); circle(0, -12, 20, '#e2533d'); circle(0, -12, 11, '#d8c79a'); circle(0, -12, 4, '#e2533d'); }
     else { rr(-40, -44, 80, 80, 14, '#7a5236'); circle(-12, -16, 14, '#2a1d14'); circle(-14, -16, 9, COL.gold); }
     ctx.restore();
     txt(d.tag, cx + 18, cy + 156, 12, COL.gold, 'left', 900);
@@ -3496,7 +3594,8 @@ function drawPalette() {
     const sel = S.pal === k;
     const hov = !PHONE && mouse.x >= x && mouse.x <= x + PAL_W && mouse.y >= y && mouse.y <= y + PAL_H;
     if (hov) hover = {k, x, y};
-    rr(x, y, PAL_W, PAL_H, 7, sel ? '#fff6d8' : (hov ? '#ffffff' : COL.card), sel ? COL.gold : COL[cat], sel ? 3 : 1.5);
+    const cc = KINDS[k].pool ? COMPANIES[KINDS[k].pool].col : COL[cat];
+    rr(x, y, PAL_W, PAL_H, 7, sel ? '#fff6d8' : (hov ? '#ffffff' : COL.card), sel ? COL.gold : cc, sel ? 3 : (KINDS[k].pool ? 2.5 : 1.5));
     ctx.save(); ctx.translate(x + PAL_H / 2 - 1, y + PAL_H / 2); ctx.scale(iconS, iconS);
     rr(-28, -28, 56, 56, 9, TINT[cat]);
     drawIcon(dummyMachine(k));
@@ -3522,9 +3621,20 @@ function drawPalette() {
       rr(x + PAL_W - bw - 2, y + PAL_H - bh - 2, bw, bh, bh / 2, ok ? '#f0b429' : '#5a4a46');
       txt(`${cost}⚙`, x + PAL_W - bw / 2 - 2, y + PAL_H - bh / 2 - 1.5, 9.5 * badge, ok ? '#2a1a00' : '#c9b8b4', 'center', 900);
     }
+    if (KINDS[k].pool) stamp(KINDS[k].pool, x + PAL_W - (PHONE ? 52 : 36), y + PAL_H - (PHONE ? 13 : 9), PHONE ? 9 : 6.5);
     if (!ok) rr(x, y, PAL_W, PAL_H, 7, 'rgba(10,25,30,.45)');
   }
   if (!PHONE) txt('★ helps this phase    ○ helps next phase    1-5 picks a recent part', W - 30, PAL_Y + 3 * PAL_ROW + PAL_H / 2, 11.5, 'rgba(255,255,255,.5)', 'right', 600);
+  // the companies, with their stamps, along the end of their row
+  if (!PHONE) {
+    let lx = PAL_X + PALETTE.pool.length * (PAL_W + PAL_GAP) + 12;
+    const ly = PAL_Y + 4 * PAL_ROW + PAL_H / 2;
+    for (const co of Object.keys(COMPANIES)) {
+      stamp(co, lx + 8, ly, 7);
+      txt(COMPANIES[co].short, lx + 20, ly + 1, 11, COMPANIES[co].col === '#2f5f9e' ? '#8cb4ef' : COMPANIES[co].col, 'left', 800);
+      lx += 36 + ctx.measureText(COMPANIES[co].short).width;
+    }
+  }
   // keep the picked part's description up for a moment (phones have no hover)
   if (!hover && S.pal && (!PHONE || S.t - (S.palPickT || 0) < 2.5)) {
     const tile = paletteTiles().find(t => t.k === S.pal);
@@ -3532,12 +3642,18 @@ function drawPalette() {
   }
   if (PHONE && hover) hover.y = PAL_Y;            // above the palette, not over a tile row
   if (hover) {
-    const info = KINDS[hover.k];
-    const w = 300, x = clamp(hover.x - 20, 16, W - w - 16), y = hover.y - 64;
-    rr(x, y, w, 56, 8, 'rgba(4,18,22,.96)', COL[info.cat], 2);
+    const info = KINDS[hover.k], co = info.pool ? COMPANIES[info.pool] : null;
+    const w = 320, h = co ? 74 : 56, x = clamp(hover.x - 20, 16, W - w - 16), y = hover.y - h - 8;
+    rr(x, y, w, h, 8, 'rgba(4,18,22,.96)', co ? co.col : COL[info.cat], 2);
     txt(info.name, x + 10, y + 16, 13.5, '#fff', 'left', 800);
     if (!opts.free) txt(`${COST[hover.k] || 0} ⚙`, x + w - 10, y + 16, 13, COL.gold, 'right', 900);
-    wrapText(info.text, x + 10, y + 34, w - 20, 11.5, 'rgba(255,255,255,.8)');
+    let ty = y + 34;
+    if (co) {
+      stamp(info.pool, x + 17, ty, 7);
+      txt(`${co.name} · “${co.motto}”`, x + 30, ty + 1, 11.5, '#f0e2b8', 'left', 700);
+      ty += 18;
+    }
+    wrapText(info.text, x + 10, ty, w - 20, 11.5, 'rgba(255,255,255,.8)');
   }
 }
 
@@ -3568,10 +3684,11 @@ function drawHover() {
     rr(ce.x - 30, ce.y - 30, 60, 60, 9, null, 'rgba(255,255,255,.45)', 2);
     const m = machineAt(c);
     if (m) {
-      const info = KINDS[m.kind];
+      const info = KINDS[m.kind], co = info.pool ? COMPANIES[info.pool] : null;
       let tx = ce.x + 38; if (tx + 240 > WALL_X0) tx = ce.x - 278;
-      rr(tx, ce.y - 36, 240, 70, 8, 'rgba(4,18,22,.94)', COL[info.cat], 2);
+      rr(tx, ce.y - 36, 240, 70, 8, 'rgba(4,18,22,.94)', co ? co.col : COL[info.cat], 2);
       txt(info.name, tx + 10, ce.y - 20, 13.5, '#fff', 'left', 800);
+      if (co) txt(co.short, tx + 230, ce.y - 20, 11.5, '#f0e2b8', 'right', 800);
       wrapText(info.text, tx + 10, ce.y, 220, 11, 'rgba(255,255,255,.75)');
     }
   }
