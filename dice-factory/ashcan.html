@@ -54,7 +54,7 @@ body.phone .start.show{display:flex}
   <div><b>Build first.</b> You get 60 seconds before the Colossus moves (start early for bonus gears). Parts cost gears ⚙; belts are free. Earn gears by routing dice into the Gear Furnace (bottom right) or a Gear Mint, and from each new phase. Route around stone pillars; belts over glowing vents make dice hot, icy or +1. Removing a part refunds it in full while building, half after.</div>
   <div><b>Ashcan sandbox.</b> Pick a part from the palette and click floor tiles to place it (it stays picked; <kbd>1</kbd>-<kbd>5</kbd> re-pick recent parts). <kbd>R</kbd> or the wheel rotates. Right-click or <kbd>Esc</kbd> drops it. Time slows while you place. A gold star marks parts that answer the current phase.</div>
   <div><b>Re-route.</b> Drag across empty floor to lay belts; click a belt to turn it. Drag a machine to move it. Right-click removes anything. Dice that run off a belt heap up on the floor (6 per tile, then they tumble onward); lay a belt over a heap to scoop it back up.</div>
-  <div><b>The Colossus changes.</b> Four phases: march, then flyers that lift your belts and snatch dice, then armor that only big or spiky dice get through, then boulders that bury tiles. Click gates, switches, silos and rockets to use them. <kbd>Space</kbd> raises Parry Shields. <kbd>P</kbd> pauses.</div>
+  <div><b>Pick a foe.</b> The Rust Colossus changes over four phases (flyers, armor, boulders). The Mite Mother sends swarms of little mites: go fast and wide, with splash. The Ironshell has armor 8: pump your dice up, and flood it when its shell opens. The Lockbox only takes damage from dice showing its lock face: sort, flip and reroll. Click gates, switches, silos and rockets to use them. <kbd>Space</kbd> raises Parry Shields. <kbd>P</kbd> pauses.</div>
 </div>
 </div>
 <script>
@@ -222,7 +222,7 @@ const CLICKY = new Set(['sorter', 'switch', 'silo', 'rocket', 'parry']);
 
 // The Colossus changes as it breaks down. Each phase asks for a different
 // factory: `good` lists the parts that answer it (starred in the palette).
-const PHASES = [
+const COLOSSUS_PHASES = [
   {name: 'Iron March', at: 1.0, speed: 9, roll: 6, flyEvery: 0,
    desc: 'Slams and rocks. Build damage and a dice wall.',
    good: ['pult', 'cannon', 'combo', 'bulwark', 'parry'],
@@ -240,7 +240,62 @@ const PHASES = [
    good: ['frost', 'cryo', 'overflow', 'switch', 'bounce', 'silo'],
    intents: [{type: 'slam', dmg: 16, wind: 2.2}, {type: 'boulders', n: 3, wind: 2.0}, {type: 'slam', dmg: 20, wind: 2.4}, {type: 'hatch', n: 5, wind: 1.6}]},
 ];
-const FAST = new Set(['cannon', 'bullet', 'pellet', 'rico']);   // projectiles that hunt flyers
+
+// The Mite Mother stays at the back and sends waves of mites. Mites have few
+// HP, so big single hits are wasted: lots of small, fast dice win, plus splash.
+const SWARM_PHASES = [
+  {name: 'First Brood', at: 1.0, speed: 0, roll: 7, flyEvery: 0, waveEvery: 9, wave: 8, miteHp: 6, bigEvery: 0,
+   desc: 'Waves of mites gnaw at your wall. Big hits are wasted on them: go fast and wide.',
+   good: ['gatling', 'cannon', 'blunder', 'crusher', 'prism', 'rocket', 'mines', 'lens'],
+   intents: []},
+  {name: 'Frenzy', at: .5, speed: 0, roll: 8, flyEvery: 0, waveEvery: 7, wave: 12, miteHp: 7, bigEvery: 4,
+   desc: 'Bigger waves, with fat mites mixed in. Splash and spray, and keep the wall up.',
+   good: ['gatling', 'blunder', 'rocket', 'mines', 'bulwark', 'thorns', 'cryo', 'crusher'],
+   intents: []},
+];
+
+// The Ironshell: armor 8, so only pumped-up dice get through. Its shell opens
+// while it winds up an attack: then everything hits, x1.5.
+const SHELL_PHASES = [
+  {name: 'Closed Shell', at: 1.0, speed: 6, roll: 7, flyEvery: 0, armor: 8,
+   desc: 'Armor 8: only dice of 8+ pips hurt (spikes ignore 3 armor). It opens up while winding up.',
+   good: ['fuser', 'forge', 'inflate', 'doubler', 'spiker', 'silo', 'parry', 'bulwark'],
+   intents: [{type: 'slam', dmg: 16, wind: 3.4}, {type: 'rocks', dmg: 5, n: 3, wind: 2.8}]},
+  {name: 'Cracked Shell', at: .5, speed: 9, roll: 8, flyEvery: 0, armor: 6,
+   desc: 'Armor drops to 6, but it hits harder and faster. Flood it while the shell is open.',
+   good: ['fuser', 'forge', 'inflate', 'spiker', 'silo', 'parry', 'thorns', 'ram'],
+   intents: [{type: 'slam', dmg: 20, wind: 3.0}, {type: 'slam', dmg: 14, wind: 2.4}, {type: 'rocks', dmg: 6, n: 4, wind: 2.6}]},
+];
+
+// The Lockbox: only dice showing the face on its lock hurt it (x4); others do
+// a quarter. The lock changes every few seconds, and the next face is shown.
+const LOCK_PHASES = [
+  {name: 'One Lock', at: 1.0, speed: 7, roll: 7, flyEvery: 0, locks: 1, lockEvery: 8,
+   desc: 'Only dice matching its lock face hurt (x4). Sort, flip and reroll to match.',
+   good: ['sorter', 'oddeven', 'flipper', 'drum', 'switch', 'mint', 'cannon', 'gatling'],
+   intents: [{type: 'slam', dmg: 10, wind: 2.6}, {type: 'rocks', dmg: 4, n: 3, wind: 2.2}]},
+  {name: 'Two Locks', at: .5, speed: 9, roll: 8, flyEvery: 0, locks: 2, lockEvery: 6,
+   desc: 'Two faces now, changing faster. Matching dice glow green on your belts.',
+   good: ['sorter', 'oddeven', 'flipper', 'drum', 'switch', 'silo', 'gatling', 'mint'],
+   intents: [{type: 'slam', dmg: 14, wind: 2.4}, {type: 'rocks', dmg: 5, n: 3, wind: 2.0}]},
+];
+
+const FOES = {
+  colossus: {name: 'The Rust Colossus', hp: 1400, tag: 'ALL-ROUNDER', phases: COLOSSUS_PHASES,
+    desc: 'Slams and rocks, then flyers, armor and boulders as it breaks down.',
+    counters: 'A bit of everything. Re-route each phase.'},
+  swarm: {name: 'The Mite Mother', hp: 650, tag: 'SWARM', phases: SWARM_PHASES,
+    desc: 'Stays back and sends waves of little mites at your wall.',
+    counters: 'Gatling, Cannon, Blunderbuss, Crusher, Prism. Splash from Rockets and Mines.'},
+  shell: {name: 'The Ironshell', hp: 900, tag: 'ARMORED', phases: SHELL_PHASES,
+    desc: 'Armor 8: small dice bounce off. Opens its shell to attack.',
+    counters: 'Fuser, Forge, Inflator, Doubler, Spikes. A Silo to flood it when it opens.'},
+  lock: {name: 'The Lockbox', hp: 800, tag: 'PRECISION', phases: LOCK_PHASES,
+    desc: 'Only dice showing its lock face hurt it. The face keeps changing.',
+    counters: 'Hi/Lo, Odd/Even, Flipper, Reroll, Switch. Dump misses into the Furnace.'},
+};
+let PHASES = COLOSSUS_PHASES;     // the current foe's phases
+const FAST = new Set(['cannon', 'bullet', 'pellet', 'rico']);   // projectiles that hunt flyers and mites first
 const phaseNow = () => PHASES[S.foe.phase];
 
 // ============================================================ state
@@ -248,8 +303,26 @@ let S;
 const mouse = {x: 0, y: 0, cell: {x: -1, y: -1}, dragging: false, moved: false, last: null, pressNew: false};
 const opts = {slow: true, holdFoe: false, god: false, speed: 1, free: false};
 
+// Set up the chosen foe (its phases, health and quirks).
+function chooseFoe(id, closePicker = true) {
+  const def = FOES[id];
+  S.enc = id;
+  PHASES = def.phases;
+  const f = S.foe;
+  Object.assign(f, {hp: def.hp, max: def.hp, phase: 0, intent: 0, speed: PHASES[0].speed, x: id === 'swarm' ? 1150 : 1175,
+    locks: [], nextLocks: [], lockT: 0, enraged: false, state: 'march'});
+  if (PHASES[0].locks) { f.locks = rollLocks(PHASES[0].locks); f.nextLocks = rollLocks(PHASES[0].locks); f.lockT = PHASES[0].lockEvery; }
+  S.units = []; S.waveT = 4;
+  if (closePicker) S.picker = false;
+}
+// distinct lock faces, 1-6
+function rollLocks(n) {
+  const faces = [1, 2, 3, 4, 5, 6].sort(() => Math.random() - .5);
+  return faces.slice(0, n).sort((a, b) => a - b);
+}
+
 // layout: 'blank' (chute and a stub of belt), 'starter' (a working demo line),
-// 'keep' (same factory, fresh Colossus).
+// 'keep' (same factory, fresh foe).
 function newGame(layout = 'blank') {
   const old = S;
   const keepFloor = layout === 'keep';
@@ -267,7 +340,11 @@ function newGame(layout = 'blank') {
     gears: keepFloor && old ? Math.max(old.gears, START_GEARS / 2) : START_GEARS,
     mode: 'build', buildT: keepFloor ? BUILD_TIME / 2 : BUILD_TIME, dmgLog: [],
     pillars: new Set(PILLARS.map(key)), vents: new Map(VENTS.map(v => [key(v), v.type])),
+    // the foe: which one, its mites (swarm), its lock faces (lockbox)
+    enc: old ? old.enc : 'colossus', picker: true, units: [], waveT: 4, nextUnit: 1,
   };
+  chooseFoe(S.enc, false);
+  S.picker = true;                     // pick a foe before the build timer starts
   placeMachine(FURNACE, 'furnace', L, 1);
   if (keepFloor && old) {
     for (const [k, d] of old.belts) setBelt(parseKey(k), d, 1);
@@ -729,36 +806,46 @@ function foeTarget(spread = 40) {
 }
 const foeFront = () => S.foe.x - 70;
 
-// Damage the Colossus takes from these dice right now, given its phase.
-// Plating: a die under the armor value does 1 unless it is spiky.
-// Meltdown: icy dice do double.
-function diceDamage(dice, mult, vsFlyer = false) {
-  const ph = PHASES[S.foe.phase];
-  let s = 0, clinked = 0;
+// Damage the foe takes from these dice right now, given its phase.
+// Armor: a die under the armor value does 1 (spiky dice ignore 3 armor).
+// Ironshell with its shell open: no armor, and x1.5.
+// Meltdown: icy dice do double. Lock: matching faces x4, others x0.25.
+// vsSmall: hitting a flyer or a mite, which have none of that.
+function diceDamage(dice, mult, vsSmall = false) {
+  const ph = PHASES[S.foe.phase], f = S.foe;
+  const open = shellOpen();
+  let s = 0, clinked = 0, matched = 0;
   for (const d of dice) {
     let v = d.v * (d.spiky ? 1.4 : 1);
-    if (!vsFlyer && ph.armor && !d.spiky && d.v < ph.armor) { v = 1; clinked++; }
-    if (!vsFlyer && ph.meltdown && d.ice) v *= 2;
+    if (!vsSmall && ph.armor && !open && d.v < ph.armor - (d.spiky ? 3 : 0)) { v = 1; clinked++; }
+    if (!vsSmall && ph.meltdown && d.ice) v *= 2;
+    if (!vsSmall && ph.locks) { if (f.locks.includes(d.v)) { v *= 4; matched++; } else v *= .25; }
     s += v;
   }
+  if (open && !vsSmall) s *= 1.5;
   lastClink = clinked;
+  lastMatch = ph.locks && !vsSmall ? matched : -1;
   return Math.max(1, Math.round(s * mult));
 }
-let lastClink = 0;
+let lastClink = 0, lastMatch = -1;
+const shellOpen = () => S.enc === 'shell' && S.foe.state === 'windup';
 
 // fire a projectile from machine m at the foe
 function shoot(m, kind, dice, mult, o = {}) {
   const ce = center(m.cell);
   const x0 = ce.x + (o.ox || 0), y0 = ce.y + (o.oy || 0);
-  // fast, light weapons go for flyers first
-  let fly = null, tg;
+  // fast, light weapons go for flyers first; everything goes for mites before the foe
+  let fly = null, unit = null, tg;
   if (FAST.has(kind)) fly = nearestFlyer(x0, y0, o.skipFly);
-  if (fly) tg = {x: fly.x, y: fly.y}; else tg = foeTarget(o.spread ?? 40);
+  if (!fly) unit = targetUnit(FAST.has(kind));
+  if (fly) tg = {x: fly.x, y: fly.y};
+  else if (unit) tg = {x: unit.x, y: unitY(unit)};
+  else tg = foeTarget(o.spread ?? 40);
   const dist = Math.hypot(tg.x - x0, tg.y - y0);
   let dur = o.dur ?? dist / (o.speed || 900);
   if (fly) dur = Math.min(dur, dist / 1100);
   S.proj.push({kind, dice, mult, x0, y0, x1: tg.x, y1: tg.y, t: -(o.delay || 0), dur, arc: fly ? 8 : (o.arc ?? 30),
-    rot: 0, knock: o.knock ?? 1, bounces: o.bounces || 0, label: o.label || null, size: o.size || 1, fly});
+    rot: 0, knock: o.knock ?? 1, bounces: o.bounces || 0, label: o.label || null, size: o.size || 1, fly, unit});
   S.stats.thrown += dice.length;
   m.fire = 1;
 }
@@ -788,7 +875,8 @@ function fire(m) {
       break;
     case 'mines': {
       const d = load[0];
-      const x = clamp(foeFront() - rnd(30, 150), REACH_X + 10, FIELD_X1 - 20);
+      const fu = liveUnits().sort((a, b) => a.x - b.x)[0];
+      const x = clamp((fu ? fu.x - fu.r : foeFront()) - rnd(30, 150), REACH_X + 10, FIELD_X1 - 20);
       S.proj.push({kind: 'mine', dice: [d], x0: ce.x, y0: ce.y - 10, x1: x, y1: GROUND - 8, t: 0, dur: .9, arc: 170, rot: 0});
       S.stats.thrown++;
       m.fire = 1;
@@ -809,7 +897,8 @@ function fire(m) {
       break;
     }
     case 'blunder': {
-      const close = foeFront() < REACH_X + BLUNDER_RANGE;
+      const fu = liveUnits().sort((a, b) => a.x - b.x)[0];
+      const close = (fu ? fu.x - fu.r : foeFront()) < REACH_X + BLUNDER_RANGE;
       const mult = close ? 2 : .5;
       load.forEach((d, i) => shoot(m, 'pellet', [d], mult, {ox: 22, speed: 1100, arc: 20, spread: 60, delay: i * .03}));
       burst(ce.x + 26, ce.y, '#ffe27a', 16, 300, 2.5, 0, .25, 2, 0, .6);
@@ -863,8 +952,9 @@ function updateMachines(dt) {
           m.launch -= dt;
           if (Math.random() < dt * 30) burst(ce.x + rnd(-8, 8), ce.y + 18, '#b8c2c6', 1, 40, 5, -40, .7);
           if (m.launch <= 0) {
-            const tg = foeTarget(20);
-            S.proj.push({kind: 'rocket', dice: m.load.slice(), mult: 1.25, x0: ce.x, y0: ce.y - 10, x1: tg.x, y1: tg.y, t: 0, dur: 1.35, arc: 260, rot: 0, knock: 3.6});
+            const ru = targetUnit(false);
+            const tg = ru ? {x: ru.x, y: unitY(ru)} : foeTarget(20);
+            S.proj.push({kind: 'rocket', dice: m.load.slice(), mult: 1.25, x0: ce.x, y0: ce.y - 10, x1: tg.x, y1: tg.y, t: 0, dur: 1.35, arc: 260, rot: 0, knock: 3.6, unit: ru});
             S.stats.thrown += m.load.length;
             m.load = []; m.fire = 1;
             burst(ce.x, ce.y + 10, COL.gold, 20, 200, 4, 0, .5);
@@ -913,25 +1003,38 @@ function updateMachines(dt) {
           const fl = S.flyers.filter(o => o.delay <= 0).sort((a, b) => Math.hypot(a.x - ce.x, a.y - ce.y) - Math.hypot(b.x - ce.x, b.y - ce.y))[0];
           m.beamAt = fl ? {x: fl.x, y: fl.y} : null;
           if (fl) { fl.hp -= dps * 1.5 * dt; if (fl.hp <= 0) { fl.hp = .01; hitFlyer(fl, 1); } break; }
-          hurtFoe(dps * dt * (PHASES[S.foe.phase].armor ? .35 : 1), {quiet: true});
+          // then mites, front first
+          const lu = liveUnits().sort((a, b) => a.x - b.x)[0];
+          if (lu) { m.beamAt = {x: lu.x, y: unitY(lu)}; lu.hp -= dps * 1.3 * dt; lu.hit = .05; if (lu.hp <= 0) hurtUnit(lu, .01); break; }
+          const lph = PHASES[S.foe.phase];
+          hurtFoe(dps * dt * (shellOpen() ? 1.5 : (lph.armor ? .35 : 1) * (lph.locks ? .25 : 1)), {quiet: true});
           m.beamAcc = (m.beamAcc || 0) + dps * dt;
           if (m.beamAcc >= 5) { const tg = foeTarget(20); say(tg.x, tg.y - 20, String(Math.round(m.beamAcc)), '#fff2a8', 15); m.beamAcc = 0; }
           if (Math.random() < dt * 30) { const tg = foeTarget(25); burst(tg.x, tg.y, Math.random() < .5 ? COL.gold : '#ffffff', 2, 120, 2, 0, .25, 2); }
         }
         break;
-      case 'ram':
-        if (m.load.length && foeFront() <= REACH_X + 70 && !S.over) {
-          const d = m.load[0]; m.load = [];
-          const push = d.v * (d.spiky ? 1.4 : 1);
+      case 'ram': {
+        if (!m.load.length || S.over) break;
+        const d = m.load[0], push = d.v * (d.spiky ? 1.4 : 1);
+        const near = liveUnits().filter(u => u.x - u.r <= REACH_X + 90);
+        if (near.length) {
+          // mites at the wall get shoved back and squashed
+          m.load = [];
+          for (const u of near) { u.x += 40 + push * 6; hurtUnit(u, Math.round(push * 1.5)); }
+          say(REACH_X + 60, GROUND - 120, 'RAM!', '#7fe0c6', 22);
+          shake(.35);
+        } else if (foeFront() <= REACH_X + 70) {
+          m.load = [];
           S.foe.kv += push * 34;
           hurtFoe(Math.round(push), {x: foeFront(), y: GROUND - 60});
-          S.ramFx.push({t: 0, y: ce.y});
-          m.fire = 1; m.busy = 1.2;
           say(foeFront() + 20, GROUND - 160, 'RAM!', '#7fe0c6', 22);
           burst(foeFront(), GROUND - 60, '#ffffff', 18, 260, 3, 0, .4, 2, 0, .8);
           shake(.45);
-        }
+        } else break;
+        S.ramFx.push({t: 0, y: ce.y, to: near.length ? REACH_X + 70 : foeFront()});
+        m.fire = 1; m.busy = 1.2;
         break;
+      }
     }
   }
 }
@@ -976,6 +1079,7 @@ function updateProj(dt) {
     p.t += dt;
     if (p.t < 0) continue;
     if (p.fly && S.flyers.includes(p.fly)) { p.x1 = p.fly.x; p.y1 = p.fly.y; }
+    if (p.unit && S.units.includes(p.unit)) { p.x1 = p.unit.x; p.y1 = unitY(p.unit); }
     p.rot += dt * (p.kind === 'cannon' || p.kind === 'bullet' ? 18 : 9);
     const q = projPos(p);
     if (p.kind === 'rocket' && Math.random() < dt * 60) S.parts.push({x: q.x, y: q.y, vx: rnd(-20, 20), vy: rnd(-20, 20), col: Math.random() < .5 ? COL.gold : '#c4ccd0', size: rnd(3, 7), g: -10, life: .7, t: 0, shape: 0, rot: 0, vr: 0});
@@ -1027,6 +1131,7 @@ function landProj(p, q) {
     case 'cryo':
       if (S.over) return;
       S.foe.chill = Math.min(10, S.foe.chill + d0.v * .7);
+      for (const u of S.units) u.chill = Math.max(u.chill, d0.v * .7);
       say(q.x, q.y - 30, 'chilled', COL.ice, 16);
       burst(q.x, q.y, COL.ice, 24, 220, 3, 0, .6);
       ring(q.x, q.y, 'rgba(200,236,255,.9)', 10, 60);
@@ -1075,6 +1180,28 @@ function impact(p, q) {
     S.proj.push({...p, fly: null, x0: q.x, y0: q.y, x1: tg.x, y1: tg.y, t: 0, dur: Math.hypot(tg.x - q.x, tg.y - q.y) / 1000, arc: 10});
     return;
   }
+  if (p.unit) {
+    const u = p.unit;
+    u.incoming = Math.max(0, (u.incoming || 0) - 1);
+    const alive = S.units.includes(u);
+    const sticky = p.kind === 'sticky';
+    const R = SPLASH[p.kind] || 0;
+    const dmg = diceDamage(dice, sticky ? 4 : (p.mult ?? 1), true);
+    if (alive) hurtUnit(u, dmg);
+    if (R) splashUnits(q.x, q.y, R, Math.max(1, Math.round(dmg * .6)), alive ? u : null);
+    if (!alive && !R) {
+      // its mite is already dead: find another, or go on to the foe
+      const nu = targetUnit(true);
+      const tg = nu ? {x: nu.x, y: unitY(nu)} : foeTarget(30);
+      S.proj.push({...p, unit: nu, x0: q.x, y0: q.y, x1: tg.x, y1: tg.y, t: 0, dur: Math.max(.08, Math.hypot(tg.x - q.x, tg.y - q.y) / 1100), arc: 6});
+      return;
+    }
+    for (const d of dice) debrisDie(q.x, q.y, d, rnd(-80, 160), rnd(-260, -100));
+    burst(q.x, q.y, dice.some(d => d.hot) ? COL.ember : '#ffe27a', 8, 200, 2.5, 0, .25, 2);
+    if (p.kind === 'rocket') { burst(q.x, q.y, COL.gold, 30, 380, 5, 200, .6); shake(.6); }
+    else shake(R ? .2 : .04);
+    return;
+  }
   const melt = !!PHASES[f.phase].meltdown;
   const hot = dice.some(d => d.hot) && !melt, ice = dice.some(d => d.ice);
   if (melt && dice.some(d => d.hot) && Math.random() < .4) say(q.x + 20, q.y - 50, 'fire: no effect', '#c9d6da', 12);
@@ -1086,6 +1213,9 @@ function impact(p, q) {
   }
   const dmg = diceDamage(dice, p.mult ?? 1);
   if (lastClink) { say(q.x - 24, q.y - 6, lastClink === dice.length ? 'clink' : `${lastClink} clink`, '#c9d6da', 13); burst(q.x, q.y, '#ffffff', 5, 200, 1.5, 0, .15, 2); }
+  if (lastMatch > 0) { say(q.x - 30, q.y - 58, 'MATCH!', '#8fe08f', 18); ring(q.x, q.y, 'rgba(140,230,140,.9)', 10, 50); }
+  else if (lastMatch === 0) say(q.x - 24, q.y - 6, 'no match', '#c9d6da', 12);
+  if (shellOpen()) say(q.x - 30, q.y - 58, 'EXPOSED!', COL.gold, 15);
   hurtFoe(dmg);
   f.flash = 1;
   f.kv += dmg * .9 * (p.knock ?? 1);
@@ -1178,11 +1308,12 @@ function updateField(dt) {
   const f = S.foe;
   for (const mn of S.mines.slice()) {
     mn.t += dt;
-    if (!S.over && foeFront() <= mn.x + 14) {
+    const miteOn = liveUnits().some(u => Math.abs(u.x - mn.x) <= u.r + 10);
+    if (!S.over && (foeFront() <= mn.x + 14 || miteOn)) {
       S.mines.splice(S.mines.indexOf(mn), 1);
       const dmg = diceDamage([mn.d], 3);
-      hurtFoe(dmg, {x: mn.x, y: GROUND - 40});
-      f.kv += dmg * 1.2;
+      if (miteOn) splashUnits(mn.x, GROUND - 12, 60, diceDamage([mn.d], 3, true), null);
+      else { hurtFoe(dmg, {x: mn.x, y: GROUND - 40}); f.kv += dmg * 1.2; }
       if (mn.d.hot) f.burn = 3;
       if (mn.d.ice) f.chill = Math.min(10, f.chill + 2);
       burst(mn.x, GROUND - 10, COL.gold, 24, 320, 4, 300, .6);
@@ -1215,6 +1346,7 @@ function updateField(dt) {
     if (rb.t <= 0) { S.rubble.delete(k); const ce = center(parseKey(k)); burst(ce.x, ce.y, '#7a6a58', 14, 160, 4, 400, .5, 1); }
   }
   updateFlyers(dt);
+  updateUnits(dt);
   updatePiles(dt);
   if (S.banner) { S.banner.t += dt; if (S.banner.t > S.banner.life) S.banner = null; }
   for (const t of S.thorns) t.pop = Math.max(0, (t.pop || 0) - dt * 3);
@@ -1288,6 +1420,104 @@ function updatePiles(dt) {
       }
     }
     if (!pl.dice.length) S.piles.delete(k);
+  }
+}
+
+// ============================================================ mites (the swarm)
+// Little walkers from the Mite Mother. Few HP each, so a big die on one mite
+// is mostly wasted; splash weapons hit everything nearby. They gnaw the wall.
+const SPLASH = {rocket: 100, pult: 45, cluster: 55, sticky: 70};
+
+function spawnWave(n, ph) {
+  const f = S.foe;
+  for (let i = 0; i < n; i++) {
+    const big = ph.bigEvery && i % ph.bigEvery === ph.bigEvery - 1;
+    const hp = big ? ph.miteHp * 2.5 : ph.miteHp;
+    S.units.push({id: S.nextUnit++, x: f.x - 60 + rnd(-10, 30), lane: rnd(-12, 10), r: big ? 15 : 9, big, hp, max: hp,
+      speed: big ? 26 : rnd(36, 50), cd: rnd(.3, 1.2), delay: i * .22, t: rnd(0, 6), hit: 0, chill: 0, incoming: 0});
+  }
+  say(f.x - 30, GROUND - 200, `BROOD ×${n}`, '#ffb0a0', 20);
+  burst(f.x - 50, GROUND - 60, '#b0845c', 18, 220, 3, 300, .6, 1);
+}
+const unitY = u => GROUND - u.r - 3 + u.lane;
+const liveUnits = () => S.units.filter(u => u.delay <= 0);
+
+// frontmost mite; fast weapons spread out over several
+function targetUnit(spread) {
+  let best = null, bs = 1e9;
+  for (const u of liveUnits()) {
+    const sc = u.x + (spread ? (u.incoming || 0) * 45 : 0);
+    if (sc < bs) { bs = sc; best = u; }
+  }
+  if (best) best.incoming = (best.incoming || 0) + 1;
+  return best;
+}
+
+function hurtUnit(u, dmg) {
+  if (!S.units.includes(u)) return;
+  u.hp -= dmg; u.hit = .12;
+  if (dmg >= 1) say(u.x, unitY(u) - u.r - 10, String(Math.round(dmg)), '#ffd0c4', 12);
+  if (u.hp > 0) return;
+  S.units.splice(S.units.indexOf(u), 1);
+  S.stats.downed++;
+  S.gears += 1;                                         // every mite pays a gear
+  burst(u.x, unitY(u), '#b0845c', u.big ? 14 : 8, 200, u.big ? 4 : 3, 500, .5, 1);
+  burst(u.x, unitY(u), COL.gold, 3, 80, 2, 0, .3);
+}
+
+function splashUnits(x, y, r, dmg, skip) {
+  for (const u of liveUnits()) if (u !== skip && Math.hypot(u.x - x, unitY(u) - y) <= r + u.r) hurtUnit(u, dmg);
+  ring(x, y, 'rgba(255,220,160,.8)', 8, r, .35);
+}
+
+// mites gnaw the wall: bricks first, then the factory
+function nibble(dmg) {
+  if (S.shield > 0) return;
+  let left = dmg;
+  while (left > 0 && S.bricks.length) {
+    const b = S.bricks[S.bricks.length - 1];
+    const take = Math.min(b.hp, left);
+    b.hp -= take; left -= take; b.pop = .6;
+    if (b.hp <= 0) { const bp = brickPos(S.bricks.length - 1); S.bricks.pop(); debrisDie(bp.x, bp.y, b, rnd(-200, -60), rnd(-260, -120)); }
+  }
+  if (left > 0 && !opts.god) {
+    S.hp = Math.max(0, S.hp - left); S.hitFlash = .6;
+    if (S.hp <= 0 && !S.over) { S.over = 'lost'; burst(300, 300, '#ff8a73', 60, 500, 6, 300, 1.2, 1); }
+  }
+}
+
+function updateUnits(dt) {
+  const thornBite = S.thorns.filter(t => !t.pending && t.v > 0).reduce((a, t) => a + t.v, 0) * .25;
+  for (const u of S.units.slice()) {
+    if (u.delay > 0) { u.delay -= dt; continue; }
+    u.t += dt; u.hit = Math.max(0, u.hit - dt); u.chill = Math.max(0, u.chill - dt);
+    const stop = REACH_X + u.r + 2 + (u.id % 5) * 7;
+    if (u.x > stop) { u.x = Math.max(stop, u.x - u.speed * (u.chill > 0 ? .45 : 1) * dt); continue; }
+    u.cd -= dt;
+    if (u.cd <= 0) {
+      u.cd = 1.2;
+      nibble(u.big ? 3 : 1);
+      burst(WALL_X1 + 4, unitY(u), '#8a9aa0', 2, 90, 2, 300, .3, 1, Math.PI, .8);
+      if (thornBite > 0) hurtUnit(u, thornBite);
+    }
+  }
+}
+
+function drawUnits() {
+  for (const u of S.units) {
+    if (u.delay > 0) continue;
+    const y = unitY(u), walking = u.x > REACH_X + u.r + 4;
+    const bob = walking ? Math.abs(Math.sin(u.t * 14)) * -2 : Math.sin(u.t * 20) * 1.5;
+    const body = u.hit > 0 ? '#ffffff' : (u.chill > 0 ? '#9fb4c0' : (u.big ? '#8a5a3c' : '#b0845c'));
+    ctx.beginPath(); ctx.ellipse(u.x, GROUND - 1 + u.lane * .3, u.r, 3, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fill();
+    for (let i = 0; i < 3; i++) {
+      const lx = u.x - u.r * .5 + i * u.r * .5, sw = Math.sin(u.t * 18 + i * 2) * (walking ? 4 : 1);
+      line(lx, y + bob, lx - 3 + sw, y + u.r + 2, '#4a3424', 1.8);
+    }
+    circle(u.x, y + bob, u.r, body);
+    circle(u.x - u.r * .45, y + bob - u.r * .2, Math.max(2, u.r * .22), '#ff5a4a');
+    if (u.big) { circle(u.x + u.r * .2, y + bob - u.r * .5, 4, '#6b4a30'); circle(u.x + u.r * .5, y + bob - u.r * .1, 3, '#6b4a30'); }
+    if (u.hp < u.max) { rr(u.x - u.r, y - u.r - 8 + bob, u.r * 2, 3, 1.5, 'rgba(0,0,0,.5)'); rr(u.x - u.r, y - u.r - 8 + bob, u.r * 2 * Math.max(0, u.hp / u.max), 3, 1.5, '#6fd16f'); }
   }
 }
 
@@ -1434,6 +1664,7 @@ function cancelAttack(why = 'STAGGERED!') {
 const INTENT_LABEL = {slam: 'SLAM', rocks: 'ROCKS', hatch: 'HATCH', boulders: 'BOULDERS'};
 function curIntent() {
   const list = PHASES[S.foe.phase].intents;
+  if (!list.length) return {type: 'none', dmg: 0, n: 0, wind: 1, label: ''};
   const b = list[S.foe.intent % list.length];
   return {type: b.type, dmg: b.dmg || 0, n: b.n || 1, wind: b.wind, label: INTENT_LABEL[b.type]};
 }
@@ -1458,7 +1689,8 @@ function enterPhase(i) {
   f.enraged = i >= 2;
   f.state = 'shift'; f.timer = 2.2; f.arm = 0;
   if (ph.meltdown) f.burn = 0;
-  S.flyT = 3;
+  S.flyT = 3; S.waveT = 3;
+  if (ph.locks) { f.locks = rollLocks(ph.locks); f.nextLocks = rollLocks(ph.locks); f.lockT = ph.lockEvery; }
   S.banner = {title: `PHASE ${i + 1} · ${ph.name}`, desc: ph.desc, t: 0, life: 5.5};
   burst(f.x, GROUND - 120, ph.meltdown ? COL.ember : (ph.armor ? '#9aa4aa' : '#c9a56a'), 50, 400, 5, 300, 1.0, 1);
   ring(f.x, GROUND - 120, 'rgba(255,255,255,.8)', 30, 220, .6);
@@ -1472,6 +1704,15 @@ function updateFoe(dt) {
   f.stagger = Math.max(0, f.stagger - dt * 1.5);
   f.pinned = Math.max(0, f.pinned - dt);
   f.chill = Math.max(0, f.chill - dt);
+  // the Lockbox turns its lock to the next face (also while you build, to practice)
+  if (PHASES[f.phase].locks && !opts.holdFoe) {
+    f.lockT -= dt;
+    if (f.lockT <= 0) {
+      f.locks = f.nextLocks; f.nextLocks = rollLocks(PHASES[f.phase].locks); f.lockT = PHASES[f.phase].lockEvery;
+      say(f.x - 20, GROUND - 230, 'LOCK → ' + f.locks.join(' & '), '#8fe08f', 20);
+      ring(f.x - 20, GROUND - 120, 'rgba(140,230,140,.8)', 20, 90, .4);
+    }
+  }
   if (S.mode === 'build') { f.kv = 0; f.burn = 0; f.state = 'march'; return; }   // waiting in the distance
   // phase shifts as it breaks down
   const frac = f.hp / f.max;
@@ -1481,6 +1722,11 @@ function updateFoe(dt) {
   if (ph.flyEvery && !opts.holdFoe) {
     S.flyT -= dt;
     if (S.flyT <= 0) { S.flyT = ph.flyEvery; spawnFlyers(f.phase === 1 ? 4 : 3); }
+  }
+  // the Mite Mother broods
+  if (ph.waveEvery && !opts.holdFoe && f.state !== 'shift') {
+    S.waveT -= dt;
+    if (S.waveT <= 0) { S.waveT = ph.waveEvery; spawnWave(ph.wave, ph); f.hit = .3; }
   }
   if (f.burn > 0) {
     f.burn -= dt;
@@ -1509,7 +1755,10 @@ function updateFoe(dt) {
       }
     } else {
       f.x = REACH_X + 70;
-      if (!opts.holdFoe) { f.state = 'windup'; f.timer = curIntent().wind; f.total = f.timer; }
+      if (!opts.holdFoe && curIntent().type !== 'none') {
+        f.state = 'windup'; f.timer = curIntent().wind; f.total = f.timer;
+        if (S.enc === 'shell') { say(f.x - 20, GROUND - 240, 'SHELL OPEN!', COL.gold, 24); burst(f.x, GROUND - 120, COL.gold, 20, 260, 3, 0, .5); }
+      }
     }
   } else if (f.state === 'windup') {
     f.timer -= dt * (f.chill > 0 ? .5 : 1);
@@ -1556,6 +1805,8 @@ function killFoe() {
   if (S.over) return;
   const f = S.foe;
   S.over = 'won'; f.hp = 0;
+  for (const u of S.units) burst(u.x, unitY(u), '#b0845c', 6, 160, 3, 400, .5, 1);
+  S.units = [];
   for (let i = 0; i < 6; i++) setTimeout(() => {
     if (!S || S.over !== 'won') return;
     burst(f.x + rnd(-60, 50), GROUND - rnd(30, 170), i % 2 ? COL.gold : '#b0684c', 30, 380, 5, 400, .9, i % 2 ? 0 : 1);
@@ -1660,6 +1911,8 @@ function paletteAt(p) {
   return null;
 }
 function buttonAt(p) {
+  // the foe picker takes every tap until you choose
+  if (S.picker) return S.menuButtons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) || {fn: () => {}};
   // an open Tools menu takes every tap until it closes
   if (S.toolsOpen) return S.menuButtons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) || {fn: () => { S.toolsOpen = false; }};
   return S.buttons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h);
@@ -1791,7 +2044,7 @@ function update(rawDt) {
     v.pop = Math.min(1, v.pop + rawDt / .25);
   }
   updateParticles(dt);
-  if (S.paused) return;
+  if (S.paused || S.picker) return;
   if (S.mode === 'build' && !S.over) {
     S.buildT -= dt;
     if (S.buildT <= 0) startFight(false);
@@ -2346,7 +2599,7 @@ function drawWall() {
   // piston rams punching out of the wall
   for (const r of S.ramFx) {
     const k = r.t / .35, ext = Math.sin(k * Math.PI);
-    const x1 = WALL_X1 + ext * (foeFront() - WALL_X1 + 10);
+    const x1 = WALL_X1 + ext * ((r.to ?? foeFront()) - WALL_X1 + 10);
     rr(WALL_X1, GROUND - 70, x1 - WALL_X1, 14, 3, '#9aa4aa', '#2b373c', 2);
     rr(x1 - 6, GROUND - 92, 14, 58, 3, COL.defense, '#163f6e', 2);
   }
@@ -2421,7 +2674,7 @@ function drawMines() {
   }
 }
 
-function drawFoe() {
+function drawColossus() {
   const f = S.foe, enr = f.enraged;
   const walk = f.state === 'march' && f.pinned <= 0 && f.stun <= 0 && !opts.holdFoe;
   const bob = walk ? Math.abs(Math.sin(f.step)) * -5 : Math.sin(S.t * 2) * 1.5;
@@ -2479,11 +2732,106 @@ function drawFoe() {
   rr(-15, 0, 30, 84, 12, body, dark, 3);
   circle(0, 92, 24, enr ? '#7a3020' : '#5a4030'); circle(-6, 86, 6, 'rgba(255,255,255,.15)');
   ctx.restore();
+}
+
+function foeBody(base, enrBase) {
+  const f = S.foe;
+  let body = f.enraged ? enrBase : base;
+  if (f.chill > 0) body = '#8a8f98';
+  if (f.flash > 0) body = mix(body, '#ffffff', Math.min(.75, f.flash));
+  return body;
+}
+
+// The Mite Mother: a swollen sac on spindly legs, pulsing out mites.
+function drawMother() {
+  const f = S.foe, x = f.x, gy = GROUND;
+  const pulse = Math.sin(S.t * 3) * 4 + (S.waveT < 1.5 && S.mode === 'fight' ? Math.sin(S.t * 30) * 4 : 0);
+  const body = foeBody('#9a6a48', '#b0573c');
+  ctx.beginPath(); ctx.ellipse(x, gy, 90, 12, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+  for (let i = 0; i < 6; i++) {
+    const lx = x - 70 + i * 28, sw = Math.sin(S.t * 2 + i) * 4;
+    ctx.beginPath(); ctx.moveTo(lx, gy - 70); ctx.lineTo(lx + (i < 3 ? -18 : 18) + sw, gy - 100); ctx.lineTo(lx + (i < 3 ? -26 : 26), gy);
+    ctx.strokeStyle = '#4a3424'; ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.stroke();
+  }
+  ctx.beginPath(); ctx.ellipse(x + 10, gy - 110, 95 + pulse, 70 + pulse * .6, -.1, 0, Math.PI * 2); ctx.fillStyle = body; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = '#4a3424'; ctx.stroke();
+  // egg sacs
+  for (let i = 0; i < 7; i++) {
+    const a = i * .9 + .4, ex = x + 20 + Math.cos(a) * 55, ey = gy - 110 + Math.sin(a) * 38;
+    circle(ex, ey, 10 + Math.sin(S.t * 4 + i) * 2, 'rgba(255,210,150,.55)');
+  }
+  // head
+  circle(x - 80, gy - 120, 30, mix(body.startsWith('#') ? body : '#9a6a48', '#4a3424', .25));
+  for (let i = 0; i < 3; i++) circle(x - 96 + i * 12, gy - 128, 5, f.stun > 0 ? '#9aa4aa' : '#ff4a3a');
+  line(x - 100, gy - 104, x - 116, gy - 90, '#2a1d14', 4); line(x - 86, gy - 100, x - 92, gy - 84, '#2a1d14', 4);
+}
+
+// The Ironshell: a low armored beetle. Its shell lifts while it winds up.
+function drawShell() {
+  const f = S.foe, x = f.x, gy = GROUND, open = shellOpen();
+  const walk = f.state === 'march' && f.pinned <= 0 && f.stun <= 0 && !opts.holdFoe && S.mode === 'fight';
+  const bob = walk ? Math.abs(Math.sin(f.step * 1.3)) * -3 : 0;
+  const body = foeBody('#5d6e75', '#7a5a50');
+  ctx.beginPath(); ctx.ellipse(x, gy, 105, 14, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+  for (let i = 0; i < 4; i++) {
+    const lx = x - 70 + i * 46, sw = walk ? Math.sin(f.step * 1.3 + i * 1.7) * 8 : 0;
+    rr(lx + sw - 8, gy - 40, 16, 40, 6, '#2b373c');
+  }
+  // soft core, visible when the shell lifts
+  const lift = open ? 40 + Math.sin(S.t * 10) * 3 : 0;
+  ctx.beginPath(); ctx.ellipse(x, gy - 60 + bob, 92, 40, 0, Math.PI, 0); ctx.fillStyle = open ? '#ff9a5a' : '#3a2a30'; ctx.fill();
+  if (open) { circle(x, gy - 66, 28 + Math.sin(S.t * 12) * 3, 'rgba(255,230,150,.7)'); txt('WEAK', x, gy - 66, 14, '#7a2a10', 'center', 900); }
+  // the shell
+  ctx.save(); ctx.translate(x, gy - 62 + bob - lift); ctx.rotate(open ? -.12 : 0);
+  ctx.beginPath(); ctx.ellipse(0, 0, 110, 78, 0, Math.PI, 0); ctx.closePath();
+  ctx.fillStyle = body; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = '#1d2a30'; ctx.stroke();
+  for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 36, 0); ctx.lineTo(i * 24, -70 + Math.abs(i) * 14); ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 3; ctx.stroke(); }
+  for (let i = 0; i < 6; i++) circle(-80 + i * 32, -12, 4, '#9aa4aa');
+  txt(String(PHASES[f.phase].armor), 0, -40, 22, 'rgba(255,255,255,.55)', 'center', 900);
+  const dmgFrac = 1 - f.hp / f.max;
+  if (dmgFrac > .3) { ctx.beginPath(); ctx.moveTo(-30, -70); ctx.lineTo(-20, -40); ctx.lineTo(-34, -20); ctx.strokeStyle = '#1d2a30'; ctx.lineWidth = 3; ctx.stroke(); }
+  if (dmgFrac > .6) { ctx.beginPath(); ctx.moveTo(40, -60); ctx.lineTo(30, -30); ctx.lineTo(48, -10); ctx.stroke(); }
+  ctx.restore();
+  // head
+  rr(x - 136, gy - 76 + bob, 44, 36, 12, '#2b373c');
+  circle(x - 122, gy - 62 + bob, 6, f.stun > 0 ? '#9aa4aa' : (open ? '#ff4a3a' : COL.gold));
+}
+
+// The Lockbox: an iron safe on legs with a big lock showing the face(s) it wants.
+function drawLockbox() {
+  const f = S.foe, x = f.x, gy = GROUND;
+  const walk = f.state === 'march' && f.pinned <= 0 && f.stun <= 0 && !opts.holdFoe && S.mode === 'fight';
+  const bob = walk ? Math.abs(Math.sin(f.step)) * -4 : 0;
+  const body = foeBody('#6b767d', '#7a6a70');
+  ctx.beginPath(); ctx.ellipse(x, gy, 90, 13, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+  const la = walk ? Math.sin(f.step) * 9 : 0;
+  rr(x - 50 + la, gy - 46, 24, 46, 6, '#2b373c'); rr(x + 26 - la, gy - 46, 24, 46, 6, '#2b373c');
+  rr(x - 84, gy - 220 + bob, 168, 176, 14, body, '#1d2a30', 5);
+  rr(x - 70, gy - 206 + bob, 140, 148, 10, null, 'rgba(0,0,0,.25)', 3);
+  for (const [rx, ry] of [[-74, -210], [62, -210], [-74, -58], [62, -58]]) circle(x + rx + 6, gy + ry + bob, 5, '#3a4448');
+  // the lock: one or two faces it wants; the ring shows time to the next turn
+  const n = f.locks.length || 1, size = n > 1 ? 44 : 60;
+  rr(x - 60, gy - 184 + bob, 120, 96, 12, '#2b2b2b', COL.gold, 3);
+  f.locks.forEach((v, i) => drawDie(x + (n > 1 ? (i ? 26 : -26) : 0), gy - 136 + bob, {v, show: v}, 0, 1, 0, size));
+  const k = 1 - f.lockT / PHASES[f.phase].lockEvery;
+  ctx.beginPath(); ctx.arc(x, gy - 136 + bob, 58, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.strokeStyle = '#8fe08f'; ctx.lineWidth = 4; ctx.stroke();
+  // next faces, small, under the lock
+  txt('next', x - 40, gy - 72 + bob, 11, 'rgba(255,255,255,.6)', 'center', 700);
+  f.nextLocks.forEach((v, i) => drawDie(x - 6 + i * 26, gy - 72 + bob, {v, show: v}, 0, 1, 0, 20));
+  circle(x - 62, gy - 196 + bob, 8, f.stun > 0 ? '#9aa4aa' : '#ff4a3a');
+}
+
+function drawFoe() {
+  const f = S.foe, x = f.x, gy = GROUND;
+  if (S.enc === 'swarm') drawMother();
+  else if (S.enc === 'shell') drawShell();
+  else if (S.enc === 'lock') drawLockbox();
+  else drawColossus();
   if (f.burn > 0) for (let i = 0; i < 5; i++) { const fy = (S.t * 40 + i * 13) % 30; circle(x - 60 + i * 28, gy - 170 - fy, 5 - fy * .15, COL.ember); }
   if (f.stagger > 0 || f.stun > 0) for (let i = 0; i < 3; i++) { const a = S.t * 5 + i * 2.1; circle(x - 30 + Math.cos(a) * 40, gy - 245 + Math.sin(a) * 8, 4, '#ffe27a'); }
   // sticky bombs
   for (const b of S.bombs) {
-    const bx = x + b.ox, by = gy + b.oy + bob * .5;
+    const bx = x + b.ox, by = gy + b.oy;
     circle(bx, by, 9, '#2b2b2b');
     drawDie(bx, by, b.d, 0, .5, 0, 18);
     txt(b.t.toFixed(1), bx, by - 18, 11, b.t < .7 ? '#ff5a4a' : '#ffd25e', 'center', 900, 3);
@@ -2521,6 +2869,15 @@ function drawTelegraph() {
     rr(bx - 80, by - 20, 160, 40, 18, 'rgba(10,25,30,.85)', 'rgba(255,255,255,.25)', 2);
     txt('PRACTICE', bx, by - 7, 11, 'rgba(255,255,255,.6)', 'center', 800);
     txt(`${dps.toFixed(1)} dmg/s`, bx, by + 9, 15, '#ffd0c4', 'center', 900);
+    return;
+  }
+  if (S.enc === 'swarm') {
+    // the next brood: how many and how soon; and how many mites are out
+    const ph = PHASES[f.phase], k = 1 - S.waveT / ph.waveEvery, n = liveUnits().length;
+    rr(bx - 90, by - 20, 180, 40, 18, S.waveT < 2 ? 'rgba(120,20,10,.92)' : 'rgba(10,25,30,.85)', S.waveT < 2 ? '#ff8a73' : 'rgba(255,255,255,.25)', 2);
+    txt(`BROOD ×${ph.wave} in ${Math.ceil(S.waveT)}s`, bx, by - 5, 14, '#fff', 'center', 800);
+    txt(n ? `${n} mites out` : 'no mites: hit her!', bx, by + 11, 11.5, n ? '#ffd0c4' : '#8fe08f', 'center', 700);
+    ctx.beginPath(); ctx.arc(bx + 104, by, 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.strokeStyle = '#ff8a73'; ctx.lineWidth = 3; ctx.stroke();
     return;
   }
   const winding = f.state === 'windup';
@@ -2658,7 +3015,7 @@ function toolbarItems() {
       else f.hp = Math.min(f.hp, 60);
     }},
     {w: 70, label: 'Flyers +4', on: false, fn: () => spawnFlyers(4)},
-    {w: 68, label: 'New foe', on: false, fn: () => newGame('keep')},
+    {w: 84, label: 'Change foe', on: false, fn: () => newGame('keep')},
     {w: 76, label: 'Clear floor', on: false, fn: () => newGame('blank')},
     {w: 58, label: 'Starter', on: false, fn: () => newGame('starter')},
   ];
@@ -2720,11 +3077,7 @@ function drawHud() {
     const a = .6 + .4 * Math.sin(S.t * 8);
     txt(`Phase ${f.phase + 2} soon: ${nx.name}`, 904, 89, 11, `rgba(255,210,94,${a})`, 'left', 800);
   }
-  let st;
-  if (f.stun > 0) st = 'Stunned';
-  else if (f.state === 'march') { const front = foeFront(); st = front > REACH_X + 2 ? `Reaches wall in ${Math.ceil(Math.max(0, (front - REACH_X) / f.speed))}s` : 'At your wall'; }
-  else if (f.state === 'windup') st = 'Winding up!';
-  else st = 'Recovering';
+  const st = foeStatus();
   const tags = [f.pinned > 0 ? 'pinned' : '', f.chill > 0 ? 'chilled' : '', f.burn > 0 ? 'burning' : ''].filter(Boolean).join(' · ');
   txt(st + (tags ? '  ·  ' + tags : ''), 1256, 52, 11.5, f.state === 'windup' ? '#ff8a73' : 'rgba(255,255,255,.7)', 'right', 600);
   if (S.timeScale < .9) txt('slow-mo', 318, 23, 11, '#7fe0c6', 'right', 800);
@@ -2734,6 +3087,7 @@ function drawHud() {
 function foeStatus() {
   const f = S.foe;
   if (S.mode === 'build') return 'Waiting while you build';
+  if (S.enc === 'swarm') return f.state === 'shift' ? 'Changing…' : 'Brooding at the back';
   if (f.stun > 0) return 'Stunned';
   if (f.state === 'march') { const front = foeFront(); return front > REACH_X + 2 ? `Reaches wall in ${Math.ceil(Math.max(0, (front - REACH_X) / f.speed))}s` : 'At your wall'; }
   if (f.state === 'windup') return 'Winding up!';
@@ -2796,6 +3150,37 @@ function drawPhoneControls() {
   bigButton(bx + 60, by + 68, bw, bh, '☰', 'tools', S.toolsOpen, () => { S.toolsOpen = true; });
   bigButton(bx + 120, by + 68, bw, bh, S.paused ? '▶' : '❚❚', S.paused ? 'play' : 'pause', S.paused, () => { S.paused = !S.paused; });
 }
+// Choose what you are building against: each foe wants a different factory.
+const FOE_ART = {colossus: '#9a6a48', swarm: '#b0845c', shell: '#5d6e75', lock: '#6b767d'};
+function drawPicker() {
+  if (!S.picker) return;
+  S.menuButtons = [];
+  ctx.fillStyle = 'rgba(4,14,18,.82)'; ctx.fillRect(0, 0, W, H);
+  txt('CHOOSE YOUR FOE', W / 2, PHONE ? 40 : 70, PHONE ? 30 : 34, COL.gold, 'center', 900, 6);
+  txt('Each one needs a different factory. You get a build phase first.', W / 2, PHONE ? 72 : 104, 15, '#e9fbff', 'center', 600, 4);
+  const ids = Object.keys(FOES), gap = 18, cw = (W - 80 - gap * 3) / 4, ch = PHONE ? 440 : 470, cy = PHONE ? 100 : 136;
+  ids.forEach((id, i) => {
+    const d = FOES[id], cx = 40 + i * (cw + gap);
+    const hov = !PHONE && mouse.x >= cx && mouse.x <= cx + cw && mouse.y >= cy && mouse.y <= cy + ch;
+    rr(cx, cy, cw, ch, 16, hov ? '#173f4f' : '#0f2d38', id === S.enc ? COL.gold : 'rgba(255,255,255,.2)', id === S.enc ? 3 : 2);
+    rr(cx + 14, cy + 14, cw - 28, 120, 12, FOE_ART[id]);
+    // a tiny portrait
+    ctx.save(); ctx.translate(cx + cw / 2, cy + 74);
+    if (id === 'swarm') { circle(10, -6, 34, '#9a6a48'); for (let k = 0; k < 5; k++) circle(-50 + k * 18, 34, 7, '#6b4a30'); circle(-32, -8, 14, '#6b4a30'); circle(-36, -10, 3, '#ff4a3a'); }
+    else if (id === 'shell') { ctx.beginPath(); ctx.ellipse(0, 20, 70, 50, 0, Math.PI, 0); ctx.fillStyle = '#3d4c52'; ctx.fill(); txt('8', 0, -4, 30, 'rgba(255,255,255,.6)', 'center', 900); }
+    else if (id === 'lock') { rr(-44, -40, 88, 80, 10, '#3d4649', COL.gold, 3); drawDie(0, 0, {v: 4, show: 4}, 0, 1, 0, 44); }
+    else { rr(-40, -44, 80, 80, 14, '#7a5236'); circle(-12, -16, 14, '#2a1d14'); circle(-14, -16, 9, COL.gold); }
+    ctx.restore();
+    txt(d.tag, cx + 18, cy + 156, 12, COL.gold, 'left', 900);
+    txt(d.name, cx + 18, cy + 180, 21, '#fff', 'left', 900);
+    wrapText(d.desc, cx + 18, cy + 212, cw - 36, 15, '#e9fbff');
+    txt('BUILD FOR', cx + 18, cy + 300, 12, '#7fe0c6', 'left', 900);
+    wrapText(d.counters, cx + 18, cy + 324, cw - 36, 14, '#bfe8dc');
+    txt(`${d.phases.length} phases · ${d.hp} HP`, cx + 18, cy + ch - 22, 12.5, 'rgba(255,255,255,.55)', 'left', 700);
+    S.menuButtons.push({x: cx, y: cy, w: cw, h: ch, fn: () => chooseFoe(id)});
+  });
+}
+
 function drawToolsMenu() {
   if (!S.toolsOpen) return;
   S.menuButtons = [];
@@ -2925,7 +3310,7 @@ function drawOverlay() {
   txt(won ? 'THE COLOSSUS FALLS' : 'YOUR FACTORY IS SCRAP', 0, 0, 48, won ? COL.gold : '#ff7a6a', 'center', 900, 8);
   ctx.restore();
   txt(`Dice thrown ${S.stats.thrown} · damage ${Math.round(S.stats.dmg)} · dice lost ${S.stats.lost + S.stats.spilled} · time ${Math.round(S.t)}s`, W / 2, 346, 17, '#fff', 'center', 600);
-  txt('Click or press R for a new Colossus (your factory stays)', W / 2, 382, 15, 'rgba(255,255,255,.7)', 'center', 600);
+  txt('Click or press R to pick a foe (your factory stays)', W / 2, 382, 15, 'rgba(255,255,255,.7)', 'center', 600);
 }
 
 function draw() {
@@ -2942,11 +3327,15 @@ function draw() {
   drawMines();
   drawWall();
   drawFoe();
+  drawUnits();
   drawLensBeams();
+  const locks = PHASES[S.foe.phase].locks ? S.foe.locks : null;
   for (const d of S.dice) {
     let s, y = d.y;
     if (d.state === 'fall') { s = 1 - d.fall / .5; y = d.y + 40 * d.fall * d.fall; }
     else s = (d.state === 'proc' ? .82 : 1) * (1 + .45 * d.pop * d.pop);
+    // against the Lockbox, dice showing a lock face glow green
+    if (locks && d.state !== 'fall' && locks.includes(d.v)) circle(d.x, y, 17 + Math.sin(S.t * 8) * 1.5, 'rgba(120,230,120,.45)');
     drawDie(d.x, y, d, d.rot + (d.state === 'fall' ? d.fall * 9 : 0), s, d.state === 'stop' && d.wait > JAM_TIME ? 1 : 0);
   }
   drawRubbleAndJams();
@@ -2961,6 +3350,7 @@ function draw() {
   drawPalette();
   drawBanner();
   drawToolsMenu();
+  drawPicker();
   if (S.over) drawOverlay();
 }
 
@@ -2975,7 +3365,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__ashcan = {get state() { return S; }, opts, newGame, update, draw, placeMachine, setBelt, rollNow, raiseParry, KINDS,
+window.__ashcan = {get state() { return S; }, opts, newGame, update, draw, placeMachine, setBelt, rollNow, raiseParry, KINDS, chooseFoe, FOES, startFight,
   step(seconds) { for (let t = 0; t < seconds; t += 1 / 60) update(1 / 60); draw(); }};
 </script>
 </body>
