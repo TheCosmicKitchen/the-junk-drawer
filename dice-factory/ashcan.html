@@ -1,0 +1,2633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dice Factory · ashcan sandbox</title>
+<style>
+:root{--bg:#0b222a;--ink:#eaf3f5;--mute:#9fb8bf}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1280px;margin:0 auto;padding:8px 12px}
+canvas{display:block;width:min(100%, calc((100svh - 84px) * 16 / 9));aspect-ratio:16/9;height:auto;margin:0 auto;border-radius:14px;background:#0f2d38;box-shadow:0 10px 40px rgba(0,0,0,.35);touch-action:none;user-select:none}
+.help{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 24px;margin:14px 4px 4px;color:var(--mute);font-size:14px}
+.help b{color:var(--ink)}
+kbd{background:#16394a;border:1px solid #2b5566;border-bottom-width:2px;border-radius:5px;padding:0 5px;font:12px ui-monospace,monospace;color:var(--ink)}
+.touchbar{display:flex;flex-wrap:wrap;gap:8px;margin:8px auto 0;max-width:min(100%, calc((100svh - 84px) * 16 / 9))}
+.touchbar button{flex:1 1 0;min-width:84px;min-height:44px;border-radius:12px;border:1px solid #2b5566;background:#16394a;color:var(--ink);font:700 15px system-ui,sans-serif;touch-action:manipulation;cursor:pointer}
+.touchbar button.on{background:#2fae92;border-color:#7fe0c6;color:#06201a}
+.touchbar button:active{transform:translateY(1px)}
+.portrait-note{display:none;margin:10px 4px 0;padding:10px 12px;border-radius:10px;background:#16394a;color:var(--mute);font-size:14px}
+@media (orientation:portrait) and (max-width:820px){.portrait-note{display:block}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<canvas id="c" width="1280" height="720" aria-label="Dice factory sandbox"></canvas>
+<div class="touchbar" aria-label="Touch controls">
+  <button id="tb-rotate" type="button">↻ Rotate</button>
+  <button id="tb-erase" type="button">✕ Erase</button>
+  <button id="tb-parry" type="button">🛡 Parry</button>
+  <button id="tb-drop" type="button">Drop part</button>
+</div>
+<p class="portrait-note">Turn your phone sideways for a bigger board.</p>
+<div class="help">
+  <div><b>Ashcan sandbox.</b> Every part is free. Pick one from the palette and click floor tiles to place it (it stays picked; <kbd>1</kbd>-<kbd>5</kbd> re-pick recent parts). <kbd>R</kbd> or the wheel rotates. Right-click or <kbd>Esc</kbd> drops it. Time slows while you place. A gold star marks parts that answer the current phase.</div>
+  <div><b>Re-route.</b> Drag across empty floor to lay belts; click a belt to turn it. Drag a machine to move it. Right-click removes anything. Dice that run off a belt heap up on the floor (6 per tile, then they tumble onward); lay a belt over a heap to scoop it back up.</div>
+  <div><b>The Colossus changes.</b> Four phases: march, then flyers that lift your belts and snatch dice, then armor that only big or spiky dice get through, then boulders that bury tiles. Click gates, switches, silos and rockets to use them. <kbd>Space</kbd> raises Parry Shields. <kbd>P</kbd> pauses.</div>
+</div>
+</div>
+<script>
+"use strict";
+// ============================================================ setup
+const W = 1280, H = 720;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+function fitCanvas() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+const CELL = 64, HC = CELL / 2, GW = 9, GH = 6, GX = 24, GY = 104;
+const GROUND = GY + GH * CELL;
+const WALL_X0 = 612, WALL_X1 = 690, FIELD_X1 = 1258;
+const REACH_X = WALL_X1 + 8;
+const BLUNDER_RANGE = 230;           // Blunderbuss is strong while the foe is this close
+const PAL_Y = 512, PAL_ROW = 50, PAL_X = 118, PAL_W = 84, PAL_H = 44, PAL_GAP = 3;
+
+const BELT_SPEED = 150;
+const ROLL_EVERY = 4.2, ROLL_COUNT = 6, HOPPER_MAX = 10;
+const WALL_COLS = 3, WALL_ROWS = 15, BRICK = 24;
+const JAM_TIME = 0.8;
+
+const R = {x: 1, y: 0}, D = {x: 0, y: 1}, L = {x: -1, y: 0}, U = {x: 0, y: -1};
+const rotCW = d => ({x: -d.y, y: d.x});
+const neg = d => ({x: -d.x, y: -d.y});
+const deq = (a, b) => a.x === b.x && a.y === b.y;
+const add = (a, b) => ({x: a.x + b.x, y: a.y + b.y});
+const key = c => c.x + ',' + c.y;
+const inGrid = c => c.x >= 0 && c.y >= 0 && c.x < GW && c.y < GH;
+const center = c => ({x: GX + c.x * CELL + HC, y: GY + c.y * CELL + HC});
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpP = (a, b, t) => ({x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t)});
+const bez = (p0, c, p1, t) => { const u = 1 - t; return {x: u*u*p0.x + 2*u*t*c.x + t*t*p1.x, y: u*u*p0.y + 2*u*t*c.y + t*t*p1.y}; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const easeOutBack = t => { t = clamp(t, 0, 1); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const ri = (a, b) => Math.floor(rnd(a, b + 1));
+function angDiff(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+
+const COL = {
+  bg: '#0f2d38', floor: '#16394a', tile: '#1d4659', tile2: '#1a4254', card: '#f7f0e1', ink: '#2b2620',
+  route: '#2fae92', mod: '#a66ad6', weapon: '#e2533d', defense: '#3d8be0',
+  hot: '#ffc2a6', ember: '#ff7a2f', ice: '#c9ecff', drop: '#ff5a4a', blk: '#8cc2ff', gold: '#ffd25e', heal: '#7fe08a',
+  ground: '#3a4a33', grass: '#46593c',
+};
+const TINT = {route: '#d8f0ea', mod: '#eedff8', weapon: '#fde3d8', defense: '#dfeafa'};
+const CAT_LABEL = {route: 'ROUTE & SPLIT', mod: 'MODIFY', weapon: 'WEAPONS', defense: 'DEFENSE'};
+
+// ============================================================ parts
+// role: source | manip (takes a die, sends dice out) | term (eats the die)
+// proc: seconds a manipulator holds the die
+const KINDS = {
+  // ---------------------------------------------------- routing and splitting
+  chute:   {cat: 'route', role: 'source', name: 'Dice Chute', short: 'Chute', text: 'Rolls 6 dice into its hopper every few seconds. More chutes, more dice.'},
+  sorter:  {cat: 'route', role: 'manip', proc: .15, name: 'Sorting Gate', short: 'Hi / Lo', text: '4-6 straight, 1-3 turn right. Click to swap.'},
+  switch:  {cat: 'route', role: 'manip', proc: .1, name: 'Track Switch', short: 'Switch', text: 'Every die goes the lit way. Click to flip.'},
+  oddeven: {cat: 'route', role: 'manip', proc: .15, name: 'Odd / Even Gate', short: 'Odd Even', text: 'Odd dice straight, even dice turn right.'},
+  alt:     {cat: 'route', role: 'manip', proc: .1, name: 'Ping-Pong', short: 'Ping-Pong', text: 'Alternates: straight, right, straight, right.'},
+  coin:    {cat: 'route', role: 'manip', proc: .2, name: 'Coin Flip', short: 'Coin Flip', text: 'Heads straight, tails right. Pure luck.'},
+  prism:   {cat: 'route', role: 'manip', proc: .3, name: 'Prism Splitter', short: 'Prism', text: 'Splits a die in two: half the pips go straight, the rest turn right.'},
+  crusher: {cat: 'route', role: 'manip', proc: .35, name: 'Crusher', short: 'Crusher', text: 'Smashes a die into that many 1s (up to 6). A swarm.'},
+  echo:    {cat: 'route', role: 'manip', proc: .3, name: 'Echo Splitter', short: 'Echo', text: 'A 5 or 6 is copied out of its right side.'},
+  overflow:{cat: 'route', role: 'manip', proc: .05, name: 'Overflow Valve', short: 'Overflow', text: 'Straight on, unless that way is blocked: then right.'},
+  fuser:   {cat: 'route', role: 'manip', proc: .3, name: 'Fuser', short: 'Fuser', text: 'Holds one die, fuses the next into it: pips add up.'},
+  silo:    {cat: 'route', role: 'manip', proc: .05, name: 'Silo', short: 'Silo', text: 'Stores up to 8 dice. Click to hold them back, click again to flood.'},
+  bounce:  {cat: 'route', role: 'manip', proc: .12, name: 'Bounce Pad', short: 'Bounce', text: 'Flings the die two tiles ahead, over whatever is between.'},
+  // ---------------------------------------------------- modifiers
+  forge:   {cat: 'mod', role: 'manip', proc: .32, name: 'Ember Forge', short: 'Forge', text: '+2 pips. Hot: sets the foe on fire.'},
+  doubler: {cat: 'mod', role: 'manip', proc: .32, name: 'Doubling Press', short: 'Doubler', text: 'Doubles a 1, 2 or 3.'},
+  drum:    {cat: 'mod', role: 'manip', proc: .32, name: 'Tumble Drum', short: 'Reroll', text: 'Rerolls the die.'},
+  flipper: {cat: 'mod', role: 'manip', proc: .25, name: 'Flipper', short: 'Flipper', text: 'Turns the die over: 1 becomes 6, 2 becomes 5.'},
+  frost:   {cat: 'mod', role: 'manip', proc: .32, name: 'Frost Coat', short: 'Frost', text: '-1 pip, but icy: hits slow the foe and its windup.'},
+  spiker:  {cat: 'mod', role: 'manip', proc: .32, name: 'Spike Lathe', short: 'Spikes', text: 'Spiky dice hit 40% harder.'},
+  inflate: {cat: 'mod', role: 'manip', proc: .25, name: 'Inflator', short: 'Inflate', text: '+1 pip, up to 12. Loop dice through it.'},
+  // ---------------------------------------------------- weapons
+  pult:    {cat: 'weapon', role: 'term', name: 'Dice-a-pult', short: 'Pult', text: 'Lobs a die: pips x2. Slow to reload.'},
+  cannon:  {cat: 'weapon', role: 'term', name: 'Dice Cannon', short: 'Cannon', text: 'Fires a die: pips damage. Quick.'},
+  rocket:  {cat: 'weapon', role: 'term', name: 'Dice Rocket', short: 'Rocket', text: 'Packs 10 dice, launches them all. Big shove. Click to launch early.'},
+  gatling: {cat: 'weapon', role: 'term', name: 'Dice Gatling', short: 'Gatling', text: 'Drum of 8 dice. Spins up and sprays them.'},
+  combo:   {cat: 'weapon', role: 'term', name: 'Combo Cannon', short: 'Combo', text: 'Loads 3. Pair x2, straight x4, three of a kind x6.'},
+  blunder: {cat: 'weapon', role: 'term', name: 'Blunderbuss', short: 'Blunder', text: 'Loads 3, blasts them together. x2 up close, weak far away.'},
+  harpoon: {cat: 'weapon', role: 'term', name: 'Harpoon', short: 'Harpoon', text: 'Pins the foe in place for pips x0.6 seconds.'},
+  mines:   {cat: 'weapon', role: 'term', name: 'Mine Mortar', short: 'Mines', text: 'Plants the die in the foe’s path. Blows up for pips x3.'},
+  lens:    {cat: 'weapon', role: 'term', name: 'Burning Lens', short: 'Lens', text: 'Each die feeds a beam that burns while fuel lasts.'},
+  rico:    {cat: 'weapon', role: 'term', name: 'Ricochet Sling', short: 'Ricochet', text: 'The die bounces off the foe and back again: 3 hits.'},
+  slots:   {cat: 'weapon', role: 'term', name: 'Slot Machine', short: 'Slots', text: 'Loads 3 and rerolls them. Three alike x8. Pair x2. Else x0.5.'},
+  sticky:  {cat: 'weapon', role: 'term', name: 'Sticky Bomb', short: 'Sticky', text: 'Sticks to the foe, blows up 2 s later for pips x4.'},
+  // ---------------------------------------------------- defense
+  bulwark: {cat: 'defense', role: 'term', name: 'Bulwark', short: 'Bulwark', text: 'Stacks the die into your dice wall. Bricks soak hits.'},
+  thorns:  {cat: 'defense', role: 'term', name: 'Thorn Garden', short: 'Thorns', text: 'Plants spiky dice by the wall. Every slam hurts the foe back.'},
+  parry:   {cat: 'defense', role: 'term', name: 'Parry Shield', short: 'Parry', text: 'Dice charge it (3 max). Space raises it: block a slam to stun the foe.'},
+  patch:   {cat: 'defense', role: 'term', name: 'Patch Bay', short: 'Patch', text: 'Repairs the factory: half the pips.'},
+  ram:     {cat: 'defense', role: 'term', name: 'Piston Ram', short: 'Ram', text: 'Holds a die until the foe is close, then shoves it back hard.'},
+  cryo:    {cat: 'defense', role: 'term', name: 'Cryo Vent', short: 'Cryo', text: 'Chills the foe: slower walk and windup for pips x0.7 s.'},
+};
+const CATS = ['route', 'mod', 'weapon', 'defense'];
+const PALETTE = {};
+for (const c of CATS) PALETTE[c] = Object.keys(KINDS).filter(k => KINDS[k].cat === c);
+const CLICKY = new Set(['sorter', 'switch', 'silo', 'rocket', 'parry']);
+
+// The Colossus changes as it breaks down. Each phase asks for a different
+// factory: `good` lists the parts that answer it (starred in the palette).
+const PHASES = [
+  {name: 'Iron March', at: 1.0, speed: 9, roll: 6, flyEvery: 0,
+   desc: 'Slams and rocks. Build damage and a dice wall.',
+   good: ['pult', 'cannon', 'combo', 'bulwark', 'parry'],
+   intents: [{type: 'slam', dmg: 10, wind: 2.6}, {type: 'rocks', dmg: 4, n: 3, wind: 2.2}, {type: 'slam', dmg: 14, wind: 3.0}]},
+  {name: 'Hive Hatch', at: .75, speed: 5, roll: 7, flyEvery: 7,
+   desc: 'Flyers lift belt tiles and snatch dice. Fast weapons shoot them first. Re-route!',
+   good: ['cannon', 'gatling', 'blunder', 'rico', 'lens', 'prism', 'crusher'],
+   intents: [{type: 'slam', dmg: 10, wind: 2.6}, {type: 'hatch', n: 6, wind: 1.8}, {type: 'rocks', dmg: 4, n: 3, wind: 2.2}]},
+  {name: 'Iron Plating', at: .5, speed: 7, roll: 8, flyEvery: 16, armor: 5,
+   desc: 'Armor 5: dice under 5 pips clink off (spiky dice pierce). Slams hit hard.',
+   good: ['fuser', 'forge', 'inflate', 'doubler', 'spiker', 'bulwark', 'thorns', 'parry'],
+   intents: [{type: 'slam', dmg: 18, wind: 3.0}, {type: 'rocks', dmg: 5, n: 4, wind: 2.4}, {type: 'slam', dmg: 22, wind: 3.2}]},
+  {name: 'Meltdown', at: .25, speed: 12, roll: 9, flyEvery: 12, meltdown: true,
+   desc: 'Boulders bury tiles: route around them. Fire does nothing, ice hits double.',
+   good: ['frost', 'cryo', 'overflow', 'switch', 'bounce', 'silo'],
+   intents: [{type: 'slam', dmg: 16, wind: 2.2}, {type: 'boulders', n: 3, wind: 2.0}, {type: 'slam', dmg: 20, wind: 2.4}, {type: 'hatch', n: 5, wind: 1.6}]},
+];
+const FAST = new Set(['cannon', 'bullet', 'pellet', 'rico']);   // projectiles that hunt flyers
+const phaseNow = () => PHASES[S.foe.phase];
+
+// ============================================================ state
+let S;
+const mouse = {x: 0, y: 0, cell: {x: -1, y: -1}, dragging: false, moved: false, last: null, pressNew: false};
+const opts = {slow: true, holdFoe: false, god: false, speed: 1};
+
+function newGame(keepFloor) {
+  const old = S;
+  S = {
+    t: 0, hp: 40, maxHp: 40, over: null, paused: false, shake: 0, nextId: 1, hitFlash: 0, timeScale: 1,
+    belts: new Map(), beltVis: new Map(), machines: new Map(), stops: new Map(),
+    dice: [], rollT: 1.0, proj: [], debris: [], parts: [], texts: [], bricks: [], pendingBricks: 0,
+    mines: [], thorns: [], bombs: [], shield: 0, shieldCd: 0, ramFx: [],
+    flyers: [], rubble: new Map(), piles: new Map(), banner: null, flyT: 6,
+    pal: null, placeDir: R, beltDir: R, buttons: [], recent: old ? old.recent : [],
+    stats: {thrown: 0, dmg: 0, lost: 0, spilled: 0, downed: 0, stolen: 0},
+    foe: {hp: 1400, max: 1400, x: 1175, kv: 0, hit: 0, burn: 0, state: 'march', timer: 0, total: 1, intent: 0,
+          arm: 0, step: 0, enraged: false, speed: 9, flash: 0, stagger: 0, pinned: 0, chill: 0, stun: 0, phase: 0},
+  };
+  S.banner = {title: 'PHASE 1 · ' + PHASES[0].name, desc: PHASES[0].desc, t: 0, life: 4.5};
+  if (keepFloor && old) {
+    for (const [k, d] of old.belts) setBelt(parseKey(k), d, 1);
+    for (const m of old.machines.values()) placeMachine(m.cell, m.kind, m.dir, 1);
+    return;
+  }
+  placeMachine({x: 0, y: 1}, 'chute', R, 1);
+  for (const x of [1, 2]) setBelt({x, y: 1}, R, 1);
+  placeMachine({x: 3, y: 1}, 'sorter', R, 1);
+  setBelt({x: 4, y: 1}, R, 1);
+  placeMachine({x: 5, y: 1}, 'forge', R, 1);
+  setBelt({x: 6, y: 1}, R, 1);
+  placeMachine({x: 7, y: 1}, 'pult', R, 1);
+  setBelt({x: 3, y: 2}, D, 1);
+  setBelt({x: 3, y: 3}, R, 1);
+  placeMachine({x: 4, y: 3}, 'doubler', R, 1);
+  setBelt({x: 5, y: 3}, R, 1);
+  setBelt({x: 6, y: 3}, R, 1);
+  placeMachine({x: 7, y: 3}, 'cannon', R, 1);
+}
+const parseKey = k => { const [x, y] = k.split(',').map(Number); return {x, y}; };
+
+function placeMachine(c, kind, dir, pop = 0) {
+  S.machines.set(key(c), {kind, dir, cell: c, pop, busy: 0, work: 0, fire: 0, mode: 0, lever: 0, leverT: 0, load: [],
+    launch: 0, wind: 0, ang: Math.atan2(dir.y, dir.x), outQ: [], held: null, alt: 0, mag: [], spin: 0, spinV: 0,
+    shotT: 0, fuel: 0, charges: 0, hopper: [], rollT: 0, reel: 0, jam: 0});
+}
+function setBelt(c, d, pop = 0) {
+  const k = key(c);
+  if (!S.belts.has(k) || !S.beltVis.has(k)) S.beltVis.set(k, {ang: Math.atan2(d.y, d.x), pop});
+  S.belts.set(k, d);
+}
+const machineAt = c => S.machines.get(key(c));
+const beltAt = c => S.belts.get(key(c));
+
+// ============================================================ fx helpers
+function burst(x, y, col, n, spd, size = 3, g = 0, life = .5, shape = 0, dir = null, spread = Math.PI) {
+  for (let i = 0; i < n; i++) {
+    const a = dir === null ? rnd(0, Math.PI * 2) : dir + rnd(-spread, spread);
+    const v = spd * rnd(.35, 1);
+    S.parts.push({x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, col, size: size * rnd(.6, 1.25), g,
+      life: life * rnd(.7, 1.2), t: 0, shape, rot: rnd(0, 6.3), vr: rnd(-12, 12)});
+  }
+  if (S.parts.length > 1000) S.parts.splice(0, S.parts.length - 1000);
+}
+function ring(x, y, col, r0, r1, life = .35) { S.parts.push({x, y, vx: 0, vy: 0, col, size: r0, end: r1, g: 0, life, t: 0, shape: 3, rot: 0, vr: 0}); }
+function say(x, y, txt, col, size = 16) { S.texts.push({x, y: Math.max(y, GY + 6), txt, col, size, t: 0, life: 1.0}); }
+function shake(a) { S.shake = Math.max(S.shake, a); }
+function debrisDie(x, y, d, vx, vy) {
+  S.debris.push({x, y, vx, vy, v: d.v, hot: d.hot, ice: d.ice, spiky: d.spiky, rot: rnd(0, 6), vr: rnd(-14, 14), t: 0, life: rnd(1.3, 2.0)});
+  if (S.debris.length > 80) S.debris.shift();
+}
+const dieSpec = d => ({v: d.v, hot: !!d.hot, ice: !!d.ice, spiky: !!d.spiky});
+
+// ============================================================ dice movement
+// Belt tiles have two stops, machines one in the centre. A die moves on only
+// when the next stop is free, so dice queue behind anything busy.
+
+function pathPt(c, din, dout, s, mach) {
+  const ce = center(c);
+  const p0 = {x: ce.x - din.x * HC, y: ce.y - din.y * HC}, p1 = {x: ce.x + dout.x * HC, y: ce.y + dout.y * HC};
+  if (mach) return s <= .5 ? lerpP(p0, ce, s * 2) : lerpP(ce, p1, (s - .5) * 2);
+  if (deq(din, dout)) return lerpP(p0, p1, s);
+  if (din.x === -dout.x && din.y === -dout.y) return s < .5 ? lerpP(p0, ce, s * 2) : lerpP(ce, p1, s * 2 - 1);
+  return bez(p0, ce, p1, s);
+}
+
+function newDie(spec, cell, dir, stopKey) {
+  const d = {id: S.nextId++, v: spec.v, show: spec.v, hot: !!spec.hot, ice: !!spec.ice, spiky: !!spec.spiky,
+    cell, din: dir, dout: dir, s: .5, ts: .5, next: null, stop: stopKey, state: 'stop', wait: 0, proc: 0,
+    pop: spec.pop ? 1 : 0, roll: 0, rollTick: 0, rot: 0, falling: false, fall: 0, x: 0, y: 0, jumpPad: !!spec.jump, jt: 0};
+  const p = center(cell); d.x = p.x; d.y = p.y;
+  S.stops.set(stopKey, d.id);
+  S.dice.push(d);
+  return d;
+}
+
+// could a die moving in direction dir out of cell c go there right now?
+function entryFor(c, dir) {
+  const n = add(c, dir), nk = key(n);
+  if (!inGrid(n)) return null;
+  const buried = S.rubble.has(nk);
+  if (S.belts.has(nk)) return {key: nk + ',0', s: .25, cell: n, dout: S.belts.get(nk), mach: null, buried};
+  const m = S.machines.get(nk);
+  if (m) return {key: nk + ',m', s: .5, cell: n, dout: dir, mach: m, buried};
+  return null;
+}
+// is the way into this entry closed right now?
+const entryBlocked = e => e.buried || S.stops.has(e.key) || (e.mach && !accepts(e.mach));
+function canEnter(c, dir) {
+  const e = entryFor(c, dir);
+  if (!e) return true;                       // runs off into nothing: allowed, it just falls
+  return !entryBlocked(e);
+}
+
+function accepts(m) {
+  const info = KINDS[m.kind];
+  if (m.kind === 'chute' || m.pop < 1 || m.jam > 0 || S.rubble.has(key(m.cell))) return false;
+  if (info.role === 'manip') {
+    if (m.kind === 'silo') return m.outQ.length < 8;
+    return m.outQ.length === 0;
+  }
+  if (m.busy > 0 || m.launch > 0) return false;
+  switch (m.kind) {
+    case 'rocket': return m.load.length < 10;
+    case 'gatling': return m.mag.length < 8;
+    case 'combo': case 'blunder': case 'slots': return m.load.length < 3 && m.reel <= 0;
+    case 'ram': return m.load.length === 0;
+    case 'parry': return m.charges < 3;
+    case 'bulwark': return S.bricks.length + S.pendingBricks < WALL_COLS * WALL_ROWS;
+    case 'thorns': return S.thorns.length < 8;
+    case 'patch': return true;
+  }
+  return true;
+}
+
+function release(d) { if (d.stop && S.stops.get(d.stop) === d.id) S.stops.delete(d.stop); d.stop = null; }
+function removeDie(d) { release(d); const i = S.dice.indexOf(d); if (i >= 0) S.dice.splice(i, 1); }
+
+function tryAdvance(d) {
+  const ck = key(d.cell);
+  const onBelt = S.belts.has(ck);
+  if (d.jumpPad) return tryJump(d);
+  let tgt;
+  if (onBelt && d.s < .5) tgt = {key: ck + ',1', s: .75, cross: false};
+  else {
+    const e = entryFor(d.cell, d.dout);
+    if (!e) { release(d); d.falling = true; d.ts = 1; d.state = 'move'; d.next = null; return; }
+    if (e.buried || (e.mach && !accepts(e.mach))) return;
+    tgt = {key: e.key, s: e.s, cross: true, cell: e.cell, dout: e.dout};
+  }
+  if (S.rubble.has(ck) && onBelt) return;      // buried belt: dice on it are stuck
+  if (S.stops.has(tgt.key)) return;
+  release(d);
+  S.stops.set(tgt.key, d.id);
+  d.stop = tgt.key; d.ts = tgt.s;
+  d.next = tgt.cross ? {cell: tgt.cell, dout: tgt.dout} : null;
+  d.state = 'move'; d.wait = 0;
+}
+
+// Bounce Pad: the die flies two tiles ahead
+function tryJump(d) {
+  const mid = add(d.cell, d.dout);
+  const e = entryFor(mid, d.dout);
+  if (e && entryBlocked(e)) return;
+  release(d);
+  const from = {x: d.x, y: d.y};
+  let to, land;
+  if (e) {
+    S.stops.set(e.key, d.id); d.stop = e.key;
+    to = e.mach ? center(e.cell) : pathPt(e.cell, d.dout, e.dout, e.s, false);
+    land = e;
+  } else { const far = add(mid, d.dout); to = center(far); land = null; }
+  d.state = 'jump'; d.jt = 0; d.jfrom = from; d.jto = to; d.jland = land; d.jumpPad = false;
+  burst(from.x, from.y, '#cfe9e2', 6, 90, 2.5, 0, .3);
+}
+
+function updateDice(dt) {
+  for (const d of S.dice.slice()) {
+    d.pop = Math.max(0, d.pop - dt * 3.5);
+    if (d.roll > 0) {
+      d.roll -= dt; d.rollTick -= dt; d.rot = Math.sin(S.t * 26 + d.id) * .6;
+      if (d.rollTick <= 0) { d.rollTick = .055; d.show = ri(1, 6); }
+      if (d.roll <= 0) { d.show = d.v; d.pop = 1; d.rot = 0; }
+    } else d.rot *= Math.exp(-8 * dt);
+    if (d.state === 'fall') {
+      d.fall += dt;
+      if (d.fall > .5) { burst(d.x, d.y + 10, '#8aa0a8', 6, 70, 2.5, 0, .35); removeDie(d); }
+      continue;
+    }
+    if (d.state === 'jump') {
+      d.jt += dt / .45;
+      const k = Math.min(1, d.jt);
+      d.x = lerp(d.jfrom.x, d.jto.x, k); d.y = lerp(d.jfrom.y, d.jto.y, k) - 70 * 4 * k * (1 - k);
+      d.rot += dt * 10;
+      if (k >= 1) {
+        const e = d.jland;
+        if (!e || (!S.belts.has(key(e.cell)) && !S.machines.has(key(e.cell)))) {
+          const at = e ? e.cell : cellAt({x: d.x, y: d.y});
+          if (isBareFloor(at)) { removeDie(d); addToPile(at, d, {x: d.x, y: d.y}); } else loseDieAt(d, 'lost');
+          continue;
+        }
+        d.cell = e.cell; d.din = d.dout; d.dout = e.dout; d.s = e.s; d.rot = 0;
+        ring(d.x, d.y, 'rgba(255,255,255,.7)', 8, 24, .25);
+        if (e.mach) arrive(d); else d.state = 'stop';
+      }
+      continue;
+    }
+    if (d.state === 'move') {
+      d.s += BELT_SPEED * dt / CELL;
+      if (d.next && d.s >= 1) {
+        d.s -= 1; d.din = d.dout; d.cell = d.next.cell; d.dout = d.next.dout; d.next = null;
+        const k = key(d.cell);
+        if (!S.belts.has(k) && !S.machines.has(k)) {
+          if (isBareFloor(d.cell)) { release(d); removeDie(d); addToPile(d.cell, d, {x: d.x, y: d.y}); } else loseDie(d, 'lost');
+          continue;
+        }
+      }
+      if (!d.next && d.s >= d.ts) {
+        d.s = d.ts;
+        if (d.falling) { landOffBelt(d); continue; }
+        arrive(d);
+        if (!S.dice.includes(d)) continue;
+      }
+    } else if (d.state === 'proc') {
+      d.proc -= dt;
+      if (d.proc <= 0) { finishProc(d); continue; }
+    } else if (d.state === 'stop') {
+      tryAdvance(d);
+      if (d.state === 'stop') d.wait += dt;
+      if (d.state === 'jump') continue;
+    }
+    const p = pathPt(d.cell, d.din, d.dout, d.s, S.machines.has(key(d.cell)));
+    d.x = p.x; d.y = p.y;
+    if (d.state === 'move') {
+      if (d.hot && Math.random() < dt * 18) S.parts.push({x: d.x + rnd(-6, 6), y: d.y + rnd(-6, 6), vx: rnd(-15, 15), vy: rnd(-70, -30), col: Math.random() < .6 ? COL.ember : COL.gold, size: rnd(1.5, 3), g: -20, life: .45, t: 0, shape: 0, rot: 0, vr: 0});
+      if (d.ice && Math.random() < dt * 10) S.parts.push({x: d.x + rnd(-8, 8), y: d.y + rnd(-8, 8), vx: 0, vy: 15, col: '#e8f8ff', size: 1.8, g: 0, life: .5, t: 0, shape: 0, rot: 0, vr: 0});
+    }
+  }
+}
+
+// a die ran off the end of a belt: onto bare floor it heaps, off the factory it's gone
+function landOffBelt(d) {
+  const n = add(d.cell, d.dout);
+  const p = pathPt(d.cell, d.din, d.dout, 1, S.machines.has(key(d.cell)));
+  if (isBareFloor(n)) { removeDie(d); addToPile(n, d, p); return; }
+  loseDie(d, 'lost');
+}
+
+function loseDie(d, why) {
+  release(d);
+  const p = pathPt(d.cell, d.din, d.dout, Math.min(d.s, 1), S.machines.has(key(d.cell)));
+  d.x = p.x; d.y = p.y;
+  loseDieAt(d, why);
+}
+function loseDieAt(d, why) {
+  release(d);
+  d.state = 'fall'; d.fall = 0;
+  S.stats.lost++;
+  say(d.x, d.y - 20, why, '#ffb0a0', 13);
+}
+
+function arrive(d) {
+  const m = S.machines.get(key(d.cell));
+  if (!m) { d.state = 'stop'; return; }
+  const info = KINDS[m.kind];
+  if (info.role === 'manip') {
+    d.state = 'proc'; d.proc = info.proc; m.work = 1;
+    if (m.kind === 'drum') d.roll = info.proc + .05;
+    if (m.kind === 'coin') d.roll = 0;
+    if (m.kind === 'sorter') m.leverT = sorterHigh(m, d.v) ? 0 : 1;
+  } else if (info.role === 'term') consume(m, d);
+  else d.state = 'stop';
+}
+
+const sorterHigh = (m, v) => (v >= 4) !== (m.mode === 1);
+
+// A manipulator takes the die in and queues what comes out.
+function finishProc(d) {
+  const m = S.machines.get(key(d.cell));
+  if (!m) { d.state = 'stop'; return; }
+  const v = d.v, sp = dieSpec(d), st = m.dir, rt = rotCW(m.dir);
+  const above = {x: d.x, y: d.y - 26};
+  const out = [];
+  const pop = o => Object.assign(o, {pop: true});
+  switch (m.kind) {
+    case 'sorter': out.push({...sp, dir: sorterHigh(m, v) ? st : rt}); break;
+    case 'switch': out.push({...sp, dir: m.mode ? rt : st}); break;
+    case 'oddeven': out.push({...sp, dir: v % 2 ? st : rt}); m.leverT = v % 2 ? 0 : 1; break;
+    case 'alt': out.push({...sp, dir: m.alt ? rt : st}); m.alt = 1 - m.alt; break;
+    case 'coin': {
+      const heads = Math.random() < .5;
+      out.push({...sp, dir: heads ? st : rt});
+      say(above.x, above.y, heads ? 'heads' : 'tails', '#ffd25e', 13);
+      m.leverT = heads ? 0 : 1;
+      break;
+    }
+    case 'prism': {
+      const a = Math.ceil(v / 2), b = Math.floor(v / 2);
+      out.push(pop({...sp, v: a, dir: st}));
+      if (b > 0) out.push(pop({...sp, v: b, dir: rt}));
+      say(above.x, above.y, b > 0 ? `${a} + ${b}` : String(a), '#7fe0c6', 14);
+      burst(d.x, d.y, '#ffffff', 8, 140, 2, 0, .3, 2);
+      break;
+    }
+    case 'crusher': {
+      const n = Math.min(6, v);
+      for (let i = 0; i < n; i++) out.push(pop({...sp, v: 1, dir: st}));
+      say(above.x, above.y, `${n} x 1`, '#7fe0c6', 14);
+      burst(d.x, d.y, '#c8c8c8', 10, 160, 3, 300, .4, 1);
+      shake(.12);
+      break;
+    }
+    case 'echo':
+      out.push({...sp, dir: st});
+      if (v >= 5) { out.push(pop({...sp, dir: rt})); say(above.x, above.y, 'copy!', '#7fe0c6', 14); ring(d.x, d.y, '#7fe0c6', 10, 30); }
+      break;
+    case 'overflow': out.push({...sp, dir: null, overflow: true}); break;
+    case 'fuser':
+      if (!m.held) { m.held = sp; break; }
+      out.push(pop({v: m.held.v + v, hot: m.held.hot || sp.hot, ice: m.held.ice || sp.ice, spiky: m.held.spiky || sp.spiky, dir: st}));
+      say(above.x, above.y, `${m.held.v} + ${v} = ${m.held.v + v}`, '#7fe0c6', 15);
+      ring(d.x, d.y, '#ffffff', 10, 34); shake(.1);
+      m.held = null;
+      break;
+    case 'silo': out.push({...sp, dir: st}); break;
+    case 'bounce': out.push({...sp, dir: st, jump: true}); break;
+    case 'forge':
+      out.push(pop({...sp, v: Math.min(v + 2, 12), hot: true, dir: st}));
+      say(above.x, above.y, '+2 hot', COL.hot, 14);
+      burst(d.x, d.y, COL.ember, 12, 150, 3, -80, .5, 0, -Math.PI / 2, .9);
+      break;
+    case 'doubler':
+      if (v <= 3) { out.push(pop({...sp, v: v * 2, dir: st})); say(above.x, above.y, 'x2', '#7fe0c6', 15); burst(d.x, d.y, '#fff', 10, 200, 2, 0, .3, 2); shake(.1); }
+      else out.push({...sp, dir: st});
+      break;
+    case 'drum': { const nv = ri(1, 6); out.push(pop({...sp, v: nv, dir: st})); say(above.x, above.y, v + ' to ' + nv, '#7fe0c6', 14); break; }
+    case 'flipper': {
+      const nv = v <= 6 ? 7 - v : v;
+      out.push(pop({...sp, v: nv, dir: st})); say(above.x, above.y, v + ' flips to ' + nv, '#d9b8f2', 14); break;
+    }
+    case 'frost':
+      out.push(pop({...sp, v: Math.max(1, v - 1), ice: true, hot: false, dir: st}));
+      say(above.x, above.y, 'iced', COL.ice, 14); burst(d.x, d.y, COL.ice, 12, 120, 2.5, 0, .5);
+      break;
+    case 'spiker':
+      out.push(pop({...sp, spiky: true, dir: st})); say(above.x, above.y, 'spiky', '#d9b8f2', 14);
+      burst(d.x, d.y, '#ffffff', 8, 180, 2, 0, .25, 2);
+      break;
+    case 'inflate':
+      out.push(pop({...sp, v: Math.min(12, v + 1), dir: st})); say(above.x, above.y, '+1', '#d9b8f2', 14); break;
+    default: out.push({...sp, dir: st});
+  }
+  removeDie(d);
+  m.outQ.push(...out);
+}
+
+// Machines release queued dice one at a time, when the way out is clear.
+function emitFromMachine(m) {
+  if (!m.outQ.length || m.jam > 0 || S.rubble.has(key(m.cell))) return;
+  if (m.kind === 'silo' && m.mode === 1) return;      // holding
+  const mk = key(m.cell) + ',m';
+  if (S.stops.has(mk)) return;
+  const spec = m.outQ[0];
+  let dir = spec.dir;
+  if (spec.overflow) {
+    if (canEnter(m.cell, m.dir)) dir = m.dir;
+    else if (canEnter(m.cell, rotCW(m.dir))) { dir = rotCW(m.dir); m.leverT = 1; }
+    else return;
+    if (deq(dir, m.dir)) m.leverT = 0;
+  } else if (spec.jump) {
+    const e = entryFor(add(m.cell, dir), dir);
+    if (e && entryBlocked(e)) return;
+  } else if (!canEnter(m.cell, dir)) return;
+  m.outQ.shift();
+  const d = newDie(spec, m.cell, dir, mk);
+  tryAdvance(d);
+}
+
+// ============================================================ terminals
+function consume(m, d) {
+  const sp = dieSpec(d);
+  removeDie(d);
+  const ce = center(m.cell);
+  m.work = 1;
+  switch (m.kind) {
+    case 'pult': m.load = [sp]; m.wind = .35; m.busy = 1.6; break;
+    case 'cannon': m.load = [sp]; m.wind = .12; m.busy = .55; break;
+    case 'harpoon': m.load = [sp]; m.wind = .25; m.busy = 2.5; break;
+    case 'rico': m.load = [sp]; m.wind = .15; m.busy = .9; break;
+    case 'sticky': m.load = [sp]; m.wind = .2; m.busy = 1.0; break;
+    case 'mines': m.load = [sp]; m.wind = .25; m.busy = .8; break;
+    case 'rocket':
+      m.load.push(sp); m.busy = .12;
+      burst(ce.x, ce.y, COL.gold, 4, 60, 2, 0, .25);
+      if (m.load.length >= 10) launchRocket(m);
+      break;
+    case 'gatling': m.mag.push(sp); m.busy = .05; break;
+    case 'combo': case 'blunder':
+      m.load.push(sp); m.busy = .1;
+      if (m.load.length >= 3) m.wind = .4;
+      break;
+    case 'slots':
+      m.load.push(sp); m.busy = .1;
+      if (m.load.length >= 3) { m.reel = 1.1; m.busy = 1.3; }
+      break;
+    case 'lens': m.fuel = Math.min(16, m.fuel + sp.v * .6 * (sp.hot ? 1.5 : 1)); m.busy = .1; S.stats.thrown++; break;
+    case 'bulwark': {
+      m.busy = .3; S.pendingBricks++;
+      const slot = S.bricks.length + S.pendingBricks - 1, bp = brickPos(slot);
+      S.proj.push({kind: 'brick', dice: [sp], x0: ce.x, y0: ce.y, x1: bp.x, y1: bp.y, t: 0, dur: .55, arc: 90, rot: 0});
+      break;
+    }
+    case 'thorns': {
+      m.busy = .3;
+      const i = S.thorns.length;
+      S.thorns.push({v: 0, spiky: sp.spiky, pending: true});
+      S.proj.push({kind: 'thorn', dice: [sp], x0: ce.x, y0: ce.y, x1: thornX(i), y1: GROUND - 8, t: 0, dur: .6, arc: 110, rot: 0, slot: i});
+      break;
+    }
+    case 'parry':
+      m.charges++; m.busy = .3;
+      say(ce.x, ce.y - 34, `charge ${m.charges}/3`, COL.blk, 13); ring(ce.x, ce.y, COL.blk, 10, 32);
+      break;
+    case 'patch': {
+      m.busy = .25;
+      const heal = Math.ceil(sp.v / 2);
+      S.hp = Math.min(S.maxHp, S.hp + heal);
+      say(ce.x, ce.y - 34, '+' + heal + ' repair', COL.heal, 15);
+      burst(ce.x, ce.y, COL.heal, 12, 120, 3, -60, .6);
+      break;
+    }
+    case 'ram': m.load = [sp]; break;
+    case 'cryo': {
+      m.busy = .3;
+      const tg = foeTarget(30);
+      S.proj.push({kind: 'cryo', dice: [sp], x0: ce.x, y0: ce.y, x1: tg.x, y1: tg.y, t: 0, dur: .9, arc: 60, rot: 0});
+      break;
+    }
+  }
+}
+
+function launchRocket(m) {
+  if (m.load.length === 0 || m.launch > 0) return;
+  m.launch = .9; m.busy = 2.2;
+  say(center(m.cell).x, center(m.cell).y - 40, 'LAUNCH ' + m.load.length, COL.gold, 16);
+}
+
+function foeTarget(spread = 40) {
+  const f = S.foe;
+  return {x: f.x - 10 + rnd(-spread, spread) * .6, y: GROUND - 95 + rnd(-spread, spread)};
+}
+const foeFront = () => S.foe.x - 70;
+
+// Damage the Colossus takes from these dice right now, given its phase.
+// Plating: a die under the armor value does 1 unless it is spiky.
+// Meltdown: icy dice do double.
+function diceDamage(dice, mult, vsFlyer = false) {
+  const ph = PHASES[S.foe.phase];
+  let s = 0, clinked = 0;
+  for (const d of dice) {
+    let v = d.v * (d.spiky ? 1.4 : 1);
+    if (!vsFlyer && ph.armor && !d.spiky && d.v < ph.armor) { v = 1; clinked++; }
+    if (!vsFlyer && ph.meltdown && d.ice) v *= 2;
+    s += v;
+  }
+  lastClink = clinked;
+  return Math.max(1, Math.round(s * mult));
+}
+let lastClink = 0;
+
+// fire a projectile from machine m at the foe
+function shoot(m, kind, dice, mult, o = {}) {
+  const ce = center(m.cell);
+  const x0 = ce.x + (o.ox || 0), y0 = ce.y + (o.oy || 0);
+  // fast, light weapons go for flyers first
+  let fly = null, tg;
+  if (FAST.has(kind)) fly = nearestFlyer(x0, y0, o.skipFly);
+  if (fly) tg = {x: fly.x, y: fly.y}; else tg = foeTarget(o.spread ?? 40);
+  const dist = Math.hypot(tg.x - x0, tg.y - y0);
+  let dur = o.dur ?? dist / (o.speed || 900);
+  if (fly) dur = Math.min(dur, dist / 1100);
+  S.proj.push({kind, dice, mult, x0, y0, x1: tg.x, y1: tg.y, t: -(o.delay || 0), dur, arc: fly ? 8 : (o.arc ?? 30),
+    rot: 0, knock: o.knock ?? 1, bounces: o.bounces || 0, label: o.label || null, size: o.size || 1, fly});
+  S.stats.thrown += dice.length;
+  m.fire = 1;
+}
+
+function fire(m) {
+  const ce = center(m.cell);
+  const load = m.load; m.load = [];
+  switch (m.kind) {
+    case 'pult':
+      shoot(m, 'pult', load, 2, {oy: -18, dur: 1.0, arc: 190});
+      burst(ce.x, ce.y - 20, '#c9b48a', 6, 90, 3, 200, .4, 1);
+      break;
+    case 'cannon':
+      shoot(m, 'cannon', load, 1, {ox: 22, oy: -6, speed: 950, arc: 30});
+      burst(ce.x + 28, ce.y - 6, '#ffe27a', 8, 220, 2, 0, .2, 2, 0, .5);
+      burst(ce.x + 28, ce.y - 6, '#9aa4aa', 5, 60, 5, -30, .6);
+      shake(.08);
+      break;
+    case 'harpoon':
+      shoot(m, 'harpoon', load, 1, {ox: 20, speed: 1000, arc: 12, spread: 20});
+      break;
+    case 'rico':
+      shoot(m, 'rico', load, 1, {oy: -10, dur: .6, arc: 60, bounces: 2});
+      break;
+    case 'sticky':
+      shoot(m, 'sticky', load, 0, {oy: -10, dur: .8, arc: 140, knock: 0});
+      break;
+    case 'mines': {
+      const d = load[0];
+      const x = clamp(foeFront() - rnd(30, 150), REACH_X + 10, FIELD_X1 - 20);
+      S.proj.push({kind: 'mine', dice: [d], x0: ce.x, y0: ce.y - 10, x1: x, y1: GROUND - 8, t: 0, dur: .9, arc: 170, rot: 0});
+      S.stats.thrown++;
+      m.fire = 1;
+      break;
+    }
+    case 'combo': {
+      const vs = load.map(d => d.v).sort((a, b) => a - b);
+      let mult = 1, label = 'no combo';
+      const same = vs[0] === vs[1] && vs[1] === vs[2];
+      const straight = vs[1] === vs[0] + 1 && vs[2] === vs[1] + 1;
+      const pair = vs[0] === vs[1] || vs[1] === vs[2];
+      if (same) { mult = 6; label = 'THREE OF A KIND x6'; }
+      else if (straight) { mult = 4; label = 'STRAIGHT x4'; }
+      else if (pair) { mult = 2; label = 'PAIR x2'; }
+      say(ce.x, ce.y - 40, label, mult > 1 ? COL.gold : '#c9d6da', mult > 1 ? 16 : 13);
+      shoot(m, 'cluster', load, mult, {oy: -8, dur: .9, arc: 120, knock: 1.5, size: 1 + mult * .05});
+      shake(.15 + mult * .04);
+      break;
+    }
+    case 'blunder': {
+      const close = foeFront() < REACH_X + BLUNDER_RANGE;
+      const mult = close ? 2 : .5;
+      load.forEach((d, i) => shoot(m, 'pellet', [d], mult, {ox: 22, speed: 1100, arc: 20, spread: 60, delay: i * .03}));
+      burst(ce.x + 26, ce.y, '#ffe27a', 16, 300, 2.5, 0, .25, 2, 0, .6);
+      burst(ce.x + 26, ce.y, '#9aa4aa', 10, 90, 6, -30, .8);
+      say(ce.x, ce.y - 40, close ? 'POINT BLANK x2' : 'too far x0.5', close ? COL.gold : '#c9d6da', 14);
+      shake(close ? .35 : .15);
+      break;
+    }
+  }
+}
+
+function updateMachines(dt) {
+  for (const m of S.machines.values()) {
+    if (m.pop < 1) {
+      const was = m.pop;
+      m.pop = Math.min(1, m.pop + dt / .3);
+      if (was < 0 && m.pop >= 0) {
+        const ce = center(m.cell);
+        ring(ce.x, ce.y, 'rgba(230,240,245,.9)', 14, 36);
+        burst(ce.x, ce.y, '#ffffff', 10, 150, 3, 0, .4);
+        shake(.12);
+      }
+    }
+    if (m.jam > 0) {
+      m.jam -= dt;
+      if (Math.random() < dt * 14) { const ce = center(m.cell); burst(ce.x + rnd(-20, 20), ce.y + rnd(-20, 20), '#ffd25e', 2, 120, 1.5, 0, .2, 2); }
+      continue;
+    }
+    if (S.rubble.has(key(m.cell))) continue;
+    m.busy = Math.max(0, m.busy - dt);
+    m.work = Math.max(0, m.work - dt / .3);
+    m.fire = Math.max(0, m.fire - dt / .45);
+    m.ang += angDiff(m.ang, Math.atan2(m.dir.y, m.dir.x)) * (1 - Math.exp(-18 * dt));
+    m.lever = lerp(m.lever, m.leverT || 0, 1 - Math.exp(-20 * dt));
+    if (m.wind > 0) { m.wind -= dt; if (m.wind <= 0 && m.load.length) fire(m); }
+    if (KINDS[m.kind].role === 'manip') emitFromMachine(m);
+    const ce = center(m.cell);
+    switch (m.kind) {
+      case 'chute': {
+        m.rollT -= dt;
+        const ck = key(m.cell) + ',m';
+        if (m.hopper.length && !S.stops.has(ck) && canEnter(m.cell, m.dir)) {
+          const d = newDie({v: m.hopper.shift()}, m.cell, m.dir, ck);
+          d.roll = .2;
+          tryAdvance(d);
+        }
+        break;
+      }
+      case 'rocket':
+        if (m.launch > 0) {
+          m.launch -= dt;
+          if (Math.random() < dt * 30) burst(ce.x + rnd(-8, 8), ce.y + 18, '#b8c2c6', 1, 40, 5, -40, .7);
+          if (m.launch <= 0) {
+            const tg = foeTarget(20);
+            S.proj.push({kind: 'rocket', dice: m.load.slice(), mult: 1.25, x0: ce.x, y0: ce.y - 10, x1: tg.x, y1: tg.y, t: 0, dur: 1.35, arc: 260, rot: 0, knock: 3.6});
+            S.stats.thrown += m.load.length;
+            m.load = []; m.fire = 1;
+            burst(ce.x, ce.y + 10, COL.gold, 20, 200, 4, 0, .5);
+            burst(ce.x, ce.y + 10, '#9aa4aa', 14, 120, 7, -30, 1.0);
+            shake(.35);
+          }
+        }
+        break;
+      case 'gatling': {
+        const want = m.mag.length ? 1 : 0;
+        m.spinV = lerp(m.spinV, want, 1 - Math.exp(-(want ? 3 : 2) * dt));
+        m.spin += m.spinV * dt * 30;
+        if (m.mag.length && m.spinV > .85) {
+          m.shotT -= dt;
+          if (m.shotT <= 0) {
+            m.shotT = .11;
+            shoot(m, 'bullet', [m.mag.shift()], 1, {ox: 26, speed: 1400, arc: 6, spread: 50, size: .7, knock: .6});
+            burst(ce.x + 28, ce.y, '#ffe27a', 3, 200, 1.5, 0, .12, 2, 0, .4);
+            shake(.04);
+          }
+        }
+        break;
+      }
+      case 'slots':
+        if (m.reel > 0) {
+          m.reel -= dt;
+          if (m.reel <= 0) {
+            const vs = m.load.map(() => ri(1, 6));
+            m.load.forEach((d, i) => { d.v = vs[i]; });
+            const s = [...vs].sort();
+            let mult = .5, label = `${vs.join(' ')}  bust x0.5`;
+            if (s[0] === s[2]) { mult = 8; label = `${vs.join(' ')}  JACKPOT x8`; }
+            else if (s[0] === s[1] || s[1] === s[2]) { mult = 2; label = `${vs.join(' ')}  pair x2`; }
+            say(ce.x, ce.y - 42, label, mult >= 2 ? COL.gold : '#c9d6da', mult >= 8 ? 20 : 14);
+            if (mult >= 8) { burst(ce.x, ce.y, COL.gold, 40, 300, 4, 300, .9); shake(.5); }
+            const load = m.load; m.load = [];
+            shoot(m, 'cluster', load, mult, {oy: -8, dur: .85, arc: 130, knock: 1.2, size: 1 + (mult >= 8 ? .3 : 0)});
+          }
+        }
+        break;
+      case 'lens':
+        if (m.fuel > 0) {
+          m.fuel = Math.max(0, m.fuel - dt);
+          const dps = 7;
+          // the beam sweeps flyers out of the sky first
+          const fl = S.flyers.filter(o => o.delay <= 0).sort((a, b) => Math.hypot(a.x - ce.x, a.y - ce.y) - Math.hypot(b.x - ce.x, b.y - ce.y))[0];
+          m.beamAt = fl ? {x: fl.x, y: fl.y} : null;
+          if (fl) { fl.hp -= dps * 1.5 * dt; if (fl.hp <= 0) { fl.hp = .01; hitFlyer(fl, 1); } break; }
+          hurtFoe(dps * dt * (PHASES[S.foe.phase].armor ? .35 : 1), {quiet: true});
+          m.beamAcc = (m.beamAcc || 0) + dps * dt;
+          if (m.beamAcc >= 5) { const tg = foeTarget(20); say(tg.x, tg.y - 20, String(Math.round(m.beamAcc)), '#fff2a8', 15); m.beamAcc = 0; }
+          if (Math.random() < dt * 30) { const tg = foeTarget(25); burst(tg.x, tg.y, Math.random() < .5 ? COL.gold : '#ffffff', 2, 120, 2, 0, .25, 2); }
+        }
+        break;
+      case 'ram':
+        if (m.load.length && foeFront() <= REACH_X + 70 && !S.over) {
+          const d = m.load[0]; m.load = [];
+          const push = d.v * (d.spiky ? 1.4 : 1);
+          S.foe.kv += push * 34;
+          hurtFoe(Math.round(push), {x: foeFront(), y: GROUND - 60});
+          S.ramFx.push({t: 0, y: ce.y});
+          m.fire = 1; m.busy = 1.2;
+          say(foeFront() + 20, GROUND - 160, 'RAM!', '#7fe0c6', 22);
+          burst(foeFront(), GROUND - 60, '#ffffff', 18, 260, 3, 0, .4, 2, 0, .8);
+          shake(.45);
+        }
+        break;
+    }
+  }
+}
+
+function rollChutes(dt) {
+  S.rollT -= dt;
+  if (S.rollT > 0) return;
+  rollNow();
+}
+function rollNow() {
+  S.rollT = ROLL_EVERY;
+  for (const ch of S.machines.values()) {
+    if (ch.kind !== 'chute' || ch.pop < 1) continue;
+    const ce = center(ch.cell);
+    ch.work = 1;
+    let spilled = 0;
+    for (let i = 0; i < PHASES[S.foe.phase].roll; i++) {
+      const v = ri(1, 6);
+      if (ch.hopper.length >= HOPPER_MAX) {
+        // the hopper overflows: dice tumble onto the tiles around the chute
+        spilled++; S.stats.spilled++;
+        overflowDie(ch.cell, {v}, {x: ce.x, y: ce.y - 20});
+      } else ch.hopper.push(v);
+    }
+    say(ce.x, ce.y - 44, spilled ? 'SPILL x' + spilled : 'ROLL', spilled ? '#ff8a73' : '#e9fbff', spilled ? 16 : 14);
+    if (spilled) shake(.15);
+  }
+}
+
+// ============================================================ projectiles
+function projPos(p) {
+  const t = clamp(p.t / p.dur, 0, 1);
+  if (p.kind === 'rocket') {
+    const c = {x: lerp(p.x0, p.x1, .25), y: Math.min(p.y0, p.y1) - p.arc};
+    return bez({x: p.x0, y: p.y0}, c, {x: p.x1, y: p.y1}, t * t * (3 - 2 * t));
+  }
+  return {x: lerp(p.x0, p.x1, t), y: lerp(p.y0, p.y1, t) - p.arc * 4 * t * (1 - t)};
+}
+
+function updateProj(dt) {
+  for (const p of S.proj.slice()) {
+    p.t += dt;
+    if (p.t < 0) continue;
+    if (p.fly && S.flyers.includes(p.fly)) { p.x1 = p.fly.x; p.y1 = p.fly.y; }
+    p.rot += dt * (p.kind === 'cannon' || p.kind === 'bullet' ? 18 : 9);
+    const q = projPos(p);
+    if (p.kind === 'rocket' && Math.random() < dt * 60) S.parts.push({x: q.x, y: q.y, vx: rnd(-20, 20), vy: rnd(-20, 20), col: Math.random() < .5 ? COL.gold : '#c4ccd0', size: rnd(3, 7), g: -10, life: .7, t: 0, shape: 0, rot: 0, vr: 0});
+    if (p.kind === 'cryo' && Math.random() < dt * 50) S.parts.push({x: q.x + rnd(-10, 10), y: q.y + rnd(-10, 10), vx: rnd(-20, 20), vy: rnd(-20, 20), col: COL.ice, size: rnd(3, 6), g: 0, life: .6, t: 0, shape: 0, rot: 0, vr: 0});
+    if (p.kind === 'rock' && Math.random() < dt * 20) S.parts.push({x: q.x, y: q.y, vx: 0, vy: 0, col: '#6b5a48', size: 3, g: 0, life: .3, t: 0, shape: 0, rot: 0, vr: 0});
+    if (p.t < p.dur) continue;
+    S.proj.splice(S.proj.indexOf(p), 1);
+    landProj(p, q);
+  }
+}
+
+function landProj(p, q) {
+  const d0 = p.dice && p.dice[0];
+  switch (p.kind) {
+    case 'brick': {
+      S.pendingBricks--;
+      S.bricks.push({v: d0.v, hp: d0.v * (d0.spiky ? 1.4 : 1), hot: d0.hot, ice: d0.ice, pop: 1});
+      const bp = brickPos(S.bricks.length - 1);
+      burst(bp.x, bp.y, COL.blk, 8, 120, 2.5, 0, .35);
+      return;
+    }
+    case 'thorn': {
+      const th = S.thorns[p.slot];
+      if (th) { th.v = d0.v; th.pending = false; th.pop = 1; }
+      burst(q.x, q.y, '#8a7a5a', 8, 120, 3, 400, .4, 1);
+      return;
+    }
+    case 'mine':
+      S.mines.push({x: q.x, d: d0, t: 0});
+      burst(q.x, q.y, '#8a7a5a', 10, 140, 3, 500, .5, 1);
+      return;
+    case 'rock':
+      hitFactory(p.dmg, q.y, true);
+      burst(q.x, q.y, '#6b5a48', 10, 200, 4, 600, .6, 1);
+      return;
+    case 'boulder': {
+      // buries a factory tile: dice can't pass until it is dug out
+      const c = p.cell, k = key(c);
+      if (S.shield > 0 && [...S.machines.values()].some(m => m.kind === 'parry' && m.charges > 0)) {
+        say(q.x, q.y - 20, 'deflected', COL.blk, 14); burst(q.x, q.y, COL.blk, 12, 200, 3, 0, .4); return;
+      }
+      S.rubble.set(k, {t: 16, max: 16, pop: 1});
+      burst(q.x, q.y, '#7a6a58', 24, 260, 5, 700, .8, 1);
+      ring(q.x, q.y, 'rgba(255,220,180,.8)', 10, 60, .4);
+      say(q.x, q.y - 30, 'BURIED', '#ffb0a0', 16);
+      shake(.45);
+      return;
+    }
+    case 'cryo':
+      if (S.over) return;
+      S.foe.chill = Math.min(10, S.foe.chill + d0.v * .7);
+      say(q.x, q.y - 30, 'chilled', COL.ice, 16);
+      burst(q.x, q.y, COL.ice, 24, 220, 3, 0, .6);
+      ring(q.x, q.y, 'rgba(200,236,255,.9)', 10, 60);
+      return;
+    case 'ricoback': {
+      const tg = foeTarget(30);
+      S.proj.push({kind: 'rico', dice: p.dice, mult: p.mult, x0: q.x, y0: q.y, x1: tg.x, y1: tg.y, t: 0, dur: .45, arc: 70, rot: 0, knock: .8, bounces: p.bounces});
+      ring(q.x, q.y, 'rgba(255,255,255,.6)', 6, 20, .2);
+      return;
+    }
+  }
+  impact(p, q);
+}
+
+function hurtFoe(dmg, o = {}) {
+  const f = S.foe;
+  if (S.over) return;
+  if (o.burnOnly !== true) { f.hit = .12; if (!o.quiet) f.flash = 1; }
+  f.hp = Math.max(0, f.hp - dmg);
+  S.stats.dmg += dmg;
+  if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, String(Math.round(dmg)), '#ff8a73', 18 + Math.min(14, dmg / 2));
+  if (f.hp <= 0) killFoe();
+}
+
+function impact(p, q) {
+  const f = S.foe;
+  if (S.over) return;
+  const dice = p.dice || [];
+  if (p.fly) {
+    p.fly.incoming = Math.max(0, (p.fly.incoming || 0) - 1);
+    if (S.flyers.includes(p.fly)) {
+      hitFlyer(p.fly, diceDamage(dice, p.mult, true));
+      for (const d of dice) debrisDie(q.x, q.y, d, rnd(-60, 60), rnd(-200, -80));
+      burst(q.x, q.y, '#ffe27a', 6, 160, 2, 0, .2, 2);
+      return;
+    }
+    // its flyer is already gone: the die keeps going at the Colossus
+    const tg = foeTarget(30);
+    S.proj.push({...p, fly: null, x0: q.x, y0: q.y, x1: tg.x, y1: tg.y, t: 0, dur: Math.hypot(tg.x - q.x, tg.y - q.y) / 1000, arc: 10});
+    return;
+  }
+  const melt = !!PHASES[f.phase].meltdown;
+  const hot = dice.some(d => d.hot) && !melt, ice = dice.some(d => d.ice);
+  if (melt && dice.some(d => d.hot) && Math.random() < .4) say(q.x + 20, q.y - 50, 'fire: no effect', '#c9d6da', 12);
+  if (p.kind === 'sticky') {
+    S.bombs.push({ox: q.x - f.x, oy: q.y - GROUND, d: dice[0], t: 2.0});
+    say(q.x, q.y - 26, 'stuck!', '#ffb0a0', 14);
+    burst(q.x, q.y, '#ff8a73', 6, 80, 2, 0, .25);
+    return;
+  }
+  const dmg = diceDamage(dice, p.mult ?? 1);
+  if (lastClink) { say(q.x - 24, q.y - 6, lastClink === dice.length ? 'clink' : `${lastClink} clink`, '#c9d6da', 13); burst(q.x, q.y, '#ffffff', 5, 200, 1.5, 0, .15, 2); }
+  hurtFoe(dmg);
+  f.flash = 1;
+  f.kv += dmg * .9 * (p.knock ?? 1);
+  if (hot) f.burn = 3;
+  if (ice) f.chill = Math.min(10, f.chill + 1.5 * dice.filter(d => d.ice).length);
+  const big = p.kind === 'rocket';
+  say(q.x, q.y - 30, String(dmg), big ? COL.gold : '#ff8a73', big ? 34 : Math.min(34, 18 + dmg * .6));
+  if (p.label) say(q.x, q.y - 60, p.label, COL.gold, 15);
+  if (p.kind === 'harpoon') {
+    const v = dice[0].v * (dice[0].spiky ? 1.4 : 1);
+    f.pinned = Math.max(f.pinned, v * .6);
+    say(q.x, q.y - 58, 'PINNED', '#7fe0c6', 18);
+  } else if (p.kind === 'rico' && p.bounces > 0) {
+    S.proj.push({kind: 'ricoback', dice, mult: (p.mult ?? 1) * .8, x0: q.x, y0: q.y, x1: q.x - rnd(110, 170), y1: GROUND - 20, t: 0, dur: .4, arc: 60, rot: 0, bounces: p.bounces - 1});
+  } else {
+    for (const d of dice) debrisDie(q.x, q.y, d, rnd(-80, 260), rnd(-380, -120));
+  }
+  if (big) {
+    burst(q.x, q.y, COL.gold, 40, 420, 5, 200, .7);
+    burst(q.x, q.y, COL.weapon, 26, 300, 4, 0, .6);
+    burst(q.x, q.y, '#9aa4aa', 18, 160, 9, -40, 1.1);
+    ring(q.x, q.y, 'rgba(255,240,200,.9)', 20, 150, .5);
+    shake(.9);
+  } else {
+    burst(q.x, q.y, hot ? COL.ember : (ice ? COL.ice : '#ffe27a'), 10, 240, 2.5, 0, .3, 2);
+    ring(q.x, q.y, 'rgba(255,255,255,.8)', 8, 34, .25);
+    shake(p.kind === 'pult' || p.kind === 'cluster' ? .22 : .08);
+  }
+}
+
+// ============================================================ wall, thorns, mines
+function brickPos(i) {
+  const row = Math.floor(i / WALL_COLS), col = i % WALL_COLS;
+  return {x: WALL_X0 + 15 + col * (BRICK + 2) + (row % 2 ? 6 : 0), y: GROUND - 14 - row * (BRICK - 1)};
+}
+const thornX = i => WALL_X1 + 8 + (i % 4) * 9 + Math.floor(i / 4) * 4;
+
+function hitFactory(dmg, y, isRock) {
+  // a raised parry shield blocks anything; a slam spends a charge and stuns
+  if (S.shield > 0) {
+    const pm = [...S.machines.values()].find(m => m.kind === 'parry' && m.charges > 0);
+    if (pm) {
+      if (!isRock) {
+        pm.charges--;
+        S.foe.stun = 2.5; S.foe.state = 'march'; S.foe.timer = 0;
+        hurtFoe(25, {x: foeFront() + 30, y: GROUND - 150});
+        say(WALL_X1 + 40, GROUND - 210, 'PARRY!', '#ffffff', 34);
+        ring(WALL_X1, GROUND - 100, 'rgba(180,220,255,1)', 30, 200, .5);
+        burst(WALL_X1 + 10, GROUND - 100, COL.blk, 40, 400, 4, 0, .6);
+        shake(.7);
+      } else say(WALL_X1 - 20, (y || GROUND - 120) - 10, 'deflected', COL.blk, 14);
+      return;
+    }
+  }
+  let left = dmg;
+  while (left > 0 && S.bricks.length) {
+    const b = S.bricks[S.bricks.length - 1];
+    const take = Math.min(b.hp, left);
+    b.hp -= take; left -= take; b.pop = 1;
+    if (b.hp <= 0) {
+      const bp = brickPos(S.bricks.length - 1);
+      S.bricks.pop();
+      debrisDie(bp.x, bp.y, b, rnd(-260, -60), rnd(-320, -120));
+      burst(bp.x, bp.y, COL.blk, 6, 140, 2.5, 0, .3);
+    }
+  }
+  const top = brickPos(Math.max(0, S.bricks.length - 1));
+  if (dmg - left > 0) say(WALL_X0 + 40, top.y - 20, 'blocked ' + Math.round(dmg - left), COL.blk, 15);
+  if (left > 0) {
+    if (!opts.god) S.hp = Math.max(0, S.hp - left);
+    S.hitFlash = 1;
+    say(WALL_X0 + 30, (y || GROUND - 120) - 10, '-' + Math.round(left), COL.drop, 24);
+    shake(.5);
+    if (S.hp <= 0) { S.over = 'lost'; burst(300, 300, '#ff8a73', 60, 500, 6, 300, 1.2, 1); }
+  } else shake(.25);
+}
+
+function thornsBite() {
+  const live = S.thorns.filter(t => !t.pending && t.v > 0);
+  if (!live.length) return;
+  let dmg = 0;
+  for (const t of live) { dmg += t.v * (t.spiky ? 1.4 : 1) * 1.5; t.v--; t.pop = 1; }
+  S.thorns = S.thorns.filter(t => t.pending || t.v > 0);
+  hurtFoe(Math.round(dmg), {x: foeFront() + 10, y: GROUND - 40});
+  say(foeFront() + 10, GROUND - 100, 'THORNS', '#d9b8f2', 16);
+  burst(foeFront(), GROUND - 20, '#ffffff', 14, 260, 2, 0, .3, 2, -Math.PI / 2, 1);
+}
+
+function updateField(dt) {
+  const f = S.foe;
+  for (const mn of S.mines.slice()) {
+    mn.t += dt;
+    if (!S.over && foeFront() <= mn.x + 14) {
+      S.mines.splice(S.mines.indexOf(mn), 1);
+      const dmg = diceDamage([mn.d], 3);
+      hurtFoe(dmg, {x: mn.x, y: GROUND - 40});
+      f.kv += dmg * 1.2;
+      if (mn.d.hot) f.burn = 3;
+      if (mn.d.ice) f.chill = Math.min(10, f.chill + 2);
+      burst(mn.x, GROUND - 10, COL.gold, 24, 320, 4, 300, .6);
+      burst(mn.x, GROUND - 10, '#6b5a48', 12, 220, 4, 700, .7, 1);
+      ring(mn.x, GROUND - 10, 'rgba(255,230,160,.9)', 10, 80);
+      debrisDie(mn.x, GROUND - 20, mn.d, rnd(-100, 100), -350);
+      shake(.4);
+    }
+  }
+  for (const b of S.bombs.slice()) {
+    b.t -= dt;
+    if (b.t <= 0 || S.over) {
+      S.bombs.splice(S.bombs.indexOf(b), 1);
+      if (S.over) continue;
+      const x = f.x + b.ox, y = GROUND + b.oy;
+      const dmg = diceDamage([b.d], 4);
+      hurtFoe(dmg, {x, y});
+      f.kv += dmg * 1.4;
+      if (b.d.hot) f.burn = 3;
+      burst(x, y, COL.gold, 30, 340, 4, 200, .6);
+      burst(x, y, COL.weapon, 16, 240, 4, 0, .5);
+      ring(x, y, 'rgba(255,230,160,.9)', 10, 90);
+      debrisDie(x, y, b.d, rnd(-60, 200), -300);
+      shake(.45);
+    }
+  }
+  for (const r of S.ramFx.slice()) { r.t += dt; if (r.t > .35) S.ramFx.splice(S.ramFx.indexOf(r), 1); }
+  for (const [k, rb] of S.rubble) {
+    rb.t -= dt; rb.pop = Math.max(0, rb.pop - dt * 3);
+    if (rb.t <= 0) { S.rubble.delete(k); const ce = center(parseKey(k)); burst(ce.x, ce.y, '#7a6a58', 14, 160, 4, 400, .5, 1); }
+  }
+  updateFlyers(dt);
+  updatePiles(dt);
+  if (S.banner) { S.banner.t += dt; if (S.banner.t > S.banner.life) S.banner = null; }
+  for (const t of S.thorns) t.pop = Math.max(0, (t.pop || 0) - dt * 3);
+  S.shield = Math.max(0, S.shield - dt);
+  S.shieldCd = Math.max(0, S.shieldCd - dt);
+}
+
+function raiseParry() {
+  if (S.shieldCd > 0) return;
+  const any = [...S.machines.values()].some(m => m.kind === 'parry');
+  if (!any) return;
+  S.shield = .55; S.shieldCd = 1.1;
+  ring(WALL_X1, GROUND - 120, 'rgba(160,210,255,.8)', 20, 90, .3);
+}
+
+// ============================================================ heaps
+// Dice that run off a belt onto bare floor are not lost: they heap up there.
+// A heap holds 6; more tumble onto a neighbouring tile (another heap, or onto
+// a belt, where they join that line). Lay a belt over a heap to scoop it up.
+
+const PILE_MAX = 6;
+const isBareFloor = c => inGrid(c) && !S.belts.has(key(c)) && !S.machines.has(key(c)) && !S.rubble.has(key(c));
+
+function addToPile(c, spec, from) {
+  const k = key(c);
+  let pl = S.piles.get(k);
+  if (!pl) { pl = {dice: [], feedT: 0}; S.piles.set(k, pl); }
+  if (pl.dice.length >= PILE_MAX) { overflowDie(c, spec, from); return; }
+  const p = from || center(c);
+  pl.dice.push({...dieSpec(spec), rot: rnd(-.5, .5), t: 0, fx: p.x, fy: p.y});
+}
+
+// a die tumbles from tile c onto a random neighbour
+function overflowDie(c, spec, from) {
+  const p = from || center(c);
+  const ns = [R, D, L, U].map(d => add(c, d)).filter(inGrid).sort(() => Math.random() - .5);
+  for (const n of ns) {
+    const nk = key(n);
+    if (S.rubble.has(nk)) continue;
+    const b = S.belts.get(nk);
+    if (b && !S.stops.has(nk + ',0')) {
+      const d = newDie(dieSpec(spec), n, b, nk + ',0');
+      d.x = p.x; d.y = p.y;
+      d.state = 'jump'; d.jt = 0; d.jfrom = {x: p.x, y: p.y}; d.jto = pathPt(n, b, b, .25, false);
+      d.jland = {cell: n, dout: b, s: .25, mach: null}; d.dout = b;
+      return;
+    }
+    if (isBareFloor(n) && (!S.piles.has(nk) || S.piles.get(nk).dice.length < PILE_MAX)) { addToPile(n, spec, p); return; }
+  }
+  // nowhere to go: it bounces off the floor and is gone
+  S.stats.lost++;
+  debrisDie(p.x, p.y, dieSpec(spec), rnd(-120, 120), rnd(-300, -150));
+}
+
+function updatePiles(dt) {
+  for (const [k, pl] of S.piles) {
+    for (const pd of pl.dice) pd.t += dt;
+    const c = parseKey(k);
+    // a machine dropped on a heap shoves the dice aside
+    if (S.machines.has(k)) { const ds = pl.dice.splice(0); S.piles.delete(k); for (const pd of ds) overflowDie(c, pd); continue; }
+    // a belt laid over a heap scoops it up, one die at a time
+    const b = S.belts.get(k);
+    if (b && !S.rubble.has(k)) {
+      pl.feedT -= dt;
+      if (pl.feedT <= 0 && pl.dice.length && !S.stops.has(k + ',0')) {
+        pl.feedT = .2;
+        const pd = pl.dice.pop();
+        const d = newDie(pd, c, b, k + ',0');
+        d.s = .25; d.pop = 1;
+        const q = pathPt(c, b, b, .25, false); d.x = q.x; d.y = q.y;
+      }
+    }
+    if (!pl.dice.length) S.piles.delete(k);
+  }
+}
+
+// ============================================================ flyers
+// Little drones from the Colossus's hatch. They fly over the wall, then dive
+// at a die on your belts (and carry it off) or at a machine (and jam it).
+// Fast weapons and the Lens shoot them first. Click a jammed machine to fix it.
+
+function spawnFlyers(n) {
+  const f = S.foe;
+  for (let i = 0; i < n; i++) {
+    S.flyers.push({x: f.x - 20 + rnd(-30, 30), y: GROUND - 180 + rnd(-30, 30), hp: 3, max: 3, t: rnd(0, 6), state: 'fly',
+      target: null, carry: null, speed: rnd(85, 110), incoming: 0, delay: i * .18});
+  }
+  burst(f.x - 10, GROUND - 190, '#c9a56a', 16, 200, 3, 0, .5);
+  say(f.x - 10, GROUND - 220, n + ' FLYERS', '#ffb0a0', 18);
+}
+
+function nearestFlyer(x, y) {
+  let best = null, bd = 1e9;
+  for (const fl of S.flyers) {
+    if (fl.delay > 0) continue;
+    // spread shots: a flyer that already has a die coming counts as far away
+    const d = Math.hypot(fl.x - x, fl.y - y) + (fl.incoming || 0) * 600;
+    if (d < bd) { bd = d; best = fl; }
+  }
+  if (best) best.incoming = (best.incoming || 0) + 1;
+  return best;
+}
+
+function hitFlyer(fl, dmg) {
+  fl.hp -= dmg;
+  say(fl.x, fl.y - 14, String(Math.round(dmg)), '#ffe27a', 13);
+  if (fl.hp > 0) return;
+  S.flyers.splice(S.flyers.indexOf(fl), 1);
+  S.stats.downed++;
+  burst(fl.x, fl.y, '#c9a56a', 10, 180, 3, 400, .5, 1);
+  burst(fl.x, fl.y, '#ffd25e', 8, 160, 2, 0, .3);
+  // whatever it carried falls back down: onto bare floor it lands
+  const under = cellAt({x: fl.x, y: fl.y});
+  if (fl.carry) {
+    if (isBareFloor(under)) { addToPile(under, fl.carry, {x: fl.x, y: fl.y}); S.stats.lost = Math.max(0, S.stats.lost - 1); }
+    else debrisDie(fl.x, fl.y, fl.carry, rnd(-60, 60), -100);
+    say(fl.x, fl.y - 30, 'dropped', '#ffd0c4', 12);
+  }
+  if (fl.carryBelt) {
+    if (isBareFloor(under)) { setBelt(under, fl.carryBelt, 0); say(fl.x, fl.y - 30, 'belt dropped here', '#ffd0c4', 12); }
+    else burst(fl.x, fl.y, '#d9a62a', 8, 140, 3, 500, .5, 1);
+  }
+}
+
+// Flyers go for your layout: lift a belt tile out of a line (leaving a gap,
+// its dice spill there) or snatch a die off the belts.
+function pickFlyerTarget(fl) {
+  const taken = new Set(S.flyers.filter(o => o !== fl && o.target).map(o => o.target.beltKey || o.target));
+  const belts = [...S.belts.keys()].filter(k => !S.rubble.has(k) && !taken.has(k));
+  const dice = S.dice.filter(d => (d.state === 'move' || d.state === 'stop') && S.belts.has(key(d.cell)) && !taken.has(d));
+  if (belts.length && (Math.random() < .55 || !dice.length)) fl.target = {beltKey: belts[ri(0, belts.length - 1)]};
+  else if (dice.length) fl.target = dice[ri(0, dice.length - 1)];
+  else fl.target = null;
+}
+
+function updateFlyers(dt) {
+  for (const fl of S.flyers.slice()) {
+    if (fl.delay > 0) { fl.delay -= dt; continue; }
+    fl.t += dt;
+    const spd = fl.speed * (S.foe.chill > 0 ? .7 : 1);
+    if (fl.state === 'flee') {
+      const tx = 1300, ty = 40;
+      const a = Math.atan2(ty - fl.y, tx - fl.x);
+      fl.x += Math.cos(a) * spd * 1.1 * dt; fl.y += Math.sin(a) * spd * 1.1 * dt + Math.sin(fl.t * 9) * .6;
+      if (fl.x > 1270) { S.flyers.splice(S.flyers.indexOf(fl), 1); if (fl.carry) { S.stats.stolen++; } }
+      continue;
+    }
+    // over the field: cross toward the wall at cruising height
+    let tx, ty;
+    if (fl.x > WALL_X1 + 10 && !fl.target) { tx = WALL_X1 - 20; ty = GY + 60 + Math.sin(fl.t * 2) * 30; }
+    else {
+      const tg = fl.target;
+      const stillThere = tg && (tg.beltKey ? S.belts.has(tg.beltKey) && !S.rubble.has(tg.beltKey)
+        : S.dice.includes(tg) && tg.state !== 'fall' && tg.state !== 'proc' && S.belts.has(key(tg.cell)));
+      if (!stillThere) pickFlyerTarget(fl);
+      if (!fl.target) { fl.state = 'flee'; continue; }
+      if (fl.target.beltKey) { const ce = center(parseKey(fl.target.beltKey)); tx = ce.x; ty = ce.y; }
+      else { tx = fl.target.x; ty = fl.target.y; }
+    }
+    const dx = tx - fl.x, dy = ty - fl.y, dist = Math.hypot(dx, dy);
+    fl.x += dx / (dist || 1) * spd * dt;
+    fl.y += dy / (dist || 1) * spd * dt + Math.sin(fl.t * 8) * 18 * dt;
+    if (fl.target && dist < 10) {
+      if (fl.target.beltKey) {
+        const k = fl.target.beltKey, c = parseKey(k);
+        fl.carryBelt = S.belts.get(k);
+        clearCell(c, false);              // its dice spill onto the bare tile
+        say(fl.x, fl.y - 22, 'belt lifted!', '#ff8a73', 14);
+        burst(fl.x, fl.y, '#d9a62a', 10, 160, 2.5, 300, .4, 1);
+        shake(.12);
+        fl.state = 'flee'; fl.target = null;
+      } else {
+        const d = fl.target;
+        fl.carry = dieSpec(d);
+        removeDie(d);
+        S.stats.lost++;
+        say(fl.x, fl.y - 20, 'stolen!', '#ff8a73', 14);
+        fl.state = 'flee'; fl.target = null;
+      }
+    }
+  }
+}
+
+function drawFlyers() {
+  for (const fl of S.flyers) {
+    if (fl.delay > 0) continue;
+    const flap = Math.sin(fl.t * 40) * 6;
+    ctx.save(); ctx.translate(fl.x, fl.y);
+    ctx.beginPath(); ctx.ellipse(-7, -4, 8, 3 + flap * .3, -.4, 0, Math.PI * 2); ctx.fillStyle = 'rgba(220,240,255,.7)'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(7, -4, 8, 3 - flap * .3, .4, 0, Math.PI * 2); ctx.fill();
+    circle(0, 0, 8, '#8a5a3c'); ringStroke(0, 0, 8, '#3a2a1e', 2);
+    circle(-2, -1, 3.5, '#ff5a4a'); circle(-3, -2, 1.2, '#fff');
+    ctx.restore();
+    if (fl.hp < fl.max) { rr(fl.x - 10, fl.y - 16, 20, 3, 1.5, 'rgba(0,0,0,.5)'); rr(fl.x - 10, fl.y - 16, 20 * fl.hp / fl.max, 3, 1.5, '#6fd16f'); }
+    if (fl.carryBelt) {
+      ctx.save(); ctx.translate(fl.x, fl.y + 18); ctx.rotate(Math.sin(fl.t * 4) * .3);
+      rr(-16, -10, 32, 20, 3, '#3c4449', '#d9a62a', 2.5);
+      ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(4, 0); ctx.lineTo(-4, 6); ctx.strokeStyle = '#6b767d'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+    }
+    if (fl.carry) drawDie(fl.x, fl.y + 16, fl.carry, Math.sin(fl.t * 5) * .3, .6, 0, 20);
+    else if (fl.target && fl.x < WALL_X1) {
+      // a faint line shows what it is going for
+      const tp = fl.target.beltKey ? center(parseKey(fl.target.beltKey)) : fl.target;
+      ctx.setLineDash([3, 5]); line(fl.x, fl.y, tp.x, tp.y, 'rgba(255,120,100,.35)', 1.5); ctx.setLineDash([]);
+      if (fl.target.beltKey) rr(tp.x - 30, tp.y - 30, 60, 60, 9, null, `rgba(255,90,74,${.5 + .4 * Math.sin(S.t * 10)})`, 2.5);
+    }
+  }
+}
+
+// ============================================================ the foe
+function cancelAttack(why = 'STAGGERED!') {
+  const f = S.foe;
+  f.state = 'march'; f.stagger = 1; f.timer = 0;
+  say(f.x - 20, GROUND - 210, why, '#7fe0c6', 22);
+}
+const INTENT_LABEL = {slam: 'SLAM', rocks: 'ROCKS', hatch: 'HATCH', boulders: 'BOULDERS'};
+function curIntent() {
+  const list = PHASES[S.foe.phase].intents;
+  const b = list[S.foe.intent % list.length];
+  return {type: b.type, dmg: b.dmg || 0, n: b.n || 1, wind: b.wind, label: INTENT_LABEL[b.type]};
+}
+
+function enterPhase(i) {
+  const f = S.foe, ph = PHASES[i];
+  f.phase = i; f.intent = 0; f.speed = ph.speed;
+  f.enraged = i >= 2;
+  f.state = 'shift'; f.timer = 2.2; f.arm = 0;
+  if (ph.meltdown) f.burn = 0;
+  S.flyT = 3;
+  S.banner = {title: `PHASE ${i + 1} · ${ph.name}`, desc: ph.desc, t: 0, life: 5.5};
+  burst(f.x, GROUND - 120, ph.meltdown ? COL.ember : (ph.armor ? '#9aa4aa' : '#c9a56a'), 50, 400, 5, 300, 1.0, 1);
+  ring(f.x, GROUND - 120, 'rgba(255,255,255,.8)', 30, 220, .6);
+  shake(.8);
+}
+
+function updateFoe(dt) {
+  const f = S.foe;
+  f.hit = Math.max(0, f.hit - dt);
+  f.flash = Math.max(0, f.flash - dt * 9);
+  f.stagger = Math.max(0, f.stagger - dt * 1.5);
+  f.pinned = Math.max(0, f.pinned - dt);
+  f.chill = Math.max(0, f.chill - dt);
+  // phase shifts as it breaks down
+  const frac = f.hp / f.max;
+  if (f.phase + 1 < PHASES.length && frac <= PHASES[f.phase + 1].at) enterPhase(f.phase + 1);
+  const ph = PHASES[f.phase];
+  if (ph.meltdown) f.burn = 0;
+  if (ph.flyEvery && !opts.holdFoe) {
+    S.flyT -= dt;
+    if (S.flyT <= 0) { S.flyT = ph.flyEvery; spawnFlyers(f.phase === 1 ? 4 : 3); }
+  }
+  if (f.burn > 0) {
+    f.burn -= dt;
+    hurtFoe(2 * dt, {quiet: true});
+    if (Math.random() < dt * 25) S.parts.push({x: f.x + rnd(-50, 40), y: GROUND - rnd(40, 160), vx: rnd(-10, 10), vy: -70, col: COL.ember, size: 3, g: -30, life: .5, t: 0, shape: 0, rot: 0, vr: 0});
+  }
+  if (f.chill > 0 && Math.random() < dt * 14) S.parts.push({x: f.x + rnd(-60, 50), y: GROUND - rnd(20, 170), vx: 0, vy: 20, col: COL.ice, size: 2.5, g: 0, life: .6, t: 0, shape: 0, rot: 0, vr: 0});
+  if (S.over) return;
+  f.x += f.kv * dt;
+  f.kv *= Math.exp(-4 * dt);
+  f.x = Math.min(f.x, 1190);
+  if (f.stun > 0) { f.stun -= dt; f.arm = lerp(f.arm, -.2, 1 - Math.exp(-6 * dt)); return; }
+  const slow = f.chill > 0 ? .4 : 1;
+  const front = foeFront();
+  if (f.state === 'shift') {
+    f.timer -= dt;
+    if (Math.random() < dt * 20) burst(f.x + rnd(-60, 60), GROUND - rnd(40, 180), PHASES[f.phase].meltdown ? COL.ember : '#c9d6da', 2, 120, 3, -60, .6);
+    if (f.timer <= 0) f.state = 'march';
+    return;
+  }
+  if (f.state === 'march') {
+    if (front > REACH_X) {
+      if (!opts.holdFoe && f.pinned <= 0) {
+        f.x -= f.speed * slow * (f.stagger > 0 ? .3 : 1) * dt;
+        f.step += dt * f.speed * .55 * slow;
+      }
+    } else {
+      f.x = REACH_X + 70;
+      if (!opts.holdFoe) { f.state = 'windup'; f.timer = curIntent().wind; f.total = f.timer; }
+    }
+  } else if (f.state === 'windup') {
+    f.timer -= dt * (f.chill > 0 ? .5 : 1);
+    if (front > REACH_X + 40) { cancelAttack(); return; }
+    if (f.timer <= 0) strike();
+  } else if (f.state === 'recover') {
+    f.timer -= dt;
+    if (f.timer <= 0) f.state = 'march';
+  }
+  const tgtArm = f.state === 'windup' ? 1 : (f.state === 'recover' ? -0.6 : 0);
+  f.arm = lerp(f.arm, tgtArm, 1 - Math.exp(-(f.state === 'recover' ? 30 : 6) * dt));
+}
+
+function strike() {
+  const f = S.foe, it = curIntent();
+  if (it.type === 'slam') {
+    thornsBite();
+    if (S.over) return;
+    hitFactory(it.dmg, GROUND - 60, false);
+    burst(WALL_X1 + 10, GROUND - 4, '#8a7a5a', 22, 300, 4, 700, .7, 1, -Math.PI / 2, 1.2);
+    ring(WALL_X1 + 10, GROUND - 4, 'rgba(255,220,180,.8)', 10, 120, .45);
+    shake(.8);
+  } else if (it.type === 'rocks') {
+    for (let i = 0; i < it.n; i++) {
+      S.proj.push({kind: 'rock', dmg: it.dmg, dice: [], x0: f.x - 60, y0: GROUND - 150, x1: rnd(WALL_X0 - 120, WALL_X1 - 10), y1: rnd(GY + 60, GROUND - 40),
+        t: -i * .25, dur: .7, arc: 120, rot: 0});
+    }
+  } else if (it.type === 'hatch') {
+    spawnFlyers(it.n);
+  } else if (it.type === 'boulders') {
+    // aim at tiles that have something on them, never the chutes
+    const tiles = [...S.belts.keys(), ...[...S.machines.values()].filter(m => m.kind !== 'chute').map(m => key(m.cell))]
+      .filter(k => !S.rubble.has(k));
+    for (let i = 0; i < it.n && tiles.length; i++) {
+      const k = tiles.splice(ri(0, tiles.length - 1), 1)[0], c = parseKey(k), ce = center(c);
+      S.proj.push({kind: 'boulder', dice: [], cell: c, x0: f.x - 60, y0: GROUND - 170, x1: ce.x, y1: ce.y, t: -i * .3, dur: 1.1, arc: 220, rot: 0});
+    }
+  }
+  f.intent++;
+  if (f.stun <= 0) { f.state = 'recover'; f.timer = 2.2; }
+}
+
+function killFoe() {
+  if (S.over) return;
+  const f = S.foe;
+  S.over = 'won'; f.hp = 0;
+  for (let i = 0; i < 6; i++) setTimeout(() => {
+    if (!S || S.over !== 'won') return;
+    burst(f.x + rnd(-60, 50), GROUND - rnd(30, 170), i % 2 ? COL.gold : '#b0684c', 30, 380, 5, 400, .9, i % 2 ? 0 : 1);
+    shake(.7);
+  }, i * 160);
+}
+
+// ============================================================ building
+function clearCell(c, scrap) {
+  const k = key(c);
+  const m0 = S.machines.get(k);
+  if (m0 && m0.kind === 'chute' && [...S.machines.values()].filter(x => x.kind === 'chute').length <= 1) {
+    say(center(c).x, center(c).y - 30, 'need one chute', '#ffb0a0', 13);
+    return false;
+  }
+  // dice on the tile drop where they are and heap up
+  const dropped = [];
+  for (const d of S.dice.slice()) if (key(d.cell) === k && d.state !== 'fall' && d.state !== 'jump') { dropped.push([dieSpec(d), {x: d.x, y: d.y}]); removeDie(d); }
+  if (m0) for (const l of [...m0.load, ...m0.mag, ...m0.outQ, ...(m0.held ? [m0.held] : [])]) dropped.push([dieSpec(l), center(c)]);
+  for (const sk of [...S.stops.keys()]) if (sk.startsWith(k + ',')) S.stops.delete(sk);
+  if (S.belts.has(k)) {
+    S.belts.delete(k); S.beltVis.delete(k);
+    if (scrap) burst(center(c).x, center(c).y, '#7b858c', 8, 120, 4, 300, .45, 1);
+  }
+  if (m0) {
+    S.machines.delete(k);
+    const ce = center(c);
+    burst(ce.x, ce.y, COL[KINDS[m0.kind].cat], 12, 200, 5, 500, .6, 1);
+  }
+  // the tile is bare now: whatever was on it heaps up there
+  for (const [sp, p] of dropped) addToPile(c, sp, p);
+  return true;
+}
+
+function placeKind(c, kind) {
+  const k = key(c);
+  const m = S.machines.get(k);
+  if (m && m.kind === kind && deq(m.dir, S.placeDir)) return;
+  if (clearCell(c, !!m) === false) return;
+  placeMachine(c, kind, S.placeDir, -.15);
+}
+
+function interact(c) {
+  const k = key(c);
+  const m = S.machines.get(k);
+  const ce = center(c);
+  if (m) {
+    switch (m.kind) {
+      case 'sorter': m.mode = 1 - m.mode; m.work = .6; say(ce.x, ce.y - 34, m.mode ? 'swapped' : 'normal', '#7fe0c6', 13); return;
+      case 'switch': m.mode = 1 - m.mode; m.work = .6; say(ce.x, ce.y - 34, 'flipped', '#7fe0c6', 13); return;
+      case 'silo': m.mode = 1 - m.mode; m.work = .6; say(ce.x, ce.y - 34, m.mode ? 'HOLD' : 'FLOOD!', m.mode ? '#ffb0a0' : '#7fe0c6', 15); return;
+      case 'rocket':
+        if (m.load.length >= 3) launchRocket(m); else say(ce.x, ce.y - 34, 'needs 3+ dice', '#ffb0a0', 13);
+        return;
+      case 'parry': raiseParry(); return;
+    }
+    if (KINDS[m.kind].role !== 'term') { m.dir = rotCW(m.dir); m.work = .4; }
+    return;
+  }
+  if (S.belts.has(k)) {
+    const nd = rotCW(S.belts.get(k));
+    S.belts.set(k, nd);
+    for (const d of S.dice) if (key(d.cell) === k && !d.next && d.state === 'stop') d.dout = nd;
+  }
+}
+
+function rotateAt(c) {
+  const m = machineAt(c);
+  if (m && KINDS[m.kind].role !== 'term') { m.dir = rotCW(m.dir); m.work = .4; return; }
+  if (!m) interact(c);
+}
+
+// ============================================================ input
+function toLocal(e) {
+  const r = cv.getBoundingClientRect();
+  return {x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height};
+}
+const cellAt = p => ({x: Math.floor((p.x - GX) / CELL), y: Math.floor((p.y - GY) / CELL)});
+
+function paletteAt(p) {
+  for (let r = 0; r < CATS.length; r++) {
+    const list = PALETTE[CATS[r]];
+    for (let i = 0; i < list.length; i++) {
+      const x = PAL_X + i * (PAL_W + PAL_GAP), y = PAL_Y + r * PAL_ROW;
+      if (p.x >= x && p.x <= x + PAL_W && p.y >= y && p.y <= y + PAL_H) return list[i];
+    }
+  }
+  return null;
+}
+function buttonAt(p) { return S.buttons.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h); }
+
+const capture = e => { try { cv.setPointerCapture(e.pointerId); } catch (_) { /* pointer already gone */ } };
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointermove', e => {
+  const p = toLocal(e); mouse.x = p.x; mouse.y = p.y; mouse.cell = cellAt(p);
+  if (mouse.erasing && inGrid(mouse.cell) && !deq(mouse.cell, mouse.last)) { mouse.last = mouse.cell; clearCell(mouse.cell, true); }
+  else if (mouse.dragging) dragTo(mouse.cell);
+  else if (mouse.painting && S.pal && inGrid(mouse.cell) && !deq(mouse.cell, mouse.last)) { mouse.last = mouse.cell; placeKind(mouse.cell, S.pal); }
+});
+cv.addEventListener('pointerdown', e => {
+  const p = toLocal(e); mouse.x = p.x; mouse.y = p.y; mouse.cell = cellAt(p);
+  const b = buttonAt(p);
+  if (b && e.button === 0) { b.fn(); return; }
+  if (S.over) { newGame(true); return; }
+  if (e.button === 2) {
+    if (S.pal) { S.pal = null; return; }
+    if (inGrid(mouse.cell)) clearCell(mouse.cell, true);
+    return;
+  }
+  if (e.button !== 0) return;
+  const pk = paletteAt(p);
+  if (pk) { if (S.pal === pk) S.pal = null; else pickPal(pk); return; }
+  const c = mouse.cell;
+  if (!inGrid(c)) return;
+  const k = key(c);
+  if (S.rubble.has(k)) return;                 // buried: route around it
+  S.lastTap = c;
+  if (opts.erase) { clearCell(c, true); mouse.erasing = true; mouse.last = c; capture(e); return; }
+  if (S.pal) { placeKind(c, S.pal); mouse.painting = true; mouse.last = c; capture(e); return; }
+  if (S.machines.has(k)) { mouse.moving = c; capture(e); return; }
+  mouse.dragging = true; mouse.moved = false; mouse.last = c; mouse.pressNew = false;
+  if (!S.belts.has(k)) { setBelt(c, S.beltDir); mouse.pressNew = true; }
+  capture(e);
+});
+cv.addEventListener('pointerup', () => {
+  if (mouse.erasing) { mouse.erasing = false; return; }
+  if (mouse.moving) {
+    const from = mouse.moving, to = mouse.cell;
+    mouse.moving = null;
+    if (inGrid(to) && !deq(from, to)) moveMachine(from, to); else interact(from);
+    return;
+  }
+  if (mouse.dragging && !mouse.moved && !mouse.pressNew && inGrid(mouse.last)) interact(mouse.last);
+  mouse.dragging = false; mouse.painting = false;
+});
+
+// a finger leaves no hover behind: forget the position after a touch ends
+cv.addEventListener('pointerup', e => { if (e.pointerType === 'touch') { mouse.x = -1; mouse.y = -1; mouse.cell = {x: -1, y: -1}; } });
+
+// on-screen buttons, for phones (no right-click, keys or hover there)
+const tbErase = document.getElementById('tb-erase');
+function setErase(on) { opts.erase = on; tbErase.classList.toggle('on', on); if (on) S.pal = null; }
+document.getElementById('tb-rotate').addEventListener('click', () => {
+  if (S.pal) S.placeDir = rotCW(S.placeDir);
+  else if (S.lastTap) rotateAt(S.lastTap);
+});
+tbErase.addEventListener('click', () => setErase(!opts.erase));
+document.getElementById('tb-parry').addEventListener('click', () => raiseParry());
+document.getElementById('tb-drop').addEventListener('click', () => { S.pal = null; setErase(false); });
+
+function pickPal(k) {
+  if (opts.erase) setErase(false);
+  S.pal = k;
+  S.recent = [k, ...S.recent.filter(x => x !== k)].slice(0, 5);
+}
+
+// Drag a machine to another tile: it keeps what it is holding.
+function moveMachine(from, to) {
+  const fk = key(from), tk = key(to);
+  const m = S.machines.get(fk);
+  if (!m) return;
+  if (S.machines.has(tk) || S.rubble.has(tk)) { say(center(to).x, center(to).y - 30, 'occupied', '#ffb0a0', 13); return; }
+  const dropped = [];
+  for (const d of S.dice.slice()) if (key(d.cell) === fk && d.state !== 'fall' && d.state !== 'jump') { dropped.push([dieSpec(d), {x: d.x, y: d.y}]); removeDie(d); }
+  for (const sk of [...S.stops.keys()]) if (sk.startsWith(fk + ',')) S.stops.delete(sk);
+  clearCell(to, false);
+  S.machines.delete(fk);
+  m.cell = to; m.pop = .35;
+  S.machines.set(tk, m);
+  for (const [sp, p] of dropped) addToPile(from, sp, p);
+  burst(center(to).x, center(to).y, '#ffffff', 8, 120, 2.5, 0, .3);
+}
+cv.addEventListener('wheel', e => { if (S.pal) { e.preventDefault(); S.placeDir = rotCW(S.placeDir); } }, {passive: false});
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); raiseParry(); return; }
+  if (e.key === 'p' || e.key === 'P') S.paused = !S.paused;
+  else if (e.key === 'r' || e.key === 'R') {
+    if (S.over) newGame(true);
+    else if (S.pal) S.placeDir = rotCW(S.placeDir);
+    else if (inGrid(mouse.cell)) rotateAt(mouse.cell);
+  } else if (e.key === 'Escape') S.pal = null;
+  else if (e.key >= '1' && e.key <= '5') { const k = S.recent[+e.key - 1]; if (k) pickPal(k); }
+});
+
+function dragTo(c) {
+  if (!inGrid(c) || deq(c, mouse.last)) return;
+  let guard = 0;
+  while (!deq(mouse.last, c) && guard++ < 32) {
+    const dx = c.x - mouse.last.x, dy = c.y - mouse.last.y;
+    const step = Math.abs(dx) >= Math.abs(dy) ? {x: Math.sign(dx), y: 0} : {x: 0, y: Math.sign(dy)};
+    if (S.belts.has(key(mouse.last))) {
+      S.belts.set(key(mouse.last), step);
+      for (const d of S.dice) if (key(d.cell) === key(mouse.last) && !d.next && d.state === 'stop') d.dout = step;
+    }
+    const nx = add(mouse.last, step);
+    if (!S.machines.has(key(nx))) setBelt(nx, step);
+    S.beltDir = step; mouse.last = nx; mouse.moved = true;
+  }
+}
+
+// ============================================================ update
+function update(rawDt) {
+  // time slows while you place parts over the floor
+  const placing = S.pal && inGrid(mouse.cell) && opts.slow;
+  S.timeScale = lerp(S.timeScale, placing ? .3 : 1, 1 - Math.exp(-10 * rawDt));
+  const dt = rawDt * S.timeScale * opts.speed;
+  S.t += dt;
+  S.shake = Math.max(0, S.shake - rawDt * 2.4);
+  S.hitFlash = Math.max(0, S.hitFlash - rawDt * 2);
+  for (const [k, v] of S.beltVis) {
+    const d = S.belts.get(k); if (!d) continue;
+    v.ang += angDiff(v.ang, Math.atan2(d.y, d.x)) * (1 - Math.exp(-18 * rawDt));
+    v.pop = Math.min(1, v.pop + rawDt / .25);
+  }
+  updateParticles(dt);
+  if (S.paused) return;
+  if (!S.over) {
+    rollChutes(dt);
+    updateMachines(dt);
+    updateDice(dt);
+    updateFoe(dt);
+    updateField(dt);
+  }
+  updateProj(dt);
+}
+
+function updateParticles(dt) {
+  const keep = [];
+  for (const p of S.parts) {
+    p.t += dt; if (p.t >= p.life) continue;
+    p.vy += p.g * dt; const dr = Math.exp(-2.2 * dt); p.vx *= dr; p.vy *= dr;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt; keep.push(p);
+  }
+  S.parts = keep;
+  for (const d of S.debris.slice()) {
+    d.t += dt;
+    d.vy += 1100 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += d.vr * dt;
+    const floor = d.x > WALL_X0 - 4 ? GROUND - 9 : GY + GH * CELL + 10;
+    if (d.y > floor) { d.y = floor; d.vy *= -.38; d.vx *= .6; d.vr *= .6; }
+    if (d.t > d.life) S.debris.splice(S.debris.indexOf(d), 1);
+  }
+  for (const t of S.texts.slice()) { t.t += dt; if (t.t >= t.life) S.texts.splice(S.texts.indexOf(t), 1); }
+  for (const b of S.bricks) b.pop = Math.max(0, b.pop - dt * 3);
+}
+
+// ============================================================ drawing
+function rr(x, y, w, h, r, fill, stroke, lw) {
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 2; ctx.stroke(); }
+}
+function circle(x, y, r, fill) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); }
+function ringStroke(x, y, r, col, w) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); }
+function line(x0, y0, x1, y1, col, w) { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.stroke(); }
+function tri(ax, ay, bx, by, cx, cy, fill) { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
+function txt(s, x, y, size, col, align = 'left', weight = 700, outline = 0) {
+  ctx.font = `${weight} ${size}px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  if (outline) { ctx.lineWidth = outline; ctx.strokeStyle = 'rgba(6,20,26,.9)'; ctx.lineJoin = 'round'; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = col; ctx.fillText(s, x, y);
+}
+
+const PIPS = {1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]],
+  5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]]};
+
+function drawDie(x, y, d, rot = 0, s = 1, alert = 0, size = 22) {
+  if (s <= .01) return;
+  const v = d.show ?? d.v;
+  const big = d.v > 6 ? Math.min(8, (d.v - 6) * 1.2) : 0;
+  size += big;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  const h = size / 2;
+  if (d.hot) circle(0, 0, h + 6 + Math.sin(S.t * 20) * 1.2, 'rgba(255,120,50,.25)');
+  if (d.ice) circle(0, 0, h + 5, 'rgba(180,230,255,.25)');
+  if (d.spiky) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; tri(Math.cos(a) * (h + 6), Math.sin(a) * (h + 6), Math.cos(a - .3) * h, Math.sin(a - .3) * h, Math.cos(a + .3) * h, Math.sin(a + .3) * h, '#4a4f54'); }
+  rr(-h + 1, -h + 3, size, size, 5, 'rgba(0,0,0,.35)');
+  const face = d.hot ? COL.hot : (d.ice ? COL.ice : '#fff');
+  rr(-h, -h, size, size, 5, face, alert ? `rgba(255,70,60,${.6 + .4 * Math.sin(S.t * 12)})` : COL.ink, alert ? 3 : 1.8);
+  if (PIPS[v]) for (const [px, py] of PIPS[v]) circle(px * size * .26, py * size * .26, size * .1, COL.ink);
+  else txt(String(v), 0, 1, size * .6, COL.ink, 'center', 800);
+  ctx.restore();
+}
+
+function drawFloor() {
+  rr(GX - 8, GY - 8, GW * CELL + 16, GH * CELL + 16, 12, COL.floor);
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    ctx.fillStyle = (x + y) % 2 ? COL.tile2 : COL.tile;
+    ctx.fillRect(GX + x * CELL + 2, GY + y * CELL + 2, CELL - 4, CELL - 4);
+  }
+}
+
+function drawField() {
+  const g = ctx.createLinearGradient(0, GY - 8, 0, GROUND);
+  g.addColorStop(0, '#1e3b3e'); g.addColorStop(1, '#2c4a3e');
+  rr(WALL_X0 - 4, GY - 8, FIELD_X1 - WALL_X0 + 12, GH * CELL + 16, 12, g);
+  ctx.fillStyle = COL.ground; ctx.fillRect(WALL_X0 - 4, GROUND - 2, FIELD_X1 - WALL_X0 + 12, 18);
+  ctx.fillStyle = COL.grass; ctx.fillRect(WALL_X0 - 4, GROUND - 4, FIELD_X1 - WALL_X0 + 12, 4);
+  ctx.fillStyle = 'rgba(20,45,45,.7)';
+  ctx.beginPath(); ctx.moveTo(WALL_X1, GROUND - 4);
+  for (let x = WALL_X1; x <= FIELD_X1; x += 20) ctx.lineTo(x, GROUND - 60 - 26 * Math.sin(x * .011) - 14 * Math.sin(x * .037));
+  ctx.lineTo(FIELD_X1, GROUND - 4); ctx.fill();
+  if ([...S.machines.values()].some(m => m.kind === 'blunder')) {
+    const x = REACH_X + BLUNDER_RANGE;
+    ctx.setLineDash([6, 6]); line(x, GY + 40, x, GROUND - 4, 'rgba(255,226,122,.35)', 2); ctx.setLineDash([]);
+    txt('blunderbuss range', x + 6, GY + 50, 11, 'rgba(255,226,122,.55)', 'left', 600);
+  }
+}
+
+function feeds(n, c) {
+  const b = beltAt(n);
+  if (b) return deq(add(n, b), c);
+  const m = machineAt(n);
+  if (!m) return false;
+  return outDirs(m).some(o => deq(add(n, o), c));
+}
+function outDirs(m) {
+  const info = KINDS[m.kind];
+  if (info.role === 'term') return [];
+  if (m.kind === 'switch') return [m.mode ? rotCW(m.dir) : m.dir];
+  if (['sorter', 'oddeven', 'alt', 'coin', 'prism', 'echo', 'overflow'].includes(m.kind)) return [m.dir, rotCW(m.dir)];
+  if (m.kind === 'bounce') return [];
+  return [m.dir];
+}
+function beltInput(c, d) {
+  if (feeds(add(c, neg(d)), c)) return d;
+  for (const side of [rotCW(d), neg(rotCW(d))]) if (feeds({x: c.x - side.x, y: c.y - side.y}, c)) return side;
+  return d;
+}
+function offsetPts(pts, off) {
+  return pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
+    return {x: p.x - dy / l * off, y: p.y + dx / l * off};
+  });
+}
+function poly(pts, col, w) {
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'butt'; ctx.lineJoin = 'round'; ctx.stroke();
+}
+
+function drawBelt(k, d) {
+  const c = parseKey(k);
+  const vis = S.beltVis.get(k) || {ang: Math.atan2(d.y, d.x), pop: 1};
+  const ce = center(c);
+  const settled = Math.abs(angDiff(vis.ang, Math.atan2(d.y, d.x))) < .05;
+  const din = settled ? beltInput(c, d) : d;
+  let pts = [];
+  if (settled && !deq(din, d) && !deq(din, neg(d))) for (let i = 0; i <= 12; i++) pts.push(pathPt(c, din, d, i / 12, false));
+  else {
+    const dv = {x: Math.cos(vis.ang), y: Math.sin(vis.ang)};
+    pts = [{x: ce.x - dv.x * HC, y: ce.y - dv.y * HC}, {x: ce.x + dv.x * HC, y: ce.y + dv.y * HC}];
+  }
+  const sc = easeOutBack(vis.pop);
+  if (sc !== 1) pts = pts.map(p => ({x: ce.x + (p.x - ce.x) * sc, y: ce.y + (p.y - ce.y) * sc}));
+  poly(pts, '#171c1f', 40 * sc);
+  poly(pts, '#3c4449', 29 * sc);
+  poly(offsetPts(pts, 17.5 * sc), '#d9a62a', 4.5 * sc);
+  poly(offsetPts(pts, -17.5 * sc), '#d9a62a', 4.5 * sc);
+  const lens = [0];
+  for (let i = 1; i < pts.length; i++) lens.push(lens[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const total = lens[lens.length - 1];
+  let seg = 1;
+  for (let x = (S.t * BELT_SPEED) % 16 - 16; x < total; x += 16) {
+    if (x < 2 || x > total - 9) continue;
+    while (seg < pts.length - 1 && lens[seg] < x) seg++;
+    const a = pts[seg - 1], b = pts[seg], f = (x - lens[seg - 1]) / Math.max(.001, lens[seg] - lens[seg - 1]);
+    const p = lerpP(a, b, f), l = Math.hypot(b.x - a.x, b.y - a.y) || 1, t = {x: (b.x - a.x) / l, y: (b.y - a.y) / l}, n = {x: -t.y, y: t.x};
+    ctx.beginPath(); ctx.moveTo(p.x + n.x * 8 * sc, p.y + n.y * 8 * sc); ctx.lineTo(p.x + t.x * 6 * sc, p.y + t.y * 6 * sc); ctx.lineTo(p.x - n.x * 8 * sc, p.y - n.y * 8 * sc);
+    ctx.strokeStyle = '#6b767d'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.stroke();
+  }
+  const nx = add(c, d);
+  if (vis.pop >= 1 && (!inGrid(nx) || (!S.belts.has(key(nx)) && !S.machines.has(key(nx))))) {
+    const e = pts[pts.length - 1], q = pts[pts.length - 2], l = Math.hypot(e.x - q.x, e.y - q.y) || 1;
+    const t = {x: (e.x - q.x) / l, y: (e.y - q.y) / l}, n = {x: -t.y, y: t.x};
+    line(e.x + n.x * 19 - t.x * 3, e.y + n.y * 19 - t.y * 3, e.x - n.x * 19 - t.x * 3, e.y - n.y * 19 - t.y * 3, `rgba(255,90,74,${.6 + .4 * Math.sin(S.t * 6)})`, 5);
+  }
+}
+
+function arrowsFor(m) {
+  if (KINDS[m.kind].role === 'term') return [];
+  if (m.kind === 'switch') return [m.dir, rotCW(m.dir)];
+  return outDirs(m).length ? outDirs(m) : [m.dir];
+}
+
+function drawMachine(m, cx, cy, ghost) {
+  const info = KINDS[m.kind], col = COL[info.cat];
+  if (m.pop < 0) return;
+  const b = m.work > 0 ? Math.sin((1 - m.work) * Math.PI) : 0;
+  const s = easeOutBack(m.pop);
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(s * (1 + .1 * b), s * (1 - .1 * b));
+  if (ghost) ctx.globalAlpha = .75;
+  rr(-27, -23, 56, 54, 9, 'rgba(0,0,0,.35)');
+  rr(-28, -28, 56, 56, 9, TINT[info.cat], col, 3);
+  if (m.work > 0) rr(-28, -28, 56, 56, 9, `rgba(255,255,255,${.25 * m.work})`);
+  drawIcon(m);
+  const base = Math.atan2(m.dir.y, m.dir.x);
+  for (const o of arrowsFor(m)) {
+    const a = m.ang + angDiff(base, Math.atan2(o.y, o.x));
+    const dv = {x: Math.cos(a), y: Math.sin(a)}, n = {x: -dv.y, y: dv.x}, p = {x: dv.x * 30, y: dv.y * 30};
+    let ac = col;
+    const straight = deq(o, m.dir);
+    if (m.kind === 'sorter') ac = straight ? (m.mode ? COL.defense : COL.weapon) : (m.mode ? COL.weapon : COL.defense);
+    else if (m.kind === 'switch') ac = deq(o, outDirs(m)[0]) ? COL.gold : 'rgba(40,60,66,.5)';
+    else if (m.kind === 'alt') ac = (m.alt ? !straight : straight) ? COL.gold : col;
+    else if (!straight) ac = '#1b6b59';
+    const len = m.kind === 'bounce' ? 14 : 8;
+    tri(p.x + dv.x * len, p.y + dv.y * len, p.x + n.x * 7, p.y + n.y * 7, p.x - n.x * 7, p.y - n.y * 7, ac);
+  }
+  if (m.kind === 'sorter' || m.kind === 'oddeven') {
+    const hp = {x: Math.cos(m.ang) * 17, y: Math.sin(m.ang) * 17}, lp = {x: Math.cos(m.ang + Math.PI / 2) * 17, y: Math.sin(m.ang + Math.PI / 2) * 17};
+    const A = m.kind === 'sorter' ? (m.mode ? '1-3' : '4-6') : 'odd', B = m.kind === 'sorter' ? (m.mode ? '4-6' : '1-3') : 'even';
+    txt(A, hp.x, hp.y, 9.5, '#7a1d10', 'center', 800);
+    txt(B, lp.x, lp.y, 9.5, '#163f6e', 'center', 800);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function mix(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const c = s => Math.round(lerp((pa >> s) & 255, (pb >> s) & 255, t));
+  return `rgb(${c(16)},${c(8)},${c(0)})`;
+}
+
+// A tiny die face for icons
+function miniDie(x, y, v, s = 10, fill = '#fff') {
+  rr(x - s / 2, y - s / 2, s, s, 2, fill, COL.ink, 1);
+  if (PIPS[v]) for (const [px, py] of PIPS[v]) circle(x + px * s * .26, y + py * s * .26, s * .09, COL.ink);
+}
+
+function drawIcon(m) {
+  const dark = '#2b373c', b = m.work > 0 ? Math.sin((1 - m.work) * Math.PI) : 0, fire = m.fire || 0;
+  const t = S ? S.t : 0;
+  switch (m.kind) {
+    case 'chute': {
+      const sh = Math.sin(t * 70) * 2 * m.work;
+      ctx.beginPath(); ctx.moveTo(-18 + sh, -12); ctx.lineTo(18 + sh, -12); ctx.lineTo(7, 7); ctx.lineTo(-7, 7); ctx.fillStyle = '#8ea3ab'; ctx.fill();
+      ctx.fillStyle = '#5f727a'; ctx.fillRect(-5, 7, 10, 10);
+      const hop = m.hopper ? m.hopper.length : 0, fill = hop / HOPPER_MAX;
+      rr(-22, 20, 44, 5, 2.5, 'rgba(0,0,0,.3)');
+      if (fill > 0) rr(-22, 20, 44 * fill, 5, 2.5, fill > .8 ? COL.drop : '#7fe0c6');
+      for (let i = 0; i < 3; i++) miniDie(-10 + i * 10, -19 - Math.sin(t * 50 + i) * 3 * m.work, 3 + i, 9);
+      break;
+    }
+    case 'sorter': case 'oddeven': case 'coin': {
+      if (m.kind === 'coin') { circle(-4, 0, 11, '#f0b429'); ringStroke(-4, 0, 11, '#9a6a05', 2); txt('?', -4, 1, 13, '#7a5404', 'center', 900); }
+      const la = lerp(-.95, .95, m.lever);
+      if (m.kind !== 'coin') { line(-20, 0, 0, 0, dark, 5); circle(0, 0, 6, '#f0b429'); }
+      const tip = {x: Math.cos(la) * 14, y: Math.sin(la) * 14};
+      if (m.kind !== 'coin') { line(0, 0, tip.x, tip.y, dark, 4); circle(tip.x, tip.y, 4.5, m.lever < .5 ? COL.weapon : COL.defense); }
+      break;
+    }
+    case 'switch': {
+      const o = outDirs(m)[0], rel = angDiff(Math.atan2(m.dir.y, m.dir.x), Math.atan2(o.y, o.x));
+      ctx.save(); ctx.rotate(rel);
+      line(-14, 0, 6, 0, COL.gold, 6); tri(16, 0, 4, -9, 4, 9, COL.gold);
+      ctx.restore(); circle(-16, 0, 5, dark);
+      break;
+    }
+    case 'alt': {
+      line(-14, -6, 12, -6, m.alt ? '#7a8a90' : COL.gold, 4); tri(18, -6, 10, -12, 10, 0, m.alt ? '#7a8a90' : COL.gold);
+      line(-14, 6, 12, 6, m.alt ? COL.gold : '#7a8a90', 4); tri(18, 6, 10, 0, 10, 12, m.alt ? COL.gold : '#7a8a90');
+      break;
+    }
+    case 'prism': {
+      tri(0, -16, -16, 12, 16, 12, 'rgba(190,240,255,.9)');
+      ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(-16, 12); ctx.lineTo(16, 12); ctx.closePath(); ctx.strokeStyle = '#3d8be0'; ctx.lineWidth = 2; ctx.stroke();
+      line(-22, -2, -6, 2, '#ffffff', 2.5);
+      line(6, 2, 22, -4, '#e2533d', 2.5); line(6, 4, 20, 14, '#3d8be0', 2.5);
+      break;
+    }
+    case 'crusher': {
+      const j = 6 * b;
+      ctx.fillStyle = '#6b767d';
+      ctx.beginPath(); ctx.moveTo(-18 + j, -14); for (let i = 0; i < 4; i++) { ctx.lineTo(-10 + j + (i % 2) * 6, -10 + i * 7); } ctx.lineTo(-18 + j, 14); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(18 - j, -14); for (let i = 0; i < 4; i++) { ctx.lineTo(10 - j - (i % 2) * 6, -10 + i * 7); } ctx.lineTo(18 - j, 14); ctx.fill();
+      miniDie(0, 0, 1, 8);
+      break;
+    }
+    case 'echo': {
+      const sl = 5 * b;
+      rr(-17, -15, 18, 18, 4, '#fff', COL.ink, 2); rr(-3 + sl, -3 + sl, 18, 18, 4, '#d4f3ea', COL.ink, 2);
+      circle(-8, -6, 2.3, COL.ink); circle(6 + sl, 6 + sl, 2.3, COL.ink);
+      break;
+    }
+    case 'overflow': {
+      line(-18, 0, 12, 0, COL.ink, 4); tri(20, 0, 10, -7, 10, 7, COL.ink);
+      ctx.setLineDash([3, 3]); line(0, 0, 0, 14, '#1b6b59', 3); ctx.setLineDash([]); tri(0, 20, -6, 12, 6, 12, '#1b6b59');
+      for (let i = 0; i < 3; i++) miniDie(-14 + i * 0, -10 - i * 0, 0, 0);
+      break;
+    }
+    case 'fuser': {
+      circle(0, 0, 15, '#5d6e75'); circle(0, 0, 11, '#ffd25e');
+      txt('+', 0, 1, 20, COL.ink, 'center', 900);
+      if (m.held) miniDie(-14, -14, m.held.v, 12);
+      break;
+    }
+    case 'silo': {
+      rr(-12, -22, 24, 42, 8, '#7b858c', dark, 2);
+      const n = m.outQ ? m.outQ.length : 0;
+      for (let i = 0; i < Math.min(8, n); i++) miniDie(-5 + (i % 2) * 10, 14 - Math.floor(i / 2) * 9, 1 + (i % 6), 8);
+      if (m.mode === 1) { rr(-16, -4, 32, 10, 3, COL.drop); txt('HOLD', 0, 1, 8, '#fff', 'center', 900); }
+      break;
+    }
+    case 'bounce': {
+      const sq = 1 - .4 * b;
+      ctx.beginPath(); for (let i = 0; i <= 6; i++) ctx.lineTo((i % 2 ? 8 : -8), 14 - i * 4 * sq); ctx.strokeStyle = '#59636a'; ctx.lineWidth = 3; ctx.stroke();
+      rr(-14, 14 - 24 * sq - 4, 28, 5, 2, COL.route);
+      rr(-14, 14, 28, 5, 2, dark);
+      break;
+    }
+    case 'forge': {
+      const f = Math.sin(t * 9) * 2, fl = 1 + .7 * b;
+      ctx.beginPath(); ctx.moveTo(-13, 6); ctx.lineTo(-15, -6 * fl); ctx.lineTo(-7, -2 * fl); ctx.lineTo(-4, (-17 - f) * fl); ctx.lineTo(2, -4 * fl); ctx.lineTo(9, (-11 + f) * fl); ctx.lineTo(13, 6); ctx.fillStyle = COL.ember; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-7, 6); ctx.lineTo(-4, (-6 - f) * fl); ctx.lineTo(2, 0); ctx.lineTo(5, -6 * fl); ctx.lineTo(7, 6); ctx.fillStyle = '#ffd04a'; ctx.fill();
+      rr(-18, 6, 36, 12, 3, '#3a4046');
+      break;
+    }
+    case 'doubler': {
+      const slam = 11 * b;
+      ctx.fillStyle = '#5a646b'; ctx.fillRect(-3, -25 + slam, 6, 9);
+      ctx.fillStyle = '#7b858c'; ctx.fillRect(-16, -18 + slam, 32, 7); ctx.fillRect(-16, 11, 32, 7);
+      txt('x2', 0, 3, 14, COL.ink, 'center', 800);
+      break;
+    }
+    case 'drum': {
+      circle(0, 0, 18, '#5d6e75'); circle(0, 0, 13, COL.route);
+      m.spin = (m.spin || 0) + (.02 + m.work * .5);
+      for (let i = 0; i < 3; i++) { const a = m.spin + i * Math.PI / 3; line(-Math.cos(a) * 13, -Math.sin(a) * 13, Math.cos(a) * 13, Math.sin(a) * 13, '#1b6b59', 3); }
+      circle(0, 0, 3.5, '#f0b429');
+      break;
+    }
+    case 'flipper': {
+      ctx.save(); ctx.rotate(b * Math.PI);
+      miniDie(-8, 0, 1, 14); miniDie(8, 0, 6, 14);
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI * 1.1, Math.PI * 1.9); ctx.strokeStyle = '#7a4aa6'; ctx.lineWidth = 3; ctx.stroke();
+      tri(14, -10, 8, -14, 16, -4, '#7a4aa6');
+      break;
+    }
+    case 'frost': {
+      for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3 + b; line(-Math.cos(a) * 17, -Math.sin(a) * 17, Math.cos(a) * 17, Math.sin(a) * 17, '#3d8be0', 3.5); }
+      circle(0, 0, 5, COL.ice);
+      break;
+    }
+    case 'spiker': {
+      ctx.save(); ctx.rotate(b * 2);
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; tri(Math.cos(a) * 19, Math.sin(a) * 19, Math.cos(a - .35) * 9, Math.sin(a - .35) * 9, Math.cos(a + .35) * 9, Math.sin(a + .35) * 9, '#4a4f54'); }
+      ctx.restore();
+      circle(0, 0, 9, '#a66ad6');
+      break;
+    }
+    case 'inflate': {
+      const s = 1 + .25 * b;
+      ctx.beginPath(); ctx.ellipse(0, -3, 12 * s, 14 * s, 0, 0, Math.PI * 2); ctx.fillStyle = '#e27ab0'; ctx.fill();
+      line(0, 11 * s, 0, 20, dark, 1.5);
+      txt('+1', 0, -3, 12, '#fff', 'center', 900);
+      break;
+    }
+    case 'pult': {
+      ctx.fillStyle = '#6b5236'; ctx.fillRect(-18, 12, 36, 7);
+      ctx.beginPath(); ctx.moveTo(-10, 12); ctx.lineTo(0, -2); ctx.lineTo(10, 12); ctx.strokeStyle = '#6b5236'; ctx.lineWidth = 4; ctx.stroke();
+      const a = lerp(-0.3, -2.3, fire > 0 ? easeOut(1 - fire) : 0);
+      ctx.save(); ctx.translate(0, -2); ctx.rotate(Math.PI + a);
+      line(0, 0, 22, 0, '#8a6a44', 4); rr(18, -6, 10, 10, 3, '#5a4630');
+      ctx.restore();
+      if (m.load && m.load.length && m.wind > 0) miniDie(-20, -6, m.load[0].v, 12);
+      break;
+    }
+    case 'cannon': case 'blunder': {
+      const rc = -7 * fire;
+      circle(-4, 8, 12, dark);
+      ctx.save(); ctx.rotate(-.35);
+      if (m.kind === 'blunder') {
+        ctx.beginPath(); ctx.moveTo(-6 + rc, -5); ctx.lineTo(18 + rc, -6); ctx.lineTo(26 + rc, -12); ctx.lineTo(26 + rc, 12); ctx.lineTo(18 + rc, 6); ctx.lineTo(-6 + rc, 5); ctx.closePath();
+        ctx.fillStyle = '#8a6a44'; ctx.fill(); ctx.strokeStyle = dark; ctx.lineWidth = 2; ctx.stroke();
+        for (let i = 0; i < (m.load ? m.load.length : 0); i++) circle(-2 + i * 6, -14, 2.5, COL.gold);
+      } else {
+        rr(-6 + rc, -6, 30, 12, 4, '#59636a', dark, 2); rr(20 + rc, -7, 6, 14, 2, COL.weapon);
+      }
+      ctx.restore();
+      circle(-4, 8, 5, '#9aa4aa');
+      if (fire > .55) { const fa = (fire - .55) / .45; circle(26, -11, 10 * fa, `rgba(255,220,120,${fa})`); circle(26, -11, 5 * fa, '#fff'); }
+      break;
+    }
+    case 'rocket': {
+      const gone = (m.launch || 0) <= 0 && m.busy > .2 && m.load.length === 0;
+      ctx.fillStyle = '#4a555b'; ctx.fillRect(-18, 16, 36, 6);
+      if (!gone) {
+        const jig = m.launch > 0 ? Math.sin(t * 80) * 1.5 : 0;
+        ctx.save(); ctx.translate(jig, 0);
+        ctx.beginPath(); ctx.moveTo(-8, 14); ctx.lineTo(-8, -10); ctx.quadraticCurveTo(0, -26, 8, -10); ctx.lineTo(8, 14); ctx.fillStyle = '#e8e2d4'; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 1.5; ctx.stroke();
+        tri(-8, 6, -14, 16, -8, 14, COL.weapon); tri(8, 6, 14, 16, 8, 14, COL.weapon);
+        ctx.restore();
+      }
+      for (let i = 0; i < 10; i++) circle(16 + (i % 2) * 6, 10 - Math.floor(i / 2) * 6, 2.3, i < (m.load ? m.load.length : 0) ? COL.gold : 'rgba(0,0,0,.25)');
+      break;
+    }
+    case 'gatling': {
+      circle(-6, 8, 11, dark);
+      ctx.save(); ctx.translate(4, -2);
+      rr(-8, -9, 26, 18, 4, '#59636a', dark, 2);
+      for (let i = 0; i < 3; i++) { const yy = Math.sin((m.spin || 0) + i * 2.1) * 6; line(16, yy, 26, yy, '#2b373c', 3); }
+      ctx.restore();
+      const n = m.mag ? m.mag.length : 0;
+      for (let i = 0; i < 8; i++) circle(-20 + (i % 4) * 5, -16 - Math.floor(i / 4) * 5, 2, i < n ? COL.gold : 'rgba(0,0,0,.25)');
+      if (fire > .6) circle(28, -2, 7 * fire, 'rgba(255,220,120,.9)');
+      break;
+    }
+    case 'combo': case 'slots': {
+      rr(-22, -14, 44, 26, 5, m.kind === 'slots' ? '#7a2a4a' : '#59636a', dark, 2);
+      const n = m.load ? m.load.length : 0;
+      for (let i = 0; i < 3; i++) {
+        const reel = m.kind === 'slots' && m.reel > 0;
+        const v = reel ? ri(1, 6) : (i < n ? m.load[i].v : 0);
+        if (v) miniDie(-13 + i * 13, -1, v, 11); else rr(-18 + i * 13, -6.5, 11, 11, 2, 'rgba(0,0,0,.3)');
+      }
+      txt(m.kind === 'slots' ? '777' : 'x3', 0, 18, 9, m.kind === 'slots' ? '#ffd25e' : COL.ink, 'center', 900);
+      break;
+    }
+    case 'harpoon': {
+      circle(-8, 8, 10, dark);
+      ctx.save(); ctx.rotate(-.25 - fire * .2);
+      line(-10, 0, 18, 0, '#59636a', 4); tri(26, 0, 16, -7, 16, 7, '#c9d6da');
+      ctx.restore();
+      ctx.beginPath(); for (let i = 0; i < 4; i++) ctx.arc(-14 + i * 4, 16, 2, 0, Math.PI * 2); ctx.strokeStyle = '#9aa4aa'; ctx.lineWidth = 1.5; ctx.stroke();
+      break;
+    }
+    case 'mines': {
+      ctx.beginPath(); ctx.arc(0, 8, 16, Math.PI, 0); ctx.fillStyle = '#4a555b'; ctx.fill();
+      rr(-18, 8, 36, 8, 3, dark);
+      circle(0, -2, 3.5, Math.sin(t * 8) > 0 ? COL.drop : '#7a1d10');
+      line(-8, -4, -4, -12, '#59636a', 3); line(8, -4, 4, -12, '#59636a', 3);
+      break;
+    }
+    case 'lens': {
+      const on = (m.fuel || 0) > 0;
+      if (on) circle(0, 0, 22, `rgba(255,230,120,${.3 + .1 * Math.sin(t * 20)})`);
+      ctx.beginPath(); ctx.ellipse(0, 0, 9, 17, 0, 0, Math.PI * 2); ctx.fillStyle = on ? '#fff6c0' : '#bfe6ff'; ctx.fill(); ctx.strokeStyle = '#59636a'; ctx.lineWidth = 3; ctx.stroke();
+      rr(-22, 20, 44, 4, 2, 'rgba(0,0,0,.3)');
+      if (on) rr(-22, 20, 44 * Math.min(1, m.fuel / 16), 4, 2, COL.gold);
+      break;
+    }
+    case 'rico': {
+      ctx.beginPath(); ctx.arc(0, 2, 13, Math.PI * .9, Math.PI * 2.3); ctx.strokeStyle = '#8a6a44'; ctx.lineWidth = 4; ctx.stroke();
+      tri(12, -8, 4, -12, 10, 0, '#8a6a44');
+      miniDie(0, 2, 3, 10);
+      break;
+    }
+    case 'sticky': {
+      circle(-2, 4, 13, '#2b2b2b'); circle(-6, 0, 4, 'rgba(255,255,255,.25)');
+      ctx.beginPath(); ctx.moveTo(6, -6); ctx.quadraticCurveTo(14, -14, 10, -20); ctx.strokeStyle = '#8a6a44'; ctx.lineWidth = 2.5; ctx.stroke();
+      circle(10, -21, 3 + Math.sin(t * 30), COL.gold);
+      break;
+    }
+    case 'bulwark': {
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3 - (r === 2 ? 1 : 0); c++) {
+        const x = -15 + c * 11 + (r % 2 ? 5 : 0), y = 8 - r * 11 - (b * 4 * (r === 2 ? 1 : 0));
+        rr(x - 1, y - 5, 10, 10, 2, r === 2 && b > 0 ? '#ffffff' : '#cfe3ff', '#163f6e', 1.2);
+      }
+      break;
+    }
+    case 'thorns': {
+      ctx.fillStyle = '#5a7a4a'; ctx.fillRect(-20, 12, 40, 6);
+      for (let i = 0; i < 5; i++) tri(-16 + i * 8, 12, -12 + i * 8, -10 - (i % 2) * 6 - b * 4, -8 + i * 8, 12, '#4a4f54');
+      break;
+    }
+    case 'parry': {
+      const raised = S && S.shield > 0;
+      ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(16, -13); ctx.lineTo(14, 6); ctx.lineTo(0, 20); ctx.lineTo(-14, 6); ctx.lineTo(-16, -13); ctx.closePath();
+      ctx.fillStyle = raised ? '#ffffff' : '#7ab8f0'; ctx.fill(); ctx.strokeStyle = '#163f6e'; ctx.lineWidth = 2; ctx.stroke();
+      for (let i = 0; i < 3; i++) circle(-8 + i * 8, 0, 3, i < (m.charges || 0) ? '#163f6e' : 'rgba(22,63,110,.2)');
+      break;
+    }
+    case 'patch': {
+      rr(-6, -18, 12, 36, 3, COL.heal); rr(-18, -6, 36, 12, 3, COL.heal);
+      ringStroke(0, 0, 20, 'rgba(40,120,60,.5)', 2);
+      break;
+    }
+    case 'ram': {
+      const ext = fire * 12;
+      rr(-20, -10, 18, 20, 3, '#59636a', dark, 2);
+      rr(-4, -4, 10 + ext, 8, 2, '#9aa4aa');
+      rr(6 + ext, -12, 8, 24, 2, COL.defense);
+      if (m.load && m.load.length) miniDie(-11, -18, m.load[0].v, 10);
+      break;
+    }
+    case 'cryo': {
+      rr(-10, -4, 20, 22, 4, '#59636a', dark, 2);
+      for (let i = 0; i < 3; i++) circle(-8 + i * 8, -10 - Math.sin(t * 4 + i) * 3, 5, 'rgba(200,236,255,.9)');
+      break;
+    }
+  }
+}
+
+function drawWall() {
+  rr(WALL_X0 + 4, GROUND - 2, WALL_X1 - WALL_X0 - 8, 8, 3, '#4a5a60');
+  if (S.bricks.length === 0) txt('dice wall', (WALL_X0 + WALL_X1) / 2, GROUND - 16, 11, 'rgba(255,255,255,.3)', 'center', 600);
+  for (let i = 0; i < S.bricks.length; i++) {
+    const b = S.bricks[i], p = brickPos(i), s = 1 + .25 * b.pop;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.scale(s, s);
+    rr(-11, -11, 22, 22, 4, b.hot ? COL.hot : (b.ice ? COL.ice : '#eaf3ff'), '#163f6e', 1.8);
+    const v = Math.max(1, Math.ceil(b.hp));
+    if (PIPS[v]) for (const [px, py] of PIPS[v]) circle(px * 5.6, py * 5.6, 2.1, '#163f6e');
+    else txt(String(v), 0, 1, 12, '#163f6e', 'center', 800);
+    ctx.restore();
+  }
+  const hp = S.bricks.reduce((a, b) => a + b.hp, 0);
+  if (hp > 0) { const top = brickPos(S.bricks.length - 1); txt(String(Math.round(hp)), (WALL_X0 + WALL_X1) / 2, top.y - 24, 13, COL.blk, 'center', 800, 4); }
+  // thorns
+  S.thorns.forEach((th, i) => {
+    if (th.pending) return;
+    const x = thornX(i), s = 1 + .3 * (th.pop || 0);
+    ctx.save(); ctx.translate(x, GROUND - 8); ctx.scale(s, s);
+    tri(-4, 6, 0, -12 - th.v * 2, 4, 6, '#4a4f54');
+    circle(0, 2, 4, th.spiky ? '#a66ad6' : '#8a9aa0');
+    ctx.restore();
+  });
+  // parry shield bubble
+  if (S.shield > 0) {
+    const a = S.shield / .55;
+    ctx.beginPath(); ctx.ellipse(WALL_X1 + 4, GROUND - 120, 30, 140, 0, -Math.PI / 2, Math.PI / 2);
+    ctx.strokeStyle = `rgba(180,220,255,${.5 + .5 * a})`; ctx.lineWidth = 6; ctx.stroke();
+    ctx.fillStyle = `rgba(140,194,255,${.15 * a})`; ctx.fill();
+  }
+  // piston rams punching out of the wall
+  for (const r of S.ramFx) {
+    const k = r.t / .35, ext = Math.sin(k * Math.PI);
+    const x1 = WALL_X1 + ext * (foeFront() - WALL_X1 + 10);
+    rr(WALL_X1, GROUND - 70, x1 - WALL_X1, 14, 3, '#9aa4aa', '#2b373c', 2);
+    rr(x1 - 6, GROUND - 92, 14, 58, 3, COL.defense, '#163f6e', 2);
+  }
+}
+
+function drawRubbleAndJams() {
+  for (const [k, rb] of S.rubble) {
+    const ce = center(parseKey(k)), s = 1 + .3 * rb.pop;
+    ctx.save(); ctx.translate(ce.x, ce.y); ctx.scale(s, s);
+    const rocks = [[-14, 8, 13], [10, 10, 12], [0, -4, 15], [-12, -12, 9], [14, -10, 9]];
+    for (const [x, y, r] of rocks) { circle(x, y + 2, r, 'rgba(0,0,0,.3)'); circle(x, y, r, '#7a6a58'); circle(x - r * .3, y - r * .3, r * .35, '#9a8a74'); }
+    ctx.restore();
+    rr(ce.x - 24, ce.y + 22, 48 * rb.t / rb.max, 4, 2, '#ffb0a0');
+  }
+}
+
+// heaps of dice on bare floor
+const PILE_SPOTS = [[-11, 9], [11, 10], [0, -3], [-12, -12], [12, -11], [1, 15]];
+function drawPiles() {
+  for (const [k, pl] of S.piles) {
+    const ce = center(parseKey(k));
+    pl.dice.forEach((pd, i) => {
+      const [ox, oy] = PILE_SPOTS[i % PILE_SPOTS.length];
+      let x = ce.x + ox, y = ce.y + oy - Math.floor(i / 6) * 6;
+      if (pd.t < .3) { const k2 = pd.t / .3; x = lerp(pd.fx, x, k2); y = lerp(pd.fy, y, k2) - 40 * Math.sin(k2 * Math.PI); }
+      drawDie(x, y, pd, pd.rot, .82, 0, 20);
+    });
+    if (pl.dice.length >= 5 && !S.belts.has(k)) txt(`${pl.dice.length}/6`, ce.x, ce.y - 26, 10, pl.dice.length >= 6 ? '#ff8a73' : 'rgba(255,255,255,.7)', 'center', 800, 3);
+  }
+}
+
+function drawBanner() {
+  const b = S.banner;
+  if (!b) return;
+  const k = b.t / b.life;
+  const a = Math.min(1, b.t / .25, (b.life - b.t) / .6);
+  const y = GY + 40 - (1 - easeOut(b.t / .4)) * 30;
+  ctx.save(); ctx.globalAlpha = clamp(a, 0, 1);
+  rr(W / 2 - 330, y - 30, 660, 74, 14, 'rgba(6,18,22,.92)', COL.gold, 2);
+  txt(b.title, W / 2, y - 6, 26, COL.gold, 'center', 900);
+  txt(b.desc, W / 2, y + 22, 14, '#e9fbff', 'center', 600);
+  ctx.restore();
+  void k;
+}
+
+function drawMines() {
+  for (const mn of S.mines) {
+    ctx.save(); ctx.translate(mn.x, GROUND - 6);
+    ctx.beginPath(); ctx.ellipse(0, 4, 14, 4, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fill();
+    drawDie(0, -2, mn.d, .2, .75, 0, 20);
+    circle(0, -14, 3, Math.sin(mn.t * 10) > 0 ? COL.drop : '#5a1d10');
+    ctx.restore();
+  }
+}
+
+function drawFoe() {
+  const f = S.foe, enr = f.enraged;
+  const walk = f.state === 'march' && f.pinned <= 0 && f.stun <= 0 && !opts.holdFoe;
+  const bob = walk ? Math.abs(Math.sin(f.step)) * -5 : Math.sin(S.t * 2) * 1.5;
+  const x = f.x, gy = GROUND;
+  let body = enr ? '#b0573c' : '#9a6a48';
+  if (f.chill > 0) body = enr ? '#a07a88' : '#8a8f98';
+  if (f.flash > 0) body = mix(body, '#ffffff', Math.min(.75, f.flash));
+  const dark = enr ? '#5a2618' : '#4a3424';
+  ctx.beginPath(); ctx.ellipse(x, gy, 95, 14, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+  const la = walk ? Math.sin(f.step) * 10 : 0;
+  rr(x - 52 + la, gy - 58, 30, 58, 8, dark); rr(x + 18 - la, gy - 58, 30, 58, 8, dark);
+  rr(x - 58 + la, gy - 12, 42, 14, 6, '#3a2a1e'); rr(x + 12 - la, gy - 12, 42, 14, 6, '#3a2a1e');
+  ctx.save(); ctx.translate(x + 62, gy - 160 + bob); ctx.rotate(.3 + Math.sin(S.t * 1.5) * .05);
+  rr(-14, 0, 28, 80, 12, dark); circle(0, 86, 20, '#3a2a1e'); ctx.restore();
+  ctx.save(); ctx.translate(x, gy - 50 + bob);
+  ctx.beginPath(); ctx.moveTo(-78, 0); ctx.lineTo(-88, -120); ctx.quadraticCurveTo(-60, -175, 0, -178); ctx.quadraticCurveTo(64, -175, 84, -118); ctx.lineTo(72, 0); ctx.closePath();
+  ctx.fillStyle = body; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = dark; ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-84, -70); ctx.lineTo(80, -70); ctx.moveTo(-80, -30); ctx.lineTo(76, -30); ctx.stroke();
+  for (let i = -3; i <= 3; i++) { circle(i * 22, -64, 3, 'rgba(0,0,0,.3)'); circle(i * 22, -24, 3, 'rgba(0,0,0,.3)'); }
+  const dmgFrac = 1 - f.hp / f.max;
+  ctx.strokeStyle = 'rgba(30,10,0,.7)'; ctx.lineWidth = 2.5;
+  if (dmgFrac > .25) { ctx.beginPath(); ctx.moveTo(-40, -150); ctx.lineTo(-30, -120); ctx.lineTo(-44, -100); ctx.lineTo(-34, -80); ctx.stroke(); }
+  if (dmgFrac > .5) { ctx.beginPath(); ctx.moveTo(40, -40); ctx.lineTo(30, -60); ctx.lineTo(46, -80); ctx.stroke(); }
+  if (dmgFrac > .75) { ctx.beginPath(); ctx.moveTo(-10, -10); ctx.lineTo(4, -36); ctx.lineTo(-8, -58); ctx.lineTo(10, -70); ctx.stroke(); }
+  const ph = PHASES[f.phase];
+  if (ph.armor) {
+    // bolted-on plates for Iron Plating
+    for (const [px, py, pw, phh] of [[-82, -112, 70, 40], [-4, -112, 82, 40], [-78, -66, 66, 36], [-6, -66, 76, 36]]) {
+      rr(px, py, pw, phh, 6, '#6b767d', '#2b373c', 3);
+      circle(px + 7, py + 7, 2.5, '#2b373c'); circle(px + pw - 7, py + 7, 2.5, '#2b373c');
+    }
+  }
+  if (f.phase === 1) {
+    // the open hive hatch
+    rr(10, -150, 50, 30, 8, '#2a1d14', '#c9a56a', 2);
+    for (let i = 0; i < 3; i++) circle(22 + i * 13, -135, 3, Math.sin(S.t * 6 + i) > 0 ? '#ff5a4a' : '#5a1d10');
+  }
+  if (ph.meltdown) {
+    ctx.strokeStyle = `rgba(255,${140 + 60 * Math.sin(S.t * 6)},40,.9)`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-60, -150); ctx.lineTo(-40, -110); ctx.lineTo(-58, -80); ctx.moveTo(30, -160); ctx.lineTo(50, -120); ctx.lineTo(36, -90); ctx.lineTo(56, -50); ctx.stroke();
+    if (Math.random() < .3) S.parts.push({x: x + rnd(-70, 70), y: GROUND - 50 - rnd(20, 160), vx: 0, vy: -40, col: 'rgba(255,160,80,.6)', size: 4, g: -20, life: .7, t: 0, shape: 0, rot: 0, vr: 0});
+  }
+  rr(-50, -110, 56, 24, 6, '#2a1d14');
+  for (let i = 0; i < 5; i++) line(-44 + i * 11, -106, -44 + i * 11, -90, '#5a4030', 3);
+  const eyeCol = f.stun > 0 ? '#9aa4aa' : (enr ? '#ff4a3a' : COL.gold);
+  circle(-26, -142, 22, '#2a1d14');
+  circle(-30, -142, 15 + Math.sin(S.t * 4), eyeCol);
+  circle(-35, -142, 6, '#fff7d0');
+  if (f.state === 'windup') circle(-30, -142, 24 + 6 * Math.sin(S.t * 12), 'rgba(255,80,60,.25)');
+  if (f.chill > 0) { ctx.fillStyle = 'rgba(200,236,255,.35)'; ctx.fillRect(-80, -12, 150, 12); }
+  ctx.restore();
+  const armA = -0.2 + f.arm * -1.9;
+  ctx.save(); ctx.translate(x - 70, gy - 160 + bob); ctx.rotate(armA);
+  rr(-15, 0, 30, 84, 12, body, dark, 3);
+  circle(0, 92, 24, enr ? '#7a3020' : '#5a4030'); circle(-6, 86, 6, 'rgba(255,255,255,.15)');
+  ctx.restore();
+  if (f.burn > 0) for (let i = 0; i < 5; i++) { const fy = (S.t * 40 + i * 13) % 30; circle(x - 60 + i * 28, gy - 170 - fy, 5 - fy * .15, COL.ember); }
+  if (f.stagger > 0 || f.stun > 0) for (let i = 0; i < 3; i++) { const a = S.t * 5 + i * 2.1; circle(x - 30 + Math.cos(a) * 40, gy - 245 + Math.sin(a) * 8, 4, '#ffe27a'); }
+  // sticky bombs
+  for (const b of S.bombs) {
+    const bx = x + b.ox, by = gy + b.oy + bob * .5;
+    circle(bx, by, 9, '#2b2b2b');
+    drawDie(bx, by, b.d, 0, .5, 0, 18);
+    txt(b.t.toFixed(1), bx, by - 18, 11, b.t < .7 ? '#ff5a4a' : '#ffd25e', 'center', 900, 3);
+    if (Math.random() < .5) circle(bx + 6, by - 9, 2 + Math.random() * 2, COL.gold);
+  }
+  // harpoon chain
+  if (f.pinned > 0) {
+    const hm = [...S.machines.values()].find(m => m.kind === 'harpoon');
+    if (hm) {
+      const ce = center(hm.cell), hx = x - 40, hy = gy - 110;
+      ctx.setLineDash([5, 4]); line(ce.x + 20, ce.y, hx, hy, '#c9d6da', 3); ctx.setLineDash([]);
+      txt('pinned ' + f.pinned.toFixed(1) + 's', hx, hy - 20, 12, '#7fe0c6', 'center', 800, 3);
+    }
+  }
+}
+
+function drawLensBeams() {
+  for (const m of S.machines.values()) {
+    if (m.kind !== 'lens' || m.fuel <= 0) continue;
+    const ce = center(m.cell), tx = m.beamAt ? m.beamAt.x : S.foe.x - 40, ty = m.beamAt ? m.beamAt.y : GROUND - 100;
+    const w = 6 + Math.sin(S.t * 40) * 1.5;
+    line(ce.x + 8, ce.y, tx, ty, 'rgba(255,230,120,.35)', w + 8);
+    line(ce.x + 8, ce.y, tx, ty, 'rgba(255,250,210,.9)', w * .45);
+    circle(tx, ty, 10 + Math.random() * 4, 'rgba(255,240,180,.6)');
+  }
+}
+
+function drawTelegraph() {
+  const f = S.foe, it = curIntent();
+  const bx = f.x - 20, by = GROUND - 250;
+  const winding = f.state === 'windup';
+  const k = winding ? 1 - f.timer / f.total : 0;
+  if (winding) {
+    const a = .12 + .25 * k + .08 * Math.sin(S.t * 14);
+    ctx.fillStyle = `rgba(255,70,50,${a})`;
+    if (it.type === 'slam') ctx.fillRect(WALL_X0 - 4, GY - 8, WALL_X1 - WALL_X0 + 8, GH * CELL + 16);
+    else if (it.type !== 'hatch') ctx.fillRect(GX - 8, GY - 8, WALL_X1 - GX + 16, GH * CELL + 16);
+  }
+  if (f.stun > 0) {
+    rr(bx - 60, by - 18, 120, 36, 18, 'rgba(10,25,30,.85)', '#7fe0c6', 2);
+    txt('STUNNED ' + f.stun.toFixed(1), bx, by + 1, 15, '#7fe0c6', 'center', 800);
+    return;
+  }
+  if (f.state === 'shift') {
+    rr(bx - 80, by - 18, 160, 36, 18, 'rgba(10,25,30,.85)', COL.gold, 2);
+    txt('CHANGING…', bx, by + 1, 15, COL.gold, 'center', 800);
+    return;
+  }
+  const label = it.type === 'slam' ? `${it.label} ${it.dmg}` : (it.type === 'rocks' ? `${it.label} ${it.n}×${it.dmg}` : `${it.label} ${it.n}`);
+  const w = it.type === 'boulders' ? 150 : 120;
+  rr(bx - w / 2, by - 18, w, 36, 18, winding ? 'rgba(120,20,10,.92)' : 'rgba(10,25,30,.85)', winding ? '#ff8a73' : 'rgba(255,255,255,.25)', 2);
+  txt(label, bx + 8, by + 1, 16, '#fff', 'center', 800);
+  if (it.type === 'slam') circle(bx - w / 2 + 18, by, 8, '#c9a56a'); else for (let i = 0; i < 3; i++) circle(bx - w / 2 + 12 + i * 6, by + (i % 2 ? -4 : 4), 3.5, '#a08a6a');
+  if (winding) {
+    ctx.beginPath(); ctx.arc(bx, by, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
+    ctx.strokeStyle = '#ff8a73'; ctx.lineWidth = 4; ctx.stroke();
+    txt(f.timer.toFixed(1) + 's', bx, by + 32, 13, '#ffd0c4', 'center', 700, 4);
+    if (it.type === 'slam' && [...S.machines.values()].some(m => m.kind === 'parry' && m.charges > 0) && f.timer < .55)
+      txt('PARRY NOW (Space)', WALL_X1 + 70, GROUND - 260, 15, '#ffffff', 'center', 900, 4);
+  }
+}
+
+function drawProj() {
+  for (const p of S.proj) {
+    if (p.t < 0) continue;
+    const q = projPos(p);
+    if (p.kind === 'rocket') {
+      const t2 = clamp((p.t + .02) / p.dur, 0, 1), q2 = projPos({...p, t: t2 * p.dur});
+      const a = Math.atan2(q2.y - q.y, q2.x - q.x);
+      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(a);
+      circle(-22, 0, 9 + Math.random() * 4, 'rgba(255,200,80,.6)');
+      ctx.beginPath(); ctx.moveTo(-18, -9); ctx.lineTo(10, -9); ctx.quadraticCurveTo(26, 0, 10, 9); ctx.lineTo(-18, 9); ctx.closePath();
+      ctx.fillStyle = '#e8e2d4'; ctx.fill(); ctx.strokeStyle = COL.ink; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = COL.weapon; ctx.fillRect(-18, -13, 7, 26);
+      ctx.restore();
+      for (let i = 0; i < Math.min(p.dice.length, 6); i++) drawDie(q.x - Math.cos(a) * (i * 4 - 6), q.y - Math.sin(a) * (i * 4 - 6) - 14, p.dice[i], a, .5, 0, 18);
+      continue;
+    }
+    if (p.kind === 'rock') { circle(q.x, q.y, 9, '#6b5a48'); circle(q.x - 3, q.y - 3, 3, '#8a7a5a'); continue; }
+    if (p.kind === 'boulder') {
+      const tc = center(p.cell);
+      ringStroke(tc.x, tc.y, 26 - 10 * clamp(p.t / p.dur, 0, 1), 'rgba(255,90,74,.8)', 3);
+      circle(q.x, q.y, 17, '#7a6a58'); circle(q.x - 5, q.y - 5, 6, '#9a8a74');
+      continue;
+    }
+    if (p.kind === 'cryo') { circle(q.x, q.y, 14, 'rgba(200,236,255,.5)'); drawDie(q.x, q.y, p.dice[0], p.rot, .7, 0, 20); continue; }
+    if (p.kind === 'harpoon') {
+      const a = Math.atan2(p.y1 - p.y0, p.x1 - p.x0);
+      ctx.setLineDash([5, 4]); line(p.x0, p.y0, q.x, q.y, '#c9d6da', 2.5); ctx.setLineDash([]);
+      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(a); tri(14, 0, 0, -7, 0, 7, '#c9d6da'); ctx.restore();
+      drawDie(q.x - 10, q.y, p.dice[0], 0, .6, 0, 20);
+      continue;
+    }
+    if (p.kind === 'cluster') {
+      p.dice.forEach((d, i) => drawDie(q.x + (i - 1) * 14 * p.size, q.y + (i % 2 ? -8 : 6), d, p.rot + i, 1.0 * p.size, 0, 22));
+      continue;
+    }
+    const d = p.dice[0];
+    if (!d) continue;
+    if (p.kind === 'cannon' || p.kind === 'bullet' || p.kind === 'pellet') line(q.x - 24, q.y + 3, q.x, q.y, 'rgba(255,226,122,.35)', 5);
+    if (p.kind === 'sticky') circle(q.x + 8, q.y - 8, 3 + Math.random() * 2, COL.gold);
+    const s = p.kind === 'bullet' ? .65 : (p.kind === 'brick' || p.kind === 'thorn' ? .9 : 1.05);
+    drawDie(q.x, q.y, d, p.rot, s * (p.size || 1), 0, 22);
+  }
+}
+
+function drawDebris() {
+  for (const d of S.debris) {
+    ctx.globalAlpha = clamp((d.life - d.t) / .4, 0, 1);
+    drawDie(d.x, d.y, d, d.rot, .8, 0, 20);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawParticles() {
+  for (const p of S.parts) {
+    const k = p.t / p.life;
+    ctx.globalAlpha = 1 - k;
+    if (p.shape === 0) circle(p.x, p.y, p.size * (1 - .5 * k), p.col);
+    else if (p.shape === 1) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.col; ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2); ctx.restore(); }
+    else if (p.shape === 2) line(p.x, p.y, p.x - p.vx * .04, p.y - p.vy * .04, p.col, p.size);
+    else ringStroke(p.x, p.y, lerp(p.size, p.end, easeOut(k)), p.col, 3 * (1 - k) + 1);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawTexts() {
+  for (const t of S.texts) {
+    const k = t.t / t.life, pop = 1 + .6 * Math.max(0, 1 - k * 7);
+    ctx.save(); ctx.globalAlpha = 1 - k * k; ctx.translate(t.x, t.y - easeOut(k) * 34); ctx.scale(pop, pop);
+    txt(t.txt, 0, 0, t.size, t.col, 'center', 800, 5);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function bar(x, y, w, h, frac, col, back = 'rgba(0,0,0,.4)') {
+  rr(x, y, w, h, h / 2, back);
+  if (frac > 0) rr(x, y, Math.max(h, w * frac), h, h / 2, col);
+}
+
+function button(x, y, w, label, on, fn) {
+  const hov = mouse.x >= x && mouse.x <= x + w && mouse.y >= y && mouse.y <= y + 22;
+  rr(x, y, w, 22, 6, on ? '#2fae92' : (hov ? 'rgba(255,255,255,.14)' : 'rgba(0,0,0,.3)'), 'rgba(255,255,255,.18)', 1);
+  txt(label, x + w / 2, y + 11.5, 11, '#fff', 'center', 700);
+  S.buttons.push({x, y, w, h: 22, fn});
+}
+
+function drawHud() {
+  S.buttons = [];
+  txt('DICE FACTORY', 24, 22, 20, COL.gold, 'left', 800);
+  txt('ashcan sandbox', 176, 23, 12, 'rgba(255,255,255,.5)', 'left', 600);
+  // toolbar
+  let bx = 330;
+  const tb = (w, label, on, fn) => { button(bx, 10, w, label, on, fn); bx += w + 5; };
+  tb(58, S.paused ? 'Paused' : 'Pause', S.paused, () => { S.paused = !S.paused; });
+  tb(62, 'Speed ' + opts.speed + 'x', opts.speed > 1, () => { opts.speed = opts.speed === 1 ? 2 : (opts.speed === 2 ? 3 : 1); });
+  tb(98, 'Slow-mo build', opts.slow, () => { opts.slow = !opts.slow; });
+  tb(84, opts.holdFoe ? 'Foe frozen' : 'Freeze foe', opts.holdFoe, () => { opts.holdFoe = !opts.holdFoe; });
+  tb(72, 'God mode', opts.god, () => { opts.god = !opts.god; if (opts.god) S.hp = S.maxHp; });
+  tb(64, 'Roll now', false, () => rollNow());
+  tb(68, 'Phase ▸', false, () => {
+    const f = S.foe;
+    if (f.phase + 1 < PHASES.length) f.hp = Math.min(f.hp, f.max * PHASES[f.phase + 1].at - 1);
+    else f.hp = Math.min(f.hp, 60);
+  });
+  tb(70, 'Flyers +4', false, () => spawnFlyers(4));
+  tb(68, 'New foe', false, () => newGame(true));
+  tb(76, 'Clear floor', false, () => { newGame(false); S.machines.clear(); S.belts.clear(); S.beltVis.clear(); placeMachine({x: 0, y: 2}, 'chute', R, 1); });
+  tb(58, 'Starter', false, () => newGame(false));
+  // factory health
+  txt('Factory', 24, 60, 13, 'rgba(255,255,255,.65)', 'left', 600);
+  bar(84, 52, 200, 16, S.hp / S.maxHp, S.hitFlash > 0 ? '#ffffff' : '#ff7a6a');
+  txt(`${Math.ceil(S.hp)} / ${S.maxHp}${opts.god ? ' (god)' : ''}`, 184, 61, 12, '#fff', 'center', 800, 3);
+  const wallHp = S.bricks.reduce((a, b) => a + b.hp, 0);
+  txt(`Wall ${Math.round(wallHp)}`, 296, 61, 13, COL.blk, 'left', 800);
+  const jams = S.dice.filter(d => d.state === 'stop' && d.wait > JAM_TIME).length;
+  const hop = Math.max(0, ...[...S.machines.values()].filter(m => m.kind === 'chute').map(m => m.hopper.length));
+  const chips = [
+    ['Hopper', `${hop}/${HOPPER_MAX}`, hop >= HOPPER_MAX - 2 ? '#ff8a73' : '#e9fbff'],
+    ['Backed up', String(jams), jams > 3 ? '#ff8a73' : '#e9fbff'],
+
+    ['Thrown', String(S.stats.thrown), '#e9fbff'],
+    ['On floor', String([...S.piles.values()].reduce((a, p) => a + p.dice.length, 0)), '#e9fbff'],
+    ['Lost', String(S.stats.lost), S.stats.lost > 0 ? '#ffb0a0' : '#e9fbff'],
+  ];
+  chips.forEach(([l, v, c], i) => {
+    const x = 372 + i * 84;
+    rr(x, 44, 78, 34, 8, 'rgba(0,0,0,.28)');
+    txt(l, x + 7, 53, 10.5, 'rgba(255,255,255,.55)', 'left', 600);
+    txt(v, x + 71, 67, 16, c, 'right', 800);
+  });
+  rr(796, 44, 90, 34, 8, 'rgba(0,0,0,.28)');
+  txt('Next roll', 803, 53, 10.5, 'rgba(255,255,255,.55)', 'left', 600);
+  bar(803, 64, 76, 7, 1 - S.rollT / ROLL_EVERY, '#7fe0c6');
+  const f = S.foe;
+  const ph = PHASES[f.phase];
+  txt(`Phase ${f.phase + 1}: ${ph.name}`, 904, 52, 14, f.enraged ? '#ff8a73' : '#fff', 'left', 800);
+  bar(904, 62, 352, 14, f.hp / f.max, f.enraged ? '#ff5a4a' : '#e2533d');
+  // phase breakpoints on the health bar
+  for (let i = 1; i < PHASES.length; i++) {
+    const px = 904 + 352 * PHASES[i].at;
+    line(px, 59, px, 79, i <= f.phase ? 'rgba(255,255,255,.25)' : '#ffd25e', 2);
+    txt(String(i + 1), px, 86, 9, i <= f.phase ? 'rgba(255,255,255,.3)' : COL.gold, 'center', 800);
+  }
+  txt(`${Math.ceil(f.hp)} / ${f.max}`, 1080, 70, 11, '#fff', 'center', 800, 3);
+  // heads-up when the next phase is close
+  const nx = PHASES[f.phase + 1];
+  if (nx && f.hp / f.max - nx.at < .07 && f.state !== 'shift') {
+    const a = .6 + .4 * Math.sin(S.t * 8);
+    txt(`Phase ${f.phase + 2} soon: ${nx.name}`, 904, 89, 11, `rgba(255,210,94,${a})`, 'left', 800);
+  }
+  let st;
+  if (f.stun > 0) st = 'Stunned';
+  else if (f.state === 'march') { const front = foeFront(); st = front > REACH_X + 2 ? `Reaches wall in ${Math.ceil(Math.max(0, (front - REACH_X) / f.speed))}s` : 'At your wall'; }
+  else if (f.state === 'windup') st = 'Winding up!';
+  else st = 'Recovering';
+  const tags = [f.pinned > 0 ? 'pinned' : '', f.chill > 0 ? 'chilled' : '', f.burn > 0 ? 'burning' : ''].filter(Boolean).join(' · ');
+  txt(st + (tags ? '  ·  ' + tags : ''), 1256, 52, 11.5, f.state === 'windup' ? '#ff8a73' : 'rgba(255,255,255,.7)', 'right', 600);
+  if (S.timeScale < .9) txt('slow-mo', 318, 23, 11, '#7fe0c6', 'right', 800);
+}
+
+function drawPalette() {
+  rr(16, PAL_Y - 8, W - 32, H - PAL_Y + 2, 12, 'rgba(0,0,0,.2)');
+  let hover = null;
+  CATS.forEach((cat, r) => {
+    const y = PAL_Y + r * PAL_ROW;
+    txt(CAT_LABEL[cat], 28, y + PAL_H / 2, 11, COL[cat], 'left', 800);
+    PALETTE[cat].forEach((k, i) => {
+      const x = PAL_X + i * (PAL_W + PAL_GAP);
+      const sel = S.pal === k;
+      const hov = mouse.x >= x && mouse.x <= x + PAL_W && mouse.y >= y && mouse.y <= y + PAL_H;
+      if (hov) hover = {k, x, y};
+      rr(x, y, PAL_W, PAL_H, 7, sel ? '#fff6d8' : (hov ? '#ffffff' : COL.card), sel ? COL.gold : COL[cat], sel ? 3 : 1.5);
+      ctx.save(); ctx.translate(x + 21, y + PAL_H / 2); ctx.scale(.62, .62);
+      rr(-28, -28, 56, 56, 9, TINT[cat]);
+      drawIcon(dummyMachine(k));
+      ctx.restore();
+      const name = KINDS[k].short;
+      ctx.font = '700 10.5px system-ui,sans-serif';
+      if (ctx.measureText(name).width > PAL_W - 44) {
+        const parts = name.split(/[\s-]/);
+        txt(parts[0], x + 41, y + 16, 10, COL.ink, 'left', 700);
+        txt(parts.slice(1).join(' '), x + 41, y + 29, 10, COL.ink, 'left', 700);
+      } else txt(name, x + 41, y + PAL_H / 2 + 1, 10.5, COL.ink, 'left', 700);
+      // gold star: answers the current phase; hollow star: answers the next one
+      const ph = PHASES[S.foe.phase], nx = PHASES[S.foe.phase + 1];
+      if (ph.good.includes(k)) { circle(x + PAL_W - 8, y + 8, 7 + Math.sin(S.t * 5) * .8, COL.gold); txt('★', x + PAL_W - 8, y + 8.5, 10, '#7a5404', 'center', 900); }
+      else if (nx && nx.good.includes(k)) { ringStroke(x + PAL_W - 8, y + 8, 6, COL.gold, 1.5); }
+      const ri_ = S.recent.indexOf(k);
+      if (ri_ >= 0) { rr(x + 2, y + 2, 13, 13, 3, '#2b373c'); txt(String(ri_ + 1), x + 8.5, y + 9, 9.5, '#fff', 'center', 800); }
+    });
+  });
+  txt('★ helps this phase    ○ helps next phase    1-5 picks a recent part', W - 30, PAL_Y + 3 * PAL_ROW + PAL_H / 2, 11.5, 'rgba(255,255,255,.5)', 'right', 600);
+  if (!hover && S.pal) {
+    // keep the picked part's description up (phones have no hover)
+    const r = CATS.indexOf(KINDS[S.pal].cat), i = PALETTE[KINDS[S.pal].cat].indexOf(S.pal);
+    hover = {k: S.pal, x: PAL_X + i * (PAL_W + PAL_GAP), y: PAL_Y + r * PAL_ROW};
+  }
+  if (hover) {
+    const info = KINDS[hover.k];
+    const w = 300, x = clamp(hover.x - 20, 16, W - w - 16), y = hover.y - 64;
+    rr(x, y, w, 56, 8, 'rgba(4,18,22,.96)', COL[info.cat], 2);
+    txt(info.name, x + 10, y + 16, 13.5, '#fff', 'left', 800);
+    wrapText(info.text, x + 10, y + 34, w - 20, 11.5, 'rgba(255,255,255,.8)');
+  }
+}
+
+function wrapText(s, x, y, w, size, col) {
+  ctx.font = `500 ${size}px system-ui,sans-serif`;
+  const words = s.split(' '); let ln = '', ly = y;
+  ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  for (const wd of words) { const t = ln ? ln + ' ' + wd : wd; if (ctx.measureText(t).width > w) { ctx.fillText(ln, x, ly); ln = wd; ly += size + 3; } else ln = t; }
+  if (ln) ctx.fillText(ln, x, ly);
+}
+
+const dummies = {};
+function dummyMachine(kind) {
+  if (!dummies[kind]) dummies[kind] = {kind, dir: R, cell: {x: 0, y: 0}, mode: 0, lever: 0, load: [], busy: 0, launch: 0, work: 0, fire: 0, wind: 0,
+    ang: 0, spin: 0, outQ: [], mag: [], hopper: [], fuel: 0, charges: 0, alt: 0, held: null, reel: 0, pop: 1};
+  return dummies[kind];
+}
+
+function drawHover() {
+  const c = mouse.cell;
+  if (!inGrid(c) || S.over) return;
+  const ce = center(c);
+  if (S.pal) {
+    const g = {...dummyMachine(S.pal), dir: S.placeDir, ang: Math.atan2(S.placeDir.y, S.placeDir.x)};
+    drawMachine(g, ce.x, ce.y, true);
+    rr(ce.x - 32, ce.y - 32, 64, 64, 11, null, 'rgba(255,255,150,.9)', 3);
+  } else {
+    rr(ce.x - 30, ce.y - 30, 60, 60, 9, null, 'rgba(255,255,255,.45)', 2);
+    const m = machineAt(c);
+    if (m) {
+      const info = KINDS[m.kind];
+      let tx = ce.x + 38; if (tx + 240 > WALL_X0) tx = ce.x - 278;
+      rr(tx, ce.y - 36, 240, 70, 8, 'rgba(4,18,22,.94)', COL[info.cat], 2);
+      txt(info.name, tx + 10, ce.y - 20, 13.5, '#fff', 'left', 800);
+      wrapText(info.text, tx + 10, ce.y, 220, 11, 'rgba(255,255,255,.75)');
+    }
+  }
+}
+
+function drawOverlay() {
+  ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(-20, -20, W + 40, H + 40);
+  const won = S.over === 'won', p = 1 + .03 * Math.sin(S.t * 3);
+  ctx.save(); ctx.translate(W / 2, 290); ctx.scale(p, p);
+  txt(won ? 'THE COLOSSUS FALLS' : 'YOUR FACTORY IS SCRAP', 0, 0, 48, won ? COL.gold : '#ff7a6a', 'center', 900, 8);
+  ctx.restore();
+  txt(`Dice thrown ${S.stats.thrown} · damage ${Math.round(S.stats.dmg)} · dice lost ${S.stats.lost + S.stats.spilled} · time ${Math.round(S.t)}s`, W / 2, 346, 17, '#fff', 'center', 600);
+  txt('Click or press R for a new Colossus (your factory stays)', W / 2, 382, 15, 'rgba(255,255,255,.7)', 'center', 600);
+}
+
+function draw() {
+  ctx.save();
+  if (S.shake > 0) ctx.translate(rnd(-1, 1) * S.shake * S.shake * 12, rnd(-1, 1) * S.shake * S.shake * 12);
+  ctx.fillStyle = COL.bg; ctx.fillRect(-30, -30, W + 60, H + 60);
+  drawFloor();
+  drawField();
+  for (const [k, d] of S.belts) drawBelt(k, d);
+  drawPiles();
+  for (const m of S.machines.values()) { const ce = center(m.cell); drawMachine(m, ce.x, ce.y, false); }
+  drawHover();
+  drawTelegraph();
+  drawMines();
+  drawWall();
+  drawFoe();
+  drawLensBeams();
+  for (const d of S.dice) {
+    let s, y = d.y;
+    if (d.state === 'fall') { s = 1 - d.fall / .5; y = d.y + 40 * d.fall * d.fall; }
+    else s = (d.state === 'proc' ? .82 : 1) * (1 + .45 * d.pop * d.pop);
+    drawDie(d.x, y, d, d.rot + (d.state === 'fall' ? d.fall * 9 : 0), s, d.state === 'stop' && d.wait > JAM_TIME ? 1 : 0);
+  }
+  drawRubbleAndJams();
+  drawFlyers();
+  drawProj();
+  drawDebris();
+  drawParticles();
+  drawTexts();
+  ctx.restore();
+  drawHud();
+  drawPalette();
+  drawBanner();
+  if (S.over) drawOverlay();
+}
+
+// ============================================================ loop
+newGame(false);
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__ashcan = {get state() { return S; }, opts, newGame, update, draw, placeMachine, setBelt, rollNow, raiseParry, KINDS,
+  step(seconds) { for (let t = 0; t < seconds; t += 1 / 60) update(1 / 60); draw(); }};
+</script>
+</body>
+</html>
