@@ -31,7 +31,8 @@ kbd{background:#16394a;border:1px solid #2b5566;border-bottom-width:2px;border-r
 </div>
 <p class="portrait-note">Turn your phone sideways for a bigger board.</p>
 <div class="help">
-  <div><b>Ashcan sandbox.</b> Every part is free. Pick one from the palette and click floor tiles to place it (it stays picked; <kbd>1</kbd>-<kbd>5</kbd> re-pick recent parts). <kbd>R</kbd> or the wheel rotates. Right-click or <kbd>Esc</kbd> drops it. Time slows while you place. A gold star marks parts that answer the current phase.</div>
+  <div><b>Build first.</b> You get 60 seconds before the Colossus moves (start early for bonus gears). Parts cost gears ⚙; belts are free. Earn gears by routing dice into the Gear Furnace (bottom right) or a Gear Mint, and from each new phase. Route around stone pillars; belts over glowing vents make dice hot, icy or +1. Removing a part refunds it in full while building, half after.</div>
+  <div><b>Ashcan sandbox.</b> Pick a part from the palette and click floor tiles to place it (it stays picked; <kbd>1</kbd>-<kbd>5</kbd> re-pick recent parts). <kbd>R</kbd> or the wheel rotates. Right-click or <kbd>Esc</kbd> drops it. Time slows while you place. A gold star marks parts that answer the current phase.</div>
   <div><b>Re-route.</b> Drag across empty floor to lay belts; click a belt to turn it. Drag a machine to move it. Right-click removes anything. Dice that run off a belt heap up on the floor (6 per tile, then they tumble onward); lay a belt over a heap to scoop it back up.</div>
   <div><b>The Colossus changes.</b> Four phases: march, then flyers that lift your belts and snatch dice, then armor that only big or spiky dice get through, then boulders that bury tiles. Click gates, switches, silos and rockets to use them. <kbd>Space</kbd> raises Parry Shields. <kbd>P</kbd> pauses.</div>
 </div>
@@ -134,10 +135,28 @@ const KINDS = {
   patch:   {cat: 'defense', role: 'term', name: 'Patch Bay', short: 'Patch', text: 'Repairs the factory: half the pips.'},
   ram:     {cat: 'defense', role: 'term', name: 'Piston Ram', short: 'Ram', text: 'Holds a die until the foe is close, then shoves it back hard.'},
   cryo:    {cat: 'defense', role: 'term', name: 'Cryo Vent', short: 'Cryo', text: 'Chills the foe: slower walk and windup for pips x0.7 s.'},
+  // ---------------------------------------------------- economy
+  mint:    {cat: 'mod', role: 'term', name: 'Gear Mint', short: 'Mint', text: 'Turns a die into gears: a quarter of its pips, rounded up. Big dice pay more.'},
+  furnace: {cat: 'route', role: 'term', fixed: true, hidden: true, name: 'Gear Furnace', short: 'Furnace', text: 'Part of the floor. Melts a die into gears: a third of its pips, rounded up. Route dice here to earn.'},
 };
+// What each part costs in gears. Belts are free, so re-routing never costs.
+const COST = {
+  chute: 15, sorter: 3, switch: 3, oddeven: 3, alt: 3, coin: 2, prism: 5, crusher: 5, echo: 6, overflow: 3, fuser: 5, silo: 4, bounce: 3,
+  forge: 5, doubler: 4, drum: 2, flipper: 3, frost: 4, spiker: 5, inflate: 4, mint: 6,
+  pult: 6, cannon: 6, rocket: 12, gatling: 10, combo: 8, blunder: 8, harpoon: 7, mines: 8, lens: 9, rico: 7, slots: 7, sticky: 8,
+  bulwark: 5, thorns: 6, parry: 8, patch: 6, ram: 7, cryo: 6,
+};
+const START_GEARS = 40, BUILD_TIME = 60, PHASE_BONUS = 15;
 const CATS = ['route', 'mod', 'weapon', 'defense'];
 const PALETTE = {};
-for (const c of CATS) PALETTE[c] = Object.keys(KINDS).filter(k => KINDS[k].cat === c);
+for (const c of CATS) PALETTE[c] = Object.keys(KINDS).filter(k => KINDS[k].cat === c && !KINDS[k].hidden);
+
+// The floor itself: stone pillars to route around, vents that change dice
+// riding a belt over them, and the Gear Furnace (fixed) to route dice into.
+const PILLARS = [{x: 3, y: 0}, {x: 3, y: 4}, {x: 6, y: 2}, {x: 5, y: 5}];
+const VENTS = [{x: 4, y: 1, type: 'hot'}, {x: 5, y: 3, type: 'lucky'}, {x: 2, y: 4, type: 'ice'}, {x: 7, y: 0, type: 'lucky'}];
+const FURNACE = {x: 8, y: 5};
+const VENT_INFO = {hot: {name: 'heat vent', col: '#ff7a2f'}, ice: {name: 'ice vent', col: '#9fdcff'}, lucky: {name: 'lucky clover', col: '#6fd16f'}};
 const CLICKY = new Set(['sorter', 'switch', 'silo', 'rocket', 'parry']);
 
 // The Colossus changes as it breaks down. Each phase asks for a different
@@ -166,10 +185,13 @@ const phaseNow = () => PHASES[S.foe.phase];
 // ============================================================ state
 let S;
 const mouse = {x: 0, y: 0, cell: {x: -1, y: -1}, dragging: false, moved: false, last: null, pressNew: false};
-const opts = {slow: true, holdFoe: false, god: false, speed: 1};
+const opts = {slow: true, holdFoe: false, god: false, speed: 1, free: false};
 
-function newGame(keepFloor) {
+// layout: 'blank' (chute and a stub of belt), 'starter' (a working demo line),
+// 'keep' (same factory, fresh Colossus).
+function newGame(layout = 'blank') {
   const old = S;
+  const keepFloor = layout === 'keep';
   S = {
     t: 0, hp: 40, maxHp: 40, over: null, paused: false, shake: 0, nextId: 1, hitFlash: 0, timeScale: 1,
     belts: new Map(), beltVis: new Map(), machines: new Map(), stops: new Map(),
@@ -180,15 +202,20 @@ function newGame(keepFloor) {
     stats: {thrown: 0, dmg: 0, lost: 0, spilled: 0, downed: 0, stolen: 0},
     foe: {hp: 1400, max: 1400, x: 1175, kv: 0, hit: 0, burn: 0, state: 'march', timer: 0, total: 1, intent: 0,
           arm: 0, step: 0, enraged: false, speed: 9, flash: 0, stagger: 0, pinned: 0, chill: 0, stun: 0, phase: 0},
+    // economy, build phase, floor
+    gears: keepFloor && old ? Math.max(old.gears, START_GEARS / 2) : START_GEARS,
+    mode: 'build', buildT: keepFloor ? BUILD_TIME / 2 : BUILD_TIME, dmgLog: [],
+    pillars: new Set(PILLARS.map(key)), vents: new Map(VENTS.map(v => [key(v), v.type])),
   };
-  S.banner = {title: 'PHASE 1 · ' + PHASES[0].name, desc: PHASES[0].desc, t: 0, life: 4.5};
+  placeMachine(FURNACE, 'furnace', L, 1);
   if (keepFloor && old) {
     for (const [k, d] of old.belts) setBelt(parseKey(k), d, 1);
-    for (const m of old.machines.values()) placeMachine(m.cell, m.kind, m.dir, 1);
+    for (const m of old.machines.values()) if (m.kind !== 'furnace') { placeMachine(m.cell, m.kind, m.dir, 1); S.machines.get(key(m.cell)).paid = m.paid || 0; }
     return;
   }
   placeMachine({x: 0, y: 1}, 'chute', R, 1);
   for (const x of [1, 2]) setBelt({x, y: 1}, R, 1);
+  if (layout !== 'starter') return;
   placeMachine({x: 3, y: 1}, 'sorter', R, 1);
   setBelt({x: 4, y: 1}, R, 1);
   placeMachine({x: 5, y: 1}, 'forge', R, 1);
@@ -206,8 +233,10 @@ const parseKey = k => { const [x, y] = k.split(',').map(Number); return {x, y}; 
 function placeMachine(c, kind, dir, pop = 0) {
   S.machines.set(key(c), {kind, dir, cell: c, pop, busy: 0, work: 0, fire: 0, mode: 0, lever: 0, leverT: 0, load: [],
     launch: 0, wind: 0, ang: Math.atan2(dir.y, dir.x), outQ: [], held: null, alt: 0, mag: [], spin: 0, spinV: 0,
-    shotT: 0, fuel: 0, charges: 0, hopper: [], rollT: 0, reel: 0, jam: 0});
+    shotT: 0, fuel: 0, charges: 0, hopper: [], rollT: 0, reel: 0, jam: 0, paid: 0, fixed: !!KINDS[kind].fixed});
 }
+const isPillar = c => S.pillars.has(key(c));
+const canAfford = k => opts.free || S.gears >= (COST[k] || 0);
 function setBelt(c, d, pop = 0) {
   const k = key(c);
   if (!S.belts.has(k) || !S.beltVis.has(k)) S.beltVis.set(k, {ang: Math.atan2(d.y, d.x), pop});
@@ -378,6 +407,7 @@ function updateDice(dt) {
           if (isBareFloor(d.cell)) { release(d); removeDie(d); addToPile(d.cell, d, {x: d.x, y: d.y}); } else loseDie(d, 'lost');
           continue;
         }
+        applyVent(d);
       }
       if (!d.next && d.s >= d.ts) {
         d.s = d.ts;
@@ -402,11 +432,25 @@ function updateDice(dt) {
   }
 }
 
+// a belt over a floor vent changes each die that rides across it (once per vent)
+function applyVent(d) {
+  const k = key(d.cell), type = S.vents.get(k);
+  if (!type || !S.belts.has(k)) return;
+  d.vented = d.vented || {};
+  if (d.vented[k]) return;
+  d.vented[k] = true;
+  d.pop = 1;
+  if (type === 'hot') { d.hot = true; d.ice = false; burst(d.x, d.y, COL.ember, 6, 100, 2.5, -80, .4); }
+  else if (type === 'ice') { d.ice = true; d.hot = false; burst(d.x, d.y, COL.ice, 6, 100, 2.5, 0, .4); }
+  else { d.v = Math.min(12, d.v + 1); d.show = d.v; say(d.x, d.y - 22, '+1 lucky', '#8fe08f', 12); burst(d.x, d.y, '#8fe08f', 6, 100, 2, 0, .3); }
+}
+
 // a die ran off the end of a belt: onto bare floor it heaps, off the factory it's gone
 function landOffBelt(d) {
   const n = add(d.cell, d.dout);
   const p = pathPt(d.cell, d.din, d.dout, 1, S.machines.has(key(d.cell)));
   if (isBareFloor(n)) { removeDie(d); addToPile(n, d, p); return; }
+  if (inGrid(n) && isPillar(n)) { burst(p.x, p.y, '#c9d6da', 6, 140, 2, 0, .25, 2); loseDie(d, 'smashed'); return; }
   loseDie(d, 'lost');
 }
 
@@ -594,6 +638,15 @@ function consume(m, d) {
       break;
     }
     case 'ram': m.load = [sp]; break;
+    case 'furnace': case 'mint': {
+      // dice become gears
+      const g = Math.ceil(sp.v / (m.kind === 'furnace' ? 3 : 4));
+      S.gears += g; S.gearFlash = 1;
+      m.busy = .2; m.fire = 1;
+      say(ce.x, ce.y - 34, `+${g} ⚙`, COL.gold, 15);
+      burst(ce.x, ce.y - 6, m.kind === 'furnace' ? COL.ember : COL.gold, 8, 120, 2.5, -60, .5);
+      break;
+    }
     case 'cryo': {
       m.busy = .3;
       const tg = foeTarget(30);
@@ -930,6 +983,13 @@ function landProj(p, q) {
 function hurtFoe(dmg, o = {}) {
   const f = S.foe;
   if (S.over) return;
+  if (S.mode === 'build') {
+    // practice: show the hit, count it for the dmg/s meter, but it doesn't count
+    S.dmgLog.push({t: S.t, d: dmg});
+    f.hit = .12;
+    if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, String(Math.round(dmg)), '#ffd0c4', 16);
+    return;
+  }
   if (o.burnOnly !== true) { f.hit = .12; if (!o.quiet) f.flash = 1; }
   f.hp = Math.max(0, f.hp - dmg);
   S.stats.dmg += dmg;
@@ -1115,7 +1175,7 @@ function raiseParry() {
 // a belt, where they join that line). Lay a belt over a heap to scoop it up.
 
 const PILE_MAX = 6;
-const isBareFloor = c => inGrid(c) && !S.belts.has(key(c)) && !S.machines.has(key(c)) && !S.rubble.has(key(c));
+const isBareFloor = c => inGrid(c) && !S.belts.has(key(c)) && !S.machines.has(key(c)) && !S.rubble.has(key(c)) && !S.pillars.has(key(c));
 
 function addToPile(c, spec, from) {
   const k = key(c);
@@ -1317,8 +1377,22 @@ function curIntent() {
   return {type: b.type, dmg: b.dmg || 0, n: b.n || 1, wind: b.wind, label: INTENT_LABEL[b.type]};
 }
 
+// The build phase ends: the Colossus starts walking. Starting early pays.
+function startFight(early) {
+  if (S.mode !== 'build') return;
+  const bonus = early ? Math.floor(S.buildT / 2) : 0;
+  S.mode = 'fight';
+  S.buildT = 0;
+  S.gears += bonus;
+  S.dmgLog = [];
+  S.foe.state = 'march';
+  S.banner = {title: 'PHASE 1 · ' + PHASES[0].name, desc: PHASES[0].desc + (bonus ? `  Early start: +${bonus} ⚙` : ''), t: 0, life: 4.5};
+  shake(.3);
+}
+
 function enterPhase(i) {
   const f = S.foe, ph = PHASES[i];
+  S.gears += PHASE_BONUS; S.gearFlash = 1;
   f.phase = i; f.intent = 0; f.speed = ph.speed;
   f.enraged = i >= 2;
   f.state = 'shift'; f.timer = 2.2; f.arm = 0;
@@ -1337,6 +1411,7 @@ function updateFoe(dt) {
   f.stagger = Math.max(0, f.stagger - dt * 1.5);
   f.pinned = Math.max(0, f.pinned - dt);
   f.chill = Math.max(0, f.chill - dt);
+  if (S.mode === 'build') { f.kv = 0; f.burn = 0; f.state = 'march'; return; }   // waiting in the distance
   // phase shifts as it breaks down
   const frac = f.hp / f.max;
   if (f.phase + 1 < PHASES.length && frac <= PHASES[f.phase + 1].at) enterPhase(f.phase + 1);
@@ -1431,6 +1506,7 @@ function killFoe() {
 function clearCell(c, scrap) {
   const k = key(c);
   const m0 = S.machines.get(k);
+  if (m0 && m0.fixed) return false;
   if (m0 && m0.kind === 'chute' && [...S.machines.values()].filter(x => x.kind === 'chute').length <= 1) {
     say(center(c).x, center(c).y - 30, 'need one chute', '#ffb0a0', 13);
     return false;
@@ -1448,6 +1524,8 @@ function clearCell(c, scrap) {
     S.machines.delete(k);
     const ce = center(c);
     burst(ce.x, ce.y, COL[KINDS[m0.kind].cat], 12, 200, 5, 500, .6, 1);
+    const back = scrap ? refundFor(m0) : 0;
+    if (back) { S.gears += back; say(ce.x, ce.y - 30, `+${back} ⚙ back`, COL.gold, 13); }
   }
   // the tile is bare now: whatever was on it heaps up there
   for (const [sp, p] of dropped) addToPile(c, sp, p);
@@ -1457,10 +1535,25 @@ function clearCell(c, scrap) {
 function placeKind(c, kind) {
   const k = key(c);
   const m = S.machines.get(k);
+  if (isPillar(c)) return;
   if (m && m.kind === kind && deq(m.dir, S.placeDir)) return;
+  if (m && m.fixed) { say(center(c).x, center(c).y - 30, 'part of the floor', '#ffb0a0', 13); return; }
+  const cost = opts.free ? 0 : (COST[kind] || 0);
+  const refund = m ? refundFor(m) : 0;
+  if (S.gears + refund < cost) {
+    say(center(c).x, center(c).y - 30, `need ${cost} ⚙`, '#ffb0a0', 14);
+    S.gearFlash = 1;
+    return;
+  }
   if (clearCell(c, !!m) === false) return;
+  S.gears -= cost;
   placeMachine(c, kind, S.placeDir, -.15);
+  S.machines.get(k).paid = cost;
+  if (cost) say(center(c).x, center(c).y - 34, `-${cost} ⚙`, COL.gold, 13);
 }
+
+// full refund while building, half once the fight is on
+const refundFor = m => S.mode === 'build' ? (m.paid || 0) : Math.floor((m.paid || 0) / 2);
 
 function interact(c) {
   const k = key(c);
@@ -1523,7 +1616,7 @@ cv.addEventListener('pointerdown', e => {
   const p = toLocal(e); mouse.x = p.x; mouse.y = p.y; mouse.cell = cellAt(p);
   const b = buttonAt(p);
   if (b && e.button === 0) { b.fn(); return; }
-  if (S.over) { newGame(true); return; }
+  if (S.over) { newGame('keep'); return; }
   if (e.button === 2) {
     if (S.pal) { S.pal = null; return; }
     if (inGrid(mouse.cell)) clearCell(mouse.cell, true);
@@ -1535,7 +1628,7 @@ cv.addEventListener('pointerdown', e => {
   const c = mouse.cell;
   if (!inGrid(c)) return;
   const k = key(c);
-  if (S.rubble.has(k)) return;                 // buried: route around it
+  if (S.rubble.has(k) || isPillar(c)) return;  // buried or stone: route around it
   S.lastTap = c;
   if (opts.erase) { clearCell(c, true); mouse.erasing = true; mouse.last = c; capture(e); return; }
   if (S.pal) { placeKind(c, S.pal); mouse.painting = true; mouse.last = c; capture(e); return; }
@@ -1581,7 +1674,8 @@ function moveMachine(from, to) {
   const fk = key(from), tk = key(to);
   const m = S.machines.get(fk);
   if (!m) return;
-  if (S.machines.has(tk) || S.rubble.has(tk)) { say(center(to).x, center(to).y - 30, 'occupied', '#ffb0a0', 13); return; }
+  if (m.fixed) { interact(from); return; }
+  if (S.machines.has(tk) || S.rubble.has(tk) || isPillar(to)) { say(center(to).x, center(to).y - 30, 'occupied', '#ffb0a0', 13); return; }
   const dropped = [];
   for (const d of S.dice.slice()) if (key(d.cell) === fk && d.state !== 'fall' && d.state !== 'jump') { dropped.push([dieSpec(d), {x: d.x, y: d.y}]); removeDie(d); }
   for (const sk of [...S.stops.keys()]) if (sk.startsWith(fk + ',')) S.stops.delete(sk);
@@ -1597,7 +1691,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); raiseParry(); return; }
   if (e.key === 'p' || e.key === 'P') S.paused = !S.paused;
   else if (e.key === 'r' || e.key === 'R') {
-    if (S.over) newGame(true);
+    if (S.over) newGame('keep');
     else if (S.pal) S.placeDir = rotCW(S.placeDir);
     else if (inGrid(mouse.cell)) rotateAt(mouse.cell);
   } else if (e.key === 'Escape') S.pal = null;
@@ -1615,6 +1709,7 @@ function dragTo(c) {
       for (const d of S.dice) if (key(d.cell) === key(mouse.last) && !d.next && d.state === 'stop') d.dout = step;
     }
     const nx = add(mouse.last, step);
+    if (isPillar(nx)) break;                   // belts stop at stone
     if (!S.machines.has(key(nx))) setBelt(nx, step);
     S.beltDir = step; mouse.last = nx; mouse.moved = true;
   }
@@ -1636,6 +1731,10 @@ function update(rawDt) {
   }
   updateParticles(dt);
   if (S.paused) return;
+  if (S.mode === 'build' && !S.over) {
+    S.buildT -= dt;
+    if (S.buildT <= 0) startFight(false);
+  }
   if (!S.over) {
     rollChutes(dt);
     updateMachines(dt);
@@ -1708,6 +1807,27 @@ function drawFloor() {
   for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
     ctx.fillStyle = (x + y) % 2 ? COL.tile2 : COL.tile;
     ctx.fillRect(GX + x * CELL + 2, GY + y * CELL + 2, CELL - 4, CELL - 4);
+  }
+  // floor vents: a glowing grate (a belt laid over one still shows the glow at its edges)
+  for (const [k, type] of S.vents) {
+    const ce = center(parseKey(k)), info = VENT_INFO[type];
+    const glow = .25 + .12 * Math.sin(S.t * 3 + ce.x);
+    ctx.fillStyle = info.col; ctx.globalAlpha = glow;
+    ctx.fillRect(ce.x - 30, ce.y - 30, 60, 60);
+    ctx.globalAlpha = 1;
+    rr(ce.x - 26, ce.y - 26, 52, 52, 6, null, info.col, 2);
+    for (let i = -2; i <= 2; i++) line(ce.x - 20, ce.y + i * 9, ce.x + 20, ce.y + i * 9, 'rgba(0,0,0,.35)', 3);
+    if (type === 'lucky') txt('+1', ce.x, ce.y + 1, 16, '#1d4a1d', 'center', 900);
+    else if (type === 'hot') txt('🔥', ce.x, ce.y + 1, 18, '#000', 'center', 400);
+    else txt('❄', ce.x, ce.y + 1, 20, '#1d3f5a', 'center', 900);
+  }
+  // stone pillars
+  for (const k of S.pillars) {
+    const ce = center(parseKey(k));
+    rr(ce.x - 28, ce.y - 24, 56, 54, 10, 'rgba(0,0,0,.35)');
+    rr(ce.x - 28, ce.y - 30, 56, 56, 10, '#6f7a7e', '#3d4649', 3);
+    rr(ce.x - 20, ce.y - 22, 40, 12, 4, '#8a969a');
+    line(ce.x - 14, ce.y + 2, ce.x - 4, ce.y + 14, '#4d5659', 2); line(ce.x + 8, ce.y - 6, ce.x + 16, ce.y + 8, '#4d5659', 2);
   }
 }
 
@@ -2108,6 +2228,22 @@ function drawIcon(m) {
       if (m.load && m.load.length) miniDie(-11, -18, m.load[0].v, 10);
       break;
     }
+    case 'furnace': {
+      rr(-22, -18, 44, 38, 8, '#4a3a30', '#2a1d14', 2);
+      rr(-14, -6, 28, 20, 4, '#2a1d14');
+      const fl = 1 + .6 * fire;
+      for (let i = 0; i < 3; i++) circle(-8 + i * 8, 6 - Math.abs(Math.sin(t * 7 + i)) * 4 * fl, 5 * fl, i % 2 ? '#ffd04a' : COL.ember);
+      txt('⚙', 0, -12, 13, COL.gold, 'center', 900);
+      break;
+    }
+    case 'mint': {
+      for (let i = 0; i < 3; i++) {
+        const hop = fire > 0 ? -Math.sin((1 - fire) * Math.PI) * 4 * (i + 1) : 0;
+        rr(-15, 9 - i * 8 + hop, 30, 8, 4, '#f0b429', '#9a6a05', 1.5);
+      }
+      txt('⚙', 0, -18, 13, '#7a5404', 'center', 900);
+      break;
+    }
     case 'cryo': {
       rr(-10, -4, 20, 22, 4, '#59636a', dark, 2);
       for (let i = 0; i < 3; i++) circle(-8 + i * 8, -10 - Math.sin(t * 4 + i) * 3, 5, 'rgba(200,236,255,.9)');
@@ -2179,6 +2315,25 @@ function drawPiles() {
     });
     if (pl.dice.length >= 5 && !S.belts.has(k)) txt(`${pl.dice.length}/6`, ce.x, ce.y - 26, 10, pl.dice.length >= 6 ? '#ff8a73' : 'rgba(255,255,255,.7)', 'center', 800, 3);
   }
+}
+
+// While building: a countdown, what to do, and a button to start early.
+function drawBuildUI() {
+  if (S.mode !== 'build' || S.over) return;
+  const x = WALL_X1 + 12, y = GY + 4, w = FIELD_X1 - x - 6, h = 78;
+  rr(x, y, w, h, 12, 'rgba(6,18,22,.9)', COL.gold, 2);
+  const s = Math.ceil(S.buildT);
+  txt('BUILD PHASE', x + 16, y + 20, 18, COL.gold, 'left', 900);
+  txt(`${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`, x + 170, y + 20, 18, s <= 10 ? '#ff8a73' : '#fff', 'left', 900);
+  txt('The Colossus waits. Lay down your line;', x + 16, y + 44, 12.5, '#e9fbff', 'left', 600);
+  txt('your weapons practice on it. Refunds are full.', x + 16, y + 60, 12.5, '#e9fbff', 'left', 600);
+  const bonus = Math.floor(S.buildT / 2);
+  const bw = 150, bx = x + w - bw - 12, by = y + 16, bh = 46;
+  const hov = mouse.x >= bx && mouse.x <= bx + bw && mouse.y >= by && mouse.y <= by + bh;
+  rr(bx, by, bw, bh, 10, hov ? '#3fc9a8' : '#2fae92', '#7fe0c6', 2);
+  txt('Start now', bx + bw / 2, by + 15, 15, '#06201a', 'center', 900);
+  txt(`+${bonus} ⚙ early bonus`, bx + bw / 2, by + 33, 11.5, '#06201a', 'center', 700);
+  S.buttons.push({x: bx, y: by, w: bw, h: bh, fn: () => startFight(true)});
 }
 
 function drawBanner() {
@@ -2298,6 +2453,15 @@ function drawLensBeams() {
 function drawTelegraph() {
   const f = S.foe, it = curIntent();
   const bx = f.x - 20, by = GROUND - 250;
+  if (S.mode === 'build') {
+    // practice meter: damage per second over the last 5 seconds
+    S.dmgLog = S.dmgLog.filter(e => S.t - e.t < 5);
+    const dps = S.dmgLog.reduce((a, e) => a + e.d, 0) / 5;
+    rr(bx - 80, by - 20, 160, 40, 18, 'rgba(10,25,30,.85)', 'rgba(255,255,255,.25)', 2);
+    txt('PRACTICE', bx, by - 7, 11, 'rgba(255,255,255,.6)', 'center', 800);
+    txt(`${dps.toFixed(1)} dmg/s`, bx, by + 9, 15, '#ffd0c4', 'center', 900);
+    return;
+  }
   const winding = f.state === 'windup';
   const k = winding ? 1 - f.timer / f.total : 0;
   if (winding) {
@@ -2429,28 +2593,36 @@ function drawHud() {
   tb(84, opts.holdFoe ? 'Foe frozen' : 'Freeze foe', opts.holdFoe, () => { opts.holdFoe = !opts.holdFoe; });
   tb(72, 'God mode', opts.god, () => { opts.god = !opts.god; if (opts.god) S.hp = S.maxHp; });
   tb(64, 'Roll now', false, () => rollNow());
+  tb(72, 'Free build', opts.free, () => { opts.free = !opts.free; });
   tb(68, 'Phase ▸', false, () => {
+    if (S.mode === 'build') { startFight(false); return; }
     const f = S.foe;
     if (f.phase + 1 < PHASES.length) f.hp = Math.min(f.hp, f.max * PHASES[f.phase + 1].at - 1);
     else f.hp = Math.min(f.hp, 60);
   });
   tb(70, 'Flyers +4', false, () => spawnFlyers(4));
-  tb(68, 'New foe', false, () => newGame(true));
-  tb(76, 'Clear floor', false, () => { newGame(false); S.machines.clear(); S.belts.clear(); S.beltVis.clear(); placeMachine({x: 0, y: 2}, 'chute', R, 1); });
-  tb(58, 'Starter', false, () => newGame(false));
+  tb(68, 'New foe', false, () => newGame('keep'));
+  tb(76, 'Clear floor', false, () => newGame('blank'));
+  tb(58, 'Starter', false, () => newGame('starter'));
   // factory health
   txt('Factory', 24, 60, 13, 'rgba(255,255,255,.65)', 'left', 600);
   bar(84, 52, 200, 16, S.hp / S.maxHp, S.hitFlash > 0 ? '#ffffff' : '#ff7a6a');
   txt(`${Math.ceil(S.hp)} / ${S.maxHp}${opts.god ? ' (god)' : ''}`, 184, 61, 12, '#fff', 'center', 800, 3);
   const wallHp = S.bricks.reduce((a, b) => a + b.hp, 0);
-  txt(`Wall ${Math.round(wallHp)}`, 296, 61, 13, COL.blk, 'left', 800);
+  // gears: the build currency
+  S.gearFlash = Math.max(0, (S.gearFlash || 0) - 1 / 30);
+  const gs = 1 + .25 * S.gearFlash;
+  rr(292, 44, 74, 34, 8, `rgba(224,162,20,${.18 + .3 * S.gearFlash})`, COL.gold, 1.5);
+  ctx.save(); ctx.translate(329, 61); ctx.scale(gs, gs);
+  txt(`⚙ ${opts.free ? '∞' : Math.floor(S.gears)}`, 0, 1, 18, COL.gold, 'center', 900);
+  ctx.restore();
   const jams = S.dice.filter(d => d.state === 'stop' && d.wait > JAM_TIME).length;
   const hop = Math.max(0, ...[...S.machines.values()].filter(m => m.kind === 'chute').map(m => m.hopper.length));
   const chips = [
     ['Hopper', `${hop}/${HOPPER_MAX}`, hop >= HOPPER_MAX - 2 ? '#ff8a73' : '#e9fbff'],
     ['Backed up', String(jams), jams > 3 ? '#ff8a73' : '#e9fbff'],
 
-    ['Thrown', String(S.stats.thrown), '#e9fbff'],
+    ['Wall', String(Math.round(wallHp)), COL.blk],
     ['On floor', String([...S.piles.values()].reduce((a, p) => a + p.dice.length, 0)), '#e9fbff'],
     ['Lost', String(S.stats.lost), S.stats.lost > 0 ? '#ffb0a0' : '#e9fbff'],
   ];
@@ -2519,6 +2691,13 @@ function drawPalette() {
       else if (nx && nx.good.includes(k)) { ringStroke(x + PAL_W - 8, y + 8, 6, COL.gold, 1.5); }
       const ri_ = S.recent.indexOf(k);
       if (ri_ >= 0) { rr(x + 2, y + 2, 13, 13, 3, '#2b373c'); txt(String(ri_ + 1), x + 8.5, y + 9, 9.5, '#fff', 'center', 800); }
+      // cost; dimmed when you can't afford it
+      const cost = COST[k] || 0, ok = canAfford(k);
+      if (!opts.free) {
+        rr(x + PAL_W - 26, y + PAL_H - 15, 24, 13, 6, ok ? '#f0b429' : '#5a4a46');
+        txt(`${cost}⚙`, x + PAL_W - 14, y + PAL_H - 8, 9.5, ok ? '#2a1a00' : '#c9b8b4', 'center', 900);
+      }
+      if (!ok) rr(x, y, PAL_W, PAL_H, 7, 'rgba(10,25,30,.45)');
     });
   });
   txt('★ helps this phase    ○ helps next phase    1-5 picks a recent part', W - 30, PAL_Y + 3 * PAL_ROW + PAL_H / 2, 11.5, 'rgba(255,255,255,.5)', 'right', 600);
@@ -2532,6 +2711,7 @@ function drawPalette() {
     const w = 300, x = clamp(hover.x - 20, 16, W - w - 16), y = hover.y - 64;
     rr(x, y, w, 56, 8, 'rgba(4,18,22,.96)', COL[info.cat], 2);
     txt(info.name, x + 10, y + 16, 13.5, '#fff', 'left', 800);
+    if (!opts.free) txt(`${COST[hover.k] || 0} ⚙`, x + w - 10, y + 16, 13, COL.gold, 'right', 900);
     wrapText(info.text, x + 10, y + 34, w - 20, 11.5, 'rgba(255,255,255,.8)');
   }
 }
@@ -2611,13 +2791,14 @@ function draw() {
   drawTexts();
   ctx.restore();
   drawHud();
+  drawBuildUI();
   drawPalette();
   drawBanner();
   if (S.over) drawOverlay();
 }
 
 // ============================================================ loop
-newGame(false);
+newGame('blank');
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
