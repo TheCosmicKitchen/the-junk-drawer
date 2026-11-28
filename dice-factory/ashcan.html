@@ -51,6 +51,7 @@ body.phone .start.show{display:flex}
 </div>
 <p class="portrait-note">Turn your phone sideways for a bigger board.</p>
 <div class="help">
+  <div><b>Turns.</b> Each turn: see your roll and plan (nothing moves), press <b>RUN</b> (or <kbd>Space</kbd>) and watch the line work hands-off, then the foe takes its turn. Machines level up from the dice they handle (max 3 XP a turn each, so spread your dice): stars show the level, levelled machines work faster and hit harder. <kbd>Real-time</kbd> in the toolbar, or <code>?realtime</code>, plays the old way.</div>
   <div><b>Build first.</b> You get 60 seconds before the Colossus moves (start early for bonus gears). Parts cost gears ⚙; belts are free. Earn gears by routing dice into the Gear Furnace (bottom right) or a Gear Mint, and from each new phase. Route around stone pillars; belts over glowing vents make dice hot, icy or +1. Removing a part refunds it in full while building, half after.</div>
   <div><b>Ashcan sandbox.</b> Pick a part from the palette and click floor tiles to place it (it stays picked; <kbd>1</kbd>-<kbd>5</kbd> re-pick recent parts). <kbd>R</kbd> or the wheel rotates. Right-click or <kbd>Esc</kbd> drops it. Time slows while you place. A gold star marks parts that answer the current phase.</div>
   <div><b>Re-route.</b> Drag across empty floor to lay belts; click a belt to turn it. Drag a machine to move it. Right-click removes anything. Dice that run off a belt heap up on the floor (6 per tile, then they tumble onward); lay a belt over a heap to scoop it back up.</div>
@@ -348,7 +349,7 @@ const phaseNow = () => PHASES[S.foe.phase];
 // ============================================================ state
 let S;
 const mouse = {x: 0, y: 0, cell: {x: -1, y: -1}, dragging: false, moved: false, last: null, pressNew: false};
-const opts = {slow: true, holdFoe: false, god: false, speed: 1, free: false};
+const opts = {slow: true, holdFoe: false, god: false, speed: 1, free: false, turns: !QS.has('realtime')};
 
 // Set up the chosen foe (its phases, health and quirks).
 function chooseFoe(id, closePicker = true) {
@@ -363,7 +364,7 @@ function chooseFoe(id, closePicker = true) {
     locks: [], nextLocks: [], lockT: 0, enraged: false, state: 'march', shred: 0, poison: 0, poisonT: 0});
   if (PHASES[0].locks) { f.locks = rollLocks(PHASES[0].locks); f.nextLocks = rollLocks(PHASES[0].locks); f.lockT = PHASES[0].lockEvery; }
   S.units = []; S.waveT = 4;
-  if (closePicker) S.picker = false;
+  if (closePicker) { S.picker = false; if (opts.turns) beginTurns(); }
 }
 // distinct lock faces, 1-6
 function rollLocks(n) {
@@ -398,7 +399,7 @@ function newGame(layout = 'blank') {
   placeMachine(FURNACE, 'furnace', L, 1);
   if (keepFloor && old) {
     for (const [k, d] of old.belts) setBelt(parseKey(k), d, 1);
-    for (const m of old.machines.values()) if (m.kind !== 'furnace') { placeMachine(m.cell, m.kind, m.dir, 1); S.machines.get(key(m.cell)).paid = m.paid || 0; }
+    for (const m of old.machines.values()) if (m.kind !== 'furnace') { placeMachine(m.cell, m.kind, m.dir, 1); Object.assign(S.machines.get(key(m.cell)), {paid: m.paid || 0, lvl: m.lvl || 1, xp: m.xp || 0}); }
     return;
   }
   placeMachine({x: 0, y: 1}, 'chute', R, 1);
@@ -421,8 +422,31 @@ const parseKey = k => { const [x, y] = k.split(',').map(Number); return {x, y}; 
 function placeMachine(c, kind, dir, pop = 0) {
   S.machines.set(key(c), {kind, dir, cell: c, pop, busy: 0, work: 0, fire: 0, mode: 0, lever: 0, leverT: 0, load: [],
     launch: 0, wind: 0, ang: Math.atan2(dir.y, dir.x), outQ: [], held: null, alt: 0, mag: [], spin: 0, spinV: 0,
-    shotT: 0, fuel: 0, charges: 0, hopper: [], rollT: 0, reel: 0, jam: 0, paid: 0, fixed: !!KINDS[kind].fixed, stack: []});
+    shotT: 0, fuel: 0, charges: 0, hopper: [], rollT: 0, reel: 0, jam: 0, paid: 0, fixed: !!KINDS[kind].fixed, stack: [],
+    lvl: 1, xp: 0, xpTurn: 0, turnDmg: 0, turnProc: 0, lvlFlash: 0});
 }
+// ---- machine levels
+// Every die a machine handles is 1 XP, but only XP_CAP per turn: spreading
+// dice over many machines levels more of them than funnelling into one.
+const XP_CAP = 3;
+const LV_XP = [0, 6, 15, 30];          // total XP to reach level 2, 3, 4
+const MAX_LVL = 4;
+const lvlMult = m => 1 + .25 * ((m && m.lvl || 1) - 1);   // weapons hit harder per level
+function gainXP(m) {
+  if (!m || m.fixed || m.kind === 'chute' || m.lvl >= MAX_LVL) return;
+  m.turnProc = (m.turnProc || 0) + 1;
+  if (m.xpTurn >= XP_CAP) return;
+  m.xpTurn++; m.xp++;
+  if (m.xp >= LV_XP[m.lvl]) {
+    m.lvl++; m.lvlFlash = 1.2;
+    const ce = center(m.cell);
+    say(ce.x, ce.y - 44, `${KINDS[m.kind].short} LEVEL ${m.lvl}!`, COL.gold, 18);
+    ring(ce.x, ce.y, 'rgba(255,210,94,.95)', 16, 70, .6);
+    burst(ce.x, ce.y, COL.gold, 24, 260, 3, 0, .7);
+    S.slowT = .9;                       // a beat of slow-mo to enjoy it
+  }
+}
+
 const isPillar = c => S.pillars.has(key(c));
 const canAfford = k => opts.free || S.gears >= (COST[k] || 0);
 function setBelt(c, d, pop = 0) {
@@ -660,7 +684,7 @@ function arrive(d) {
   if (!m) { d.state = 'stop'; return; }
   const info = KINDS[m.kind];
   if (info.role === 'manip') {
-    d.state = 'proc'; d.proc = info.proc; m.work = 1;
+    d.state = 'proc'; d.proc = info.proc * (1 - .15 * ((m.lvl || 1) - 1)); m.work = 1;   // levelled machines work faster
     if (m.kind === 'drum') d.roll = info.proc + .05;
     if (m.kind === 'coin') d.roll = 0;
     if (m.kind === 'sorter') m.leverT = sorterHigh(m, d.v) ? 0 : 1;
@@ -674,6 +698,7 @@ const sorterHigh = (m, v) => (v >= 4) !== (m.mode === 1);
 function finishProc(d) {
   const m = S.machines.get(key(d.cell));
   if (!m) { d.state = 'stop'; return; }
+  gainXP(m);
   const v = d.v, sp = dieSpec(d), st = m.dir, rt = rotCW(m.dir);
   const above = {x: d.x, y: d.y - 26};
   const out = [];
@@ -721,7 +746,7 @@ function finishProc(d) {
     case 'silo': out.push({...sp, dir: st}); break;
     case 'bounce': out.push({...sp, dir: st, jump: true}); break;
     case 'forge':
-      out.push(pop({...sp, v: Math.min(v + 2, 12), hot: true, dir: st}));
+      out.push(pop({...sp, v: Math.min(v + 1 + (m.lvl || 1), 12), hot: true, dir: st}));   // +2 at level 1, +1 per level after
       say(above.x, above.y, '+2 hot', COL.hot, 14);
       burst(d.x, d.y, COL.ember, 12, 150, 3, -80, .5, 0, -Math.PI / 2, .9);
       break;
@@ -746,7 +771,7 @@ function finishProc(d) {
       out.push(pop({...sp, v: Math.min(12, v + 1), dir: st})); say(above.x, above.y, '+1', '#d9b8f2', 14); break;
     // ---- pools
     case 'grinder': {
-      const got = v;                       // the full pips go in the tank; the die comes out as a 1
+      const got = v + (m.lvl || 1) - 1;   // the full pips (+1 per level after 1) go in the tank; the die comes out as a 1
       S.pips = Math.min(PIP_MAX, S.pips + got); S.pipFlash = 1;
       out.push(pop({...sp, v: 1, dir: st}));
       if (got) say(above.x, above.y, `+${got} ◆`, COL.pip, 15);
@@ -755,7 +780,7 @@ function finishProc(d) {
       break;
     }
     case 'pipforge': {
-      const take = Math.min(4, Math.floor(S.pips));
+      const take = Math.min(3 + (m.lvl || 1), Math.floor(S.pips));
       S.pips -= take; S.pipFlash = take ? 1 : 0;
       out.push(take ? pop({...sp, v: v + take, dir: st}) : {...sp, dir: st});
       if (take) { say(above.x, above.y, `◆+${take} → ${v + take}`, COL.pip, 15); burst(d.x, d.y, COL.pip, 14, 140, 2.5, 0, .4); }
@@ -811,6 +836,7 @@ function consume(m, d) {
   removeDie(d);
   const ce = center(m.cell);
   m.work = 1;
+  gainXP(m);
   switch (m.kind) {
     case 'pult': m.load = [sp]; m.wind = .35; m.busy = 1.6; break;
     case 'cannon': m.load = [sp]; m.wind = .12; m.busy = .55; break;
@@ -946,7 +972,7 @@ function shoot(m, kind, dice, mult, o = {}) {
   const dist = Math.hypot(tg.x - x0, tg.y - y0);
   let dur = o.dur ?? dist / (o.speed || 900);
   if (fly) dur = Math.min(dur, dist / 1100);
-  S.proj.push({kind, dice, mult, x0, y0, x1: tg.x, y1: tg.y, t: -(o.delay || 0), dur, arc: fly ? 8 : (o.arc ?? 30),
+  S.proj.push({kind, dice, mult: mult * lvlMult(m), src: m, x0, y0, x1: tg.x, y1: tg.y, t: -(o.delay || 0), dur, arc: fly ? 8 : (o.arc ?? 30),
     rot: 0, knock: o.knock ?? 1, bounces: o.bounces || 0, label: o.label || null, size: o.size || 1, fly, unit});
   S.stats.thrown += dice.length;
   m.fire = 1;
@@ -1023,7 +1049,7 @@ function fire(m) {
       const d = load[0];
       if (b) {
         const bp = brickPos(S.bricks.length);
-        S.proj.push({kind: 'rampart', dice: [{v: b.v, hot: b.hot, ice: b.ice}], flat: Math.round(b.hp * 3 + d.v), x0: bp.x, y0: bp.y, ...aimAt(bp.x, bp.y, 20), t: 0, dur: .7, arc: 90, rot: 0, knock: 2});
+        S.proj.push({kind: 'rampart', dice: [{v: b.v, hot: b.hot, ice: b.ice}], flat: Math.round((b.hp * 3 + d.v) * lvlMult(m)), src: m, x0: bp.x, y0: bp.y, ...aimAt(bp.x, bp.y, 20), t: 0, dur: .7, arc: 90, rot: 0, knock: 2});
         burst(bp.x, bp.y, COL.blk, 12, 160, 3, 0, .4);
         say(bp.x + 40, bp.y - 20, `BRICK ×3 = ${Math.round(b.hp * 3 + d.v)}`, COL.blk, 15);
         m.fire = 1; S.stats.thrown++;
@@ -1092,7 +1118,7 @@ function updateMachines(dt) {
           if (m.launch <= 0) {
             const ru = targetUnit(false);
             const tg = ru ? {x: ru.x, y: unitY(ru)} : foeTarget(20);
-            S.proj.push({kind: 'rocket', dice: m.load.slice(), mult: 1.25, x0: ce.x, y0: ce.y - 10, x1: tg.x, y1: tg.y, t: 0, dur: 1.35, arc: 260, rot: 0, knock: 3.6, unit: ru});
+            S.proj.push({kind: 'rocket', dice: m.load.slice(), mult: 1.25 * lvlMult(m), src: m, x0: ce.x, y0: ce.y - 10, x1: tg.x, y1: tg.y, t: 0, dur: 1.35, arc: 260, rot: 0, knock: 3.6, unit: ru});
             S.stats.thrown += m.load.length;
             m.load = []; m.fire = 1;
             burst(ce.x, ce.y + 10, COL.gold, 20, 200, 4, 0, .5);
@@ -1295,7 +1321,9 @@ function landProj(p, q) {
       return;
     }
   }
+  S.curSrc = p.src || null;     // credit the machine that fired, for its tally
   impact(p, q);
+  S.curSrc = null;
 }
 
 function hurtFoe(dmg, o = {}) {
@@ -1304,12 +1332,14 @@ function hurtFoe(dmg, o = {}) {
   if (S.mode === 'build') {
     // practice: show the hit, count it for the dmg/s meter, but it doesn't count
     S.dmgLog.push({t: S.t, d: dmg});
+    if (S.curSrc) S.curSrc.turnDmg += dmg;
     f.hit = .12;
     if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, String(Math.round(dmg)), '#ffd0c4', 16);
     return;
   }
   if (o.burnOnly !== true) { f.hit = .12; if (!o.quiet) f.flash = 1; }
   f.hp = Math.max(0, f.hp - dmg);
+  if (S.curSrc) S.curSrc.turnDmg += dmg;
   S.stats.dmg += dmg;
   if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, String(Math.round(dmg)), '#ff8a73', 18 + Math.min(14, dmg / 2));
   if (f.hp <= 0) killFoe();
@@ -1447,7 +1477,9 @@ const thornX = i => WALL_X1 + 8 + (i % 4) * 9 + Math.floor(i / 4) * 4;
 
 function hitFactory(dmg, y, isRock) {
   // a raised parry shield blocks anything; a slam spends a charge and stuns
-  if (S.shield > 0) {
+  // in turn mode a charged shield raises itself against a slam (no reflex taps)
+  if (S.shield > 0 || (opts.turns && !isRock && [...S.machines.values()].some(m => m.kind === 'parry' && m.charges > 0))) {
+    if (opts.turns) S.shield = Math.max(S.shield, .55);
     const pm = [...S.machines.values()].find(m => m.kind === 'parry' && m.charges > 0);
     if (pm) {
       if (!isRock) {
@@ -1533,12 +1565,14 @@ function updateField(dt) {
     }
   }
   for (const r of S.ramFx.slice()) { r.t += dt; if (r.t > .35) S.ramFx.splice(S.ramFx.indexOf(r), 1); }
+  // in turn mode the foe's side holds still while your line runs
+  const foeFrozen = opts.turns && S.tphase === 'run';
   for (const [k, rb] of S.rubble) {
-    rb.t -= dt; rb.pop = Math.max(0, rb.pop - dt * 3);
+    if (!foeFrozen) rb.t -= dt;
+    rb.pop = Math.max(0, rb.pop - dt * 3);
     if (rb.t <= 0) { S.rubble.delete(k); const ce = center(parseKey(k)); burst(ce.x, ce.y, '#7a6a58', 14, 160, 4, 400, .5, 1); }
   }
-  updateFlyers(dt);
-  updateUnits(dt);
+  if (!foeFrozen) { updateFlyers(dt); updateUnits(dt); }
   updatePiles(dt);
   if (S.banner) { S.banner.t += dt; if (S.banner.t > S.banner.life) S.banner = null; }
   for (const t of S.thorns) t.pop = Math.max(0, (t.pop || 0) - dt * 3);
@@ -1648,6 +1682,7 @@ function targetUnit(spread) {
 function hurtUnit(u, dmg) {
   if (!S.units.includes(u)) return;
   u.hp -= dmg; u.hit = .12;
+  if (S.curSrc) S.curSrc.turnDmg += dmg;
   if (dmg >= 1) say(u.x, unitY(u) - u.r - 10, String(Math.round(dmg)), '#ffd0c4', 12);
   if (u.hp > 0) return;
   S.units.splice(S.units.indexOf(u), 1);
@@ -1960,7 +1995,7 @@ function updateFoe(dt) {
   if (f.state === 'march') {
     if (front > REACH_X) {
       if (!opts.holdFoe && f.pinned <= 0) {
-        f.x -= f.speed * slow * (f.stagger > 0 ? .3 : 1) * dt;
+        f.x -= f.speed * slow * (f.stagger > 0 ? .3 : 1) * (opts.turns ? 2.2 : 1) * dt;   // turns: it covers more ground per foe turn
         f.step += dt * f.speed * .55 * slow;
       }
     } else {
@@ -2141,6 +2176,7 @@ cv.addEventListener('pointerdown', e => {
   const b = buttonAt(p);
   if (b && e.button === 0) { b.fn(); return; }
   if (S.over) { newGame('keep'); return; }
+  if (opts.turns && S.tphase !== 'plan') return;     // hands off while the line runs: just watch
   if (e.button === 2) {
     if (S.pal) { S.pal = null; return; }
     if (inGrid(mouse.cell)) clearCell(mouse.cell, true);
@@ -2212,7 +2248,7 @@ function moveMachine(from, to) {
 }
 cv.addEventListener('wheel', e => { if (S.pal) { e.preventDefault(); S.placeDir = rotCW(S.placeDir); } }, {passive: false});
 window.addEventListener('keydown', e => {
-  if (e.code === 'Space') { e.preventDefault(); raiseParry(); return; }
+  if (e.code === 'Space') { e.preventDefault(); if (opts.turns) startRun(); else raiseParry(); return; }
   if (e.key === 'p' || e.key === 'P') S.paused = !S.paused;
   else if (e.key === 'r' || e.key === 'R') {
     if (S.over) newGame('keep');
@@ -2241,10 +2277,11 @@ function dragTo(c) {
 
 // ============================================================ update
 function update(rawDt) {
-  // time slows while you place parts over the floor
-  const placing = S.pal && (PHONE || inGrid(mouse.cell)) && opts.slow;
-  S.timeScale = lerp(S.timeScale, placing ? .3 : 1, 1 - Math.exp(-10 * rawDt));
-  const dt = rawDt * S.timeScale * opts.speed;
+  // real time: time slows while you place parts. Turns: it slows for big moments in the run.
+  S.slowT = Math.max(0, (S.slowT || 0) - rawDt);
+  const placing = !opts.turns && S.pal && (PHONE || inGrid(mouse.cell)) && opts.slow;
+  S.timeScale = lerp(S.timeScale, placing || S.slowT > 0 ? .3 : 1, 1 - Math.exp(-10 * rawDt));
+  const dt = rawDt * S.timeScale * opts.speed * (opts.turns && S.skip && S.tphase !== 'plan' ? 6 : 1);
   S.t += dt;
   S.shake = Math.max(0, S.shake - rawDt * 2.4);
   S.hitFlash = Math.max(0, S.hitFlash - rawDt * 2);
@@ -2255,6 +2292,10 @@ function update(rawDt) {
   }
   updateParticles(dt);
   if (S.paused || S.picker) return;
+  if (opts.turns) { updateTurns(dt); return; }
+  // machines' per-turn XP cap, in real time: a fresh allowance every 8 s
+  S.xpResetT = (S.xpResetT || 0) + dt;
+  if (S.xpResetT > 8) { S.xpResetT = 0; for (const m of S.machines.values()) m.xpTurn = 0; }
   if (S.mode === 'build' && !S.over && S.enc !== 'dummy') {
     S.buildT -= dt;
     if (S.buildT <= 0) startFight(false);
@@ -2267,6 +2308,87 @@ function update(rawDt) {
     updateField(dt);
   }
   updateProj(dt);
+}
+
+// ============================================================ turns
+// Plan (nothing moves: see your roll, build and route) → Run (hands off: the
+// line runs until every die has settled) → Foe (the foe's side moves and acts)
+// → next turn: a fresh roll. Backed-up dice and heaps carry over.
+const FOE_TURN = 4;        // seconds of foe time per turn
+const RUN_MAX = 30;        // a run always ends by then
+
+// turn 1: no build timer; the fight is on (free play stays in practice mode)
+function beginTurns() {
+  if (S.enc !== 'dummy') { S.mode = 'fight'; S.buildT = 0; S.foe.state = 'march'; }
+  // walkers start closer, so they reach the wall in about four turns
+  if (S.enc === 'colossus' || S.enc === 'shell' || S.enc === 'lock') S.foe.x = 980;
+  S.turn = 1; S.tphase = 'plan'; S.skip = false;
+  S.rollT = 999;
+  for (const m of S.machines.values()) m.xpTurn = 0;
+  rollNow();
+  S.banner = {title: `${FOES[S.enc].name}`, desc: 'Plan your line, then press RUN and watch it work.', t: 0, life: 4};
+}
+
+function startRun() {
+  if (!opts.turns || S.tphase !== 'plan' || S.over) return;
+  S.tphase = 'run'; S.runT = 0; S.idleT = 0; S.skip = false;
+  S.pal = null;
+  S.turnStart = {dmg: S.stats.dmg, mites: S.stats.downed, lost: S.stats.lost, thrown: S.stats.thrown};
+  for (const m of S.machines.values()) { m.turnDmg = 0; m.turnProc = 0; }
+}
+
+function lineBusy() {
+  if (S.proj.length) return true;
+  if (S.dice.some(d => d.state === 'move' || d.state === 'proc' || d.state === 'jump' || d.state === 'spawn' || d.state === 'fall')) return true;
+  for (const m of S.machines.values()) {
+    if (m.wind > 0 || m.launch > 0 || m.reel > 0) return true;
+    if (m.kind === 'gatling' && m.mag.length) return true;
+    if (m.kind === 'pipgat' && S.pips >= 1) return true;
+  }
+  return false;
+}
+
+function endRun() {
+  const st = S.turnStart || {dmg: 0, mites: 0, lost: 0, thrown: 0};
+  const dmg = Math.round(S.stats.dmg - st.dmg), mites = S.stats.downed - st.mites, lost = S.stats.lost - st.lost;
+  const best = [...S.machines.values()].filter(m => m.turnDmg > 0).sort((a, b) => b.turnDmg - a.turnDmg)[0];
+  S.banner = {title: `TURN ${S.turn} · ${dmg} damage${mites ? ` · ${mites} mites` : ''}`,
+    desc: `${S.stats.thrown - st.thrown} dice thrown${lost ? ` · ${lost} lost` : ''}${best ? ` · best: ${KINDS[best.kind].name} ${Math.round(best.turnDmg)}` : ''}`,
+    t: 0, life: 3.2, small: true};
+  S.skip = false;
+  if (S.mode === 'build') { nextTurn(); return; }     // free play: no foe turn
+  S.tphase = 'foe'; S.foeT = FOE_TURN;
+}
+
+function nextTurn() {
+  S.turn = (S.turn || 1) + 1;
+  S.tphase = 'plan';
+  for (const m of S.machines.values()) m.xpTurn = 0;
+  rollNow();
+}
+
+function updateTurns(dt) {
+  if (S.over) { updateProj(dt); return; }
+  if (S.tphase === 'plan') {                   // nothing moves while you plan
+    if (S.banner) { S.banner.t += dt; if (S.banner.t > S.banner.life) S.banner = null; }
+    return;
+  }
+  if (S.tphase === 'run') {
+    S.runT += dt;
+    updateMachines(dt);
+    updateDice(dt);
+    updateField(dt);
+    updateProj(dt);
+    S.idleT = lineBusy() ? 0 : S.idleT + dt;
+    if (S.idleT > .6 || S.runT > RUN_MAX) endRun();
+    return;
+  }
+  // the foe's turn: it walks, winds up and strikes; mites and flyers move
+  S.foeT -= dt;
+  updateFoe(dt);
+  updateField(dt);
+  updateProj(dt);
+  if (S.foeT <= 0 && !S.proj.some(p => p.kind === 'rock' || p.kind === 'boulder')) nextTurn();
 }
 
 function updateParticles(dt) {
@@ -2953,6 +3075,59 @@ function drawFreePlayUI() {
   btn('Send\nmites', false, () => spawnWave(12, {miteHp: 7, bigEvery: 0}), 76);
 }
 
+// Turn mode: what phase you're in, this turn's roll, and the RUN button.
+function drawTurnUI() {
+  if (!opts.turns || S.over || S.picker || !S.tphase) return;
+  const x = WALL_X1 + 12, w = FIELD_X1 - x - 6, h = 70, top = S.enc === 'dummy' ? GY + 88 : GY + 4;
+  const ph = S.tphase, col = ph === 'plan' ? COL.gold : (ph === 'run' ? '#7fe0c6' : '#ff8a73');
+  rr(x, top, w, h, 12, 'rgba(6,18,22,.9)', col, 2);
+  txt(`TURN ${S.turn}`, x + 14, top + 20, 16, '#fff', 'left', 900);
+  txt(ph === 'plan' ? 'PLAN' : (ph === 'run' ? 'RUNNING' : 'FOE TURN'), x + 104, top + 20, 16, col, 'left', 900);
+  const bw = 132, bx = x + w - bw - 10, by = top + 8, bh = 54;
+  const hov = mouse.x >= bx && mouse.x <= bx + bw && mouse.y >= by && mouse.y <= by + bh;
+  if (ph === 'plan') {
+    // this turn's roll, waiting in the hopper: you see it before you route
+    const roll = [...S.machines.values()].filter(m => m.kind === 'chute').flatMap(m => m.hopper);
+    txt('Roll', x + 14, top + 48, 12, 'rgba(255,255,255,.6)', 'left', 700);
+    roll.slice(0, 11).forEach((v, i) => drawDie(x + 58 + i * 24, top + 48, {v, show: v}, 0, 1, 0, 19));
+    const waiting = S.dice.filter(d => d.state === 'stop').length;
+    if (waiting) txt(`+${waiting} waiting`, x + 50 + Math.min(11, roll.length) * 24 + 4, top + 48, 11, '#ffb0a0', 'left', 700);
+    rr(bx, by, bw, bh, 12, hov ? '#3fc9a8' : '#2fae92', '#7fe0c6', 2);
+    txt('RUN ▶', bx + bw / 2, by + bh / 2 + 1, 22, '#06201a', 'center', 900);
+    S.buttons.push({x: bx, y: by, w: bw, h: bh, fn: startRun});
+  } else if (ph === 'run') {
+    txt('Hands off: watch your line work.', x + 14, top + 48, 12.5, '#e9fbff', 'left', 600);
+    rr(bx, by, bw, bh, 12, S.skip ? '#2fae92' : (hov ? '#1f4d5c' : '#16394a'), 'rgba(255,255,255,.25)', 1.5);
+    txt(S.skip ? 'Fast ▸▸' : 'Speed up ▸▸', bx + bw / 2, by + bh / 2 + 1, 15, S.skip ? '#06201a' : '#fff', 'center', 800);
+    S.buttons.push({x: bx, y: by, w: bw, h: bh, fn: () => { S.skip = !S.skip; }});
+  } else {
+    const it = curIntent();
+    const what = S.enc === 'swarm' ? 'The brood creeps closer.' : (S.foe.state === 'windup' || it.type === 'none' ? `It acts: ${it.label || 'waits'}` : 'It advances.');
+    txt(what, x + 14, top + 48, 12.5, '#ffd0c4', 'left', 600);
+    rr(bx, by, bw, bh, 12, S.skip ? '#2fae92' : (hov ? '#1f4d5c' : '#16394a'), 'rgba(255,255,255,.25)', 1.5);
+    txt(S.skip ? 'Fast ▸▸' : 'Speed up ▸▸', bx + bw / 2, by + bh / 2 + 1, 15, S.skip ? '#06201a' : '#fff', 'center', 800);
+    S.buttons.push({x: bx, y: by, w: bw, h: bh, fn: () => { S.skip = !S.skip; }});
+  }
+}
+
+// a machine's level (stars), XP towards the next one, and this turn's tally
+function drawMachineLevel(m, cx, cy) {
+  if (m.fixed || m.kind === 'chute' || m.pop < 1) return;
+  const lv = m.lvl || 1;
+  if (m.lvlFlash > 0) { m.lvlFlash = Math.max(0, m.lvlFlash - 1 / 60); circle(cx, cy, 36 + 6 * Math.sin(S.t * 20), `rgba(255,210,94,${.35 * m.lvlFlash})`); }
+  for (let i = 0; i < lv - 1; i++) txt('★', cx - (lv - 2) * 6 + i * 12, cy - 35, 12, COL.gold, 'center', 900, 3);
+  if (lv < MAX_LVL && (m.xp > 0 || lv > 1)) {
+    const f = (m.xp - LV_XP[lv - 1]) / (LV_XP[lv] - LV_XP[lv - 1]);
+    rr(cx - 14, cy + 24, 38, 4, 2, 'rgba(0,0,0,.45)');
+    rr(cx - 14, cy + 24, 38 * clamp(f, 0, 1), 4, 2, m.xpTurn >= XP_CAP ? '#9aa4aa' : COL.gold);
+  }
+  if (opts.turns && (m.turnDmg > 0 || m.turnProc > 0)) {
+    const label = m.turnDmg > 0 ? String(Math.round(m.turnDmg)) : `×${m.turnProc}`;
+    rr(cx + 14, cy - 34, 26, 15, 7, m.turnDmg > 0 ? 'rgba(120,20,10,.9)' : 'rgba(6,18,22,.85)');
+    txt(label, cx + 27, cy - 26, 10.5, m.turnDmg > 0 ? '#ffd0c4' : '#e9fbff', 'center', 900);
+  }
+}
+
 function drawBuildUI() {
   if (S.mode !== 'build' || S.over) return;
   if (S.enc === 'dummy') { drawFreePlayUI(); return; }
@@ -2977,7 +3152,7 @@ function drawBanner() {
   if (!b) return;
   const k = b.t / b.life;
   const a = Math.min(1, b.t / .25, (b.life - b.t) / .6);
-  const y = GY + 40 - (1 - easeOut(b.t / .4)) * 30;
+  const y = (opts.turns ? GY + 128 : GY + 40) - (1 - easeOut(b.t / .4)) * 30;
   ctx.save(); ctx.globalAlpha = clamp(a, 0, 1);
   rr(W / 2 - 330, y - 30, 660, 74, 14, 'rgba(6,18,22,.92)', COL.gold, 2);
   txt(b.title, W / 2, y - 6, 26, COL.gold, 'center', 900);
@@ -3374,7 +3549,7 @@ function toolbarItems() {
     {w: 98, toggle: true, label: 'Slow-mo build', on: opts.slow, fn: () => { opts.slow = !opts.slow; }},
     {w: 84, toggle: true, label: opts.holdFoe ? 'Foe frozen' : 'Freeze foe', on: opts.holdFoe, fn: () => { opts.holdFoe = !opts.holdFoe; }},
     {w: 72, toggle: true, label: 'God mode', on: opts.god, fn: () => { opts.god = !opts.god; if (opts.god) S.hp = S.maxHp; }},
-    {w: 64, label: 'Roll now', on: false, fn: () => rollNow()},
+    {w: 64, toggle: true, label: opts.turns ? 'Turns' : 'Real-time', on: opts.turns, fn: () => { opts.turns = !opts.turns; if (opts.turns) beginTurns(); else { S.tphase = null; S.rollT = 1; } }},
     {w: 72, toggle: true, label: 'Free build', on: opts.free, fn: () => { opts.free = !opts.free; }},
     {w: 68, label: 'Phase ▸', on: false, fn: () => {
       if (S.enc === 'dummy') return;           // free play has no phases
@@ -3712,7 +3887,7 @@ function draw() {
   drawField();
   for (const [k, d] of S.belts) drawBelt(k, d);
   drawPiles();
-  for (const m of S.machines.values()) { const ce = center(m.cell); drawMachine(m, ce.x, ce.y, false); }
+  for (const m of S.machines.values()) { const ce = center(m.cell); drawMachine(m, ce.x, ce.y, false); drawMachineLevel(m, ce.x, ce.y); }
   drawHover();
   drawTelegraph();
   drawMines();
@@ -3738,6 +3913,7 @@ function draw() {
   ctx.restore();
   drawHud();
   drawBuildUI();
+  drawTurnUI();
   drawPalette();
   drawBanner();
   drawToolsMenu();
