@@ -72,7 +72,7 @@ export const KINDS = {
   coin:    {cat: 'route', role: 'manip', proc: .2, name: 'Coin Flip', short: 'Coin Flip', text: 'Heads straight, tails right. Pure luck.'},
   prism:   {cat: 'route', role: 'manip', proc: .3, name: 'Prism Splitter', short: 'Prism', text: 'Splits a die in two: half the pips go straight, the rest turn right.'},
   crusher: {cat: 'route', role: 'manip', proc: .35, name: 'Crusher', short: 'Crusher', text: 'Smashes a die into that many 1s (up to 6). A swarm.'},
-  echo:    {cat: 'route', role: 'manip', proc: .3, name: 'Echo Splitter', short: 'Echo', text: 'A 5 or 6 is copied out of its right side.'},
+  echo:    {cat: 'route', role: 'manip', proc: .3, name: 'Echo Splitter', short: 'Echo', text: 'A 5 or 6 is copied out of its right side (once per die).'},
   overflow:{cat: 'route', role: 'manip', proc: .05, name: 'Overflow Valve', short: 'Overflow', text: 'Straight on, unless that way is blocked: then right.'},
   fuser:   {cat: 'route', role: 'manip', proc: .3, name: 'Fuser', short: 'Fuser', text: 'Holds one die, fuses the next into it: pips add up.'},
   silo:    {cat: 'route', role: 'manip', proc: .05, name: 'Silo', short: 'Silo', text: 'Stores up to 8 dice. Click to hold them back, click again to flood.'},
@@ -83,19 +83,19 @@ export const KINDS = {
   drum:    {cat: 'mod', role: 'manip', proc: .32, name: 'Tumble Drum', short: 'Reroll', text: 'Rerolls the die.'},
   flipper: {cat: 'mod', role: 'manip', proc: .25, name: 'Flipper', short: 'Flipper', text: 'Turns the die over: 1 becomes 6, 2 becomes 5.'},
   frost:   {cat: 'mod', role: 'manip', proc: .32, name: 'Frost Coat', short: 'Frost', text: '-1 pip, but icy: hits slow the foe and its windup.'},
-  spiker:  {cat: 'mod', role: 'manip', proc: .32, name: 'Spike Lathe', short: 'Spikes', text: 'Spiky dice hit 40% harder.'},
+  spiker:  {cat: 'mod', role: 'manip', proc: .32, name: 'Spike Lathe', short: 'Spikes', text: 'Spiky dice hit 25% harder and ignore 3 points of armor.'},
   inflate: {cat: 'mod', role: 'manip', proc: .25, name: 'Inflator', short: 'Inflate', text: '+1 pip, up to 12. Loop dice through it.'},
   // ---------------------------------------------------- weapons
   pult:    {cat: 'weapon', role: 'term', name: 'Dice-a-pult', short: 'Pult', text: 'Lobs a die: pips x2. Slow to reload.'},
   cannon:  {cat: 'weapon', role: 'term', name: 'Dice Cannon', short: 'Cannon', text: 'Fires a die: pips damage. Quick.'},
   rocket:  {cat: 'weapon', role: 'term', name: 'Dice Rocket', short: 'Rocket', text: 'Packs 10 dice, launches them all. Big shove. Click to launch early.'},
   gatling: {cat: 'weapon', role: 'term', name: 'Dice Gatling', short: 'Gatling', text: 'Drum of 8 dice. Spins up and sprays them.'},
-  combo:   {cat: 'weapon', role: 'term', name: 'Combo Cannon', short: 'Combo', text: 'Loads 3. Pair x2, straight x4, three of a kind x6.'},
+  combo:   {cat: 'weapon', role: 'term', name: 'Combo Cannon', short: 'Combo', text: 'Loads 3. Pair x1.5, straight x2.5, three of a kind x4.'},
   blunder: {cat: 'weapon', role: 'term', name: 'Blunderbuss', short: 'Blunder', text: 'Loads 3, blasts them together. x2 up close, weak far away.'},
   harpoon: {cat: 'weapon', role: 'term', name: 'Harpoon', short: 'Harpoon', text: 'Pins the foe in place for pips x0.6 seconds.'},
   mines:   {cat: 'weapon', role: 'term', name: 'Mine Mortar', short: 'Mines', text: 'Plants the die in the foe’s path. Blows up for pips x3.'},
   lens:    {cat: 'weapon', role: 'term', name: 'Burning Lens', short: 'Lens', text: 'Each die feeds a beam that burns while fuel lasts.'},
-  rico:    {cat: 'weapon', role: 'term', name: 'Ricochet Sling', short: 'Ricochet', text: 'The die bounces off the foe and back again: 3 hits.'},
+  rico:    {cat: 'weapon', role: 'term', name: 'Ricochet Sling', short: 'Ricochet', text: 'The die bounces off the foe and back again: 3 hits (full, half, a quarter).'},
   slots:   {cat: 'weapon', role: 'term', name: 'Slot Machine', short: 'Slots', text: 'Loads 3 and rerolls them. Three alike x8. Pair x2. Else x0.5.'},
   sticky:  {cat: 'weapon', role: 'term', name: 'Sticky Bomb', short: 'Sticky', text: 'Sticks to the foe, blows up 2 s later for pips x4.'},
   // ---------------------------------------------------- defense
@@ -126,7 +126,7 @@ export const KINDS = {
 };
 // What each part costs in gears. Belts are free, so re-routing never costs.
 export const COST = {
-  chute: 15, sorter: 3, switch: 3, oddeven: 3, alt: 3, coin: 2, prism: 5, crusher: 5, echo: 6, overflow: 3, fuser: 5, silo: 4, bounce: 3,
+  chute: 40, sorter: 3, switch: 3, oddeven: 3, alt: 3, coin: 2, prism: 5, crusher: 5, echo: 6, overflow: 3, fuser: 5, silo: 4, bounce: 3,
   forge: 5, doubler: 4, drum: 2, flipper: 3, frost: 4, spiker: 5, inflate: 4, mint: 6,
   pult: 6, cannon: 6, rocket: 12, gatling: 10, combo: 8, blunder: 8, harpoon: 7, mines: 8, lens: 9, rico: 7, slots: 7, sticky: 8,
   bulwark: 5, thorns: 6, parry: 8, patch: 6, ram: 7, cryo: 6,
@@ -145,6 +145,10 @@ export const START_GEARS = 40, BUILD_TIME = 60, PHASE_BONUS = 15;
 export const PIP_MAX = 99;      // the pip tank ◆
 export const MEGA = 15;         // dice this big are crowned Mega dice: x1.5
 export const LOCK_MISS = .1;    // the Lockbox shrugs off dice that don't show its face
+export const CLINK = .2;        // what a die too small for the armor still does
+export const SPIKE = 1.25;      // spiky dice hit this much harder (and ignore 3 armor)
+// damage numbers on screen: whole numbers, or one decimal for scratches
+export const fmtDmg = d => d >= 1 ? String(Math.round(d)) : d.toFixed(1);
 export const CATS = ['route', 'mod', 'weapon', 'defense', 'pool'];
 export const PALETTE = {};
 for (const c of CATS) PALETTE[c] = Object.keys(KINDS).filter(k => KINDS[k].cat === c && !KINDS[k].hidden);
@@ -373,7 +377,7 @@ export function debrisDie(x, y, d, vx, vy) {
   S.debris.push({x, y, vx, vy, v: d.v, hot: d.hot, ice: d.ice, spiky: d.spiky, rot: rnd(0, 6), vr: rnd(-14, 14), t: 0, life: rnd(1.3, 2.0)});
   if (S.debris.length > 80) S.debris.shift();
 }
-export const dieSpec = d => ({v: d.v, hot: !!d.hot, ice: !!d.ice, spiky: !!d.spiky, venom: !!d.venom});
+export const dieSpec = d => ({v: d.v, hot: !!d.hot, ice: !!d.ice, spiky: !!d.spiky, venom: !!d.venom, echoed: !!d.echoed});
 
 // ============================================================ dice movement
 // Belt tiles have two stops, machines one in the centre. A die moves on only
@@ -389,7 +393,7 @@ export function pathPt(c, din, dout, s, mach) {
 }
 
 export function newDie(spec, cell, dir, stopKey) {
-  const d = {id: S.nextId++, v: spec.v, show: spec.v, hot: !!spec.hot, ice: !!spec.ice, spiky: !!spec.spiky, venom: !!spec.venom,
+  const d = {id: S.nextId++, v: spec.v, show: spec.v, hot: !!spec.hot, ice: !!spec.ice, spiky: !!spec.spiky, venom: !!spec.venom, echoed: !!spec.echoed,
     cell, din: dir, dout: dir, s: .5, ts: .5, next: null, stop: stopKey, state: 'stop', wait: 0, proc: 0,
     pop: spec.pop ? 1 : 0, roll: 0, rollTick: 0, rot: 0, falling: false, fall: 0, x: 0, y: 0, jumpPad: !!spec.jump, jt: 0};
   const p = center(cell); d.x = p.x; d.y = p.y;
@@ -631,8 +635,9 @@ export function finishProc(d) {
       break;
     }
     case 'echo':
-      out.push({...sp, dir: st});
-      if (v >= 5) { out.push(pop({...sp, dir: rt})); say(above.x, above.y, 'copy!', '#7fe0c6', 14); ring(d.x, d.y, '#7fe0c6', 10, 30); }
+      out.push({...sp, echoed: true, dir: st});
+      // each die is copied once at most, so loops can't multiply dice
+      if (v >= 5 && !sp.echoed) { out.push(pop({...sp, echoed: true, dir: rt})); say(above.x, above.y, 'copy!', '#7fe0c6', 14); ring(d.x, d.y, '#7fe0c6', 10, 30); }
       break;
     case 'overflow': out.push({...sp, dir: null, overflow: true}); break;
     case 'fuser':
@@ -833,8 +838,8 @@ export function diceDamage(dice, mult, vsSmall = false) {
   const open = shellOpen(), armor = effArmor();
   let s = 0, clinked = 0, matched = 0;
   for (const d of dice) {
-    let v = d.v * (d.spiky ? 1.4 : 1) * (d.v >= MEGA ? 1.5 : 1);
-    if (!vsSmall && armor && !open && d.v < armor - (d.spiky ? 3 : 0)) { v = 1; clinked++; }
+    let v = d.v * (d.spiky ? SPIKE : 1) * (d.v >= MEGA ? 1.5 : 1);
+    if (!vsSmall && armor && !open && d.v < armor - (d.spiky ? 3 : 0)) { v = CLINK; clinked++; }
     if (!vsSmall && ph.meltdown && d.ice) v *= 2;
     if (!vsSmall && ph.locks) { if (f.locks.includes(d.v)) { v *= ph.match; matched++; } else v *= LOCK_MISS; }
     s += v;
@@ -842,7 +847,7 @@ export function diceDamage(dice, mult, vsSmall = false) {
   if (open && !vsSmall) s *= 1.5;
   lastClink = clinked;
   lastMatch = ph.locks && !vsSmall ? matched : -1;
-  return Math.max(1, Math.round(s * mult));
+  return s * mult;                         // fractional: a scratch is a scratch (no 1-damage floor)
 }
 export let lastClink = 0, lastMatch = -1;
 export const shellOpen = () => S.enc === 'shell' && S.foe.state === 'windup';
@@ -915,9 +920,9 @@ export function fire(m) {
       const same = vs[0] === vs[1] && vs[1] === vs[2];
       const straight = vs[1] === vs[0] + 1 && vs[2] === vs[1] + 1;
       const pair = vs[0] === vs[1] || vs[1] === vs[2];
-      if (same) { mult = 6; label = 'THREE OF A KIND x6'; }
-      else if (straight) { mult = 4; label = 'STRAIGHT x4'; }
-      else if (pair) { mult = 2; label = 'PAIR x2'; }
+      if (same) { mult = 4; label = 'THREE OF A KIND x4'; }
+      else if (straight) { mult = 2.5; label = 'STRAIGHT x2.5'; }
+      else if (pair) { mult = 1.5; label = 'PAIR x1.5'; }
       say(ce.x, ce.y - 40, label, mult > 1 ? COL.gold : '#c9d6da', mult > 1 ? 16 : 13);
       shoot(m, 'cluster', load, mult, {oy: -8, dur: .9, arc: 120, knock: 1.5, size: 1 + mult * .05});
       shake(.15 + mult * .04);
@@ -1092,7 +1097,7 @@ export function updateMachines(dt) {
         break;
       case 'ram': {
         if (!m.load.length || S.over) break;
-        const d = m.load[0], push = d.v * (d.spiky ? 1.4 : 1);
+        const d = m.load[0], push = d.v * (d.spiky ? SPIKE : 1);
         const near = liveUnits().filter(u => u.x - u.r <= REACH_X + 90);
         if (near.length) {
           // mites at the wall get shoved back and squashed
@@ -1173,7 +1178,7 @@ export function landProj(p, q) {
   switch (p.kind) {
     case 'brick': {
       S.pendingBricks--;
-      S.bricks.push({v: d0.v, hp: d0.v * (d0.spiky ? 1.4 : 1), hot: d0.hot, ice: d0.ice, pop: 1});
+      S.bricks.push({v: d0.v, hp: d0.v * (d0.spiky ? SPIKE : 1), hot: d0.hot, ice: d0.ice, pop: 1});
       const bp = brickPos(S.bricks.length - 1);
       burst(bp.x, bp.y, COL.blk, 8, 120, 2.5, 0, .35);
       return;
@@ -1215,7 +1220,7 @@ export function landProj(p, q) {
       return;
     case 'ricoback': {
       const tg = foeTarget(30);
-      S.proj.push({kind: 'rico', dice: p.dice, mult: p.mult, x0: q.x, y0: q.y, x1: tg.x, y1: tg.y, t: 0, dur: .45, arc: 70, rot: 0, knock: .8, bounces: p.bounces});
+      S.proj.push({kind: 'rico', dice: p.dice, mult: p.mult, src: p.src, x0: q.x, y0: q.y, x1: tg.x, y1: tg.y, t: 0, dur: .45, arc: 70, rot: 0, knock: .8, bounces: p.bounces});
       ring(q.x, q.y, 'rgba(255,255,255,.6)', 6, 20, .2);
       return;
     }
@@ -1231,16 +1236,16 @@ export function hurtFoe(dmg, o = {}) {
   if (S.mode === 'build') {
     // practice: show the hit, count it for the dmg/s meter, but it doesn't count
     S.dmgLog.push({t: S.t, d: dmg});
-    if (S.curSrc) S.curSrc.turnDmg += dmg;
+    if (S.curSrc) { S.curSrc.turnDmg += dmg; S.curSrc.totalDmg = (S.curSrc.totalDmg || 0) + dmg; }
     f.hit = .12;
-    if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, String(Math.round(dmg)), '#ffd0c4', 16);
+    if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, fmtDmg(dmg), '#ffd0c4', 16);
     return;
   }
   if (o.burnOnly !== true) { f.hit = .12; if (!o.quiet) f.flash = 1; }
   f.hp = Math.max(0, f.hp - dmg);
-  if (S.curSrc) S.curSrc.turnDmg += dmg;
+  if (S.curSrc) { S.curSrc.turnDmg += dmg; S.curSrc.totalDmg = (S.curSrc.totalDmg || 0) + dmg; }
   S.stats.dmg += dmg;
-  if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, String(Math.round(dmg)), '#ff8a73', 18 + Math.min(14, dmg / 2));
+  if (!o.quiet && o.x !== undefined) say(o.x, o.y - 30, fmtDmg(dmg), '#ff8a73', 18 + Math.min(14, dmg / 2));
   if (f.hp <= 0) killFoe();
 }
 
@@ -1314,10 +1319,10 @@ export function impact(p, q) {
   if (p.flat) {
     // a Rampart brick: heavy enough to ignore armor, but a lock still wants its face
     const lk = PHASES[f.phase].locks ? f.locks : null;
-    if (lk) { p.flat = Math.max(1, Math.round(p.flat * (lk.includes(dice[0].v) ? PHASES[f.phase].match : LOCK_MISS))); say(q.x - 30, q.y - 58, lk.includes(dice[0].v) ? 'MATCH!' : 'no match', lk.includes(dice[0].v) ? '#8fe08f' : '#c9d6da', 14); }
+    if (lk) { p.flat = p.flat * (lk.includes(dice[0].v) ? PHASES[f.phase].match : LOCK_MISS); say(q.x - 30, q.y - 58, lk.includes(dice[0].v) ? 'MATCH!' : 'no match', lk.includes(dice[0].v) ? '#8fe08f' : '#c9d6da', 14); }
     hurtFoe(p.flat);
     f.flash = 1; f.kv += p.flat * .8;
-    say(q.x, q.y - 30, String(p.flat), COL.blk, Math.min(36, 18 + p.flat * .3));
+    say(q.x, q.y - 30, fmtDmg(p.flat), COL.blk, Math.min(36, 18 + p.flat * .3));
     burst(q.x, q.y, COL.blk, 24, 300, 4, 300, .6, 1); ring(q.x, q.y, 'rgba(180,220,255,.9)', 10, 70);
     debrisDie(q.x, q.y, dice[0], rnd(-60, 160), -260);
     shake(.45);
@@ -1343,14 +1348,14 @@ export function impact(p, q) {
   if (hot) f.burn = 3;
   if (ice) f.chill = Math.min(10, f.chill + 1.5 * dice.filter(d => d.ice).length);
   const big = p.kind === 'rocket';
-  say(q.x, q.y - 30, String(dmg), big ? COL.gold : '#ff8a73', big ? 34 : Math.min(34, 18 + dmg * .6));
+  say(q.x, q.y - 30, fmtDmg(dmg), big ? COL.gold : '#ff8a73', big ? 34 : Math.min(34, 18 + dmg * .6));
   if (p.label) say(q.x, q.y - 60, p.label, COL.gold, 15);
   if (p.kind === 'harpoon') {
-    const v = dice[0].v * (dice[0].spiky ? 1.4 : 1);
+    const v = dice[0].v * (dice[0].spiky ? SPIKE : 1);
     f.pinned = Math.max(f.pinned, v * .6);
     say(q.x, q.y - 58, 'PINNED', '#7fe0c6', 18);
   } else if (p.kind === 'rico' && p.bounces > 0) {
-    S.proj.push({kind: 'ricoback', dice, mult: (p.mult ?? 1) * .8, x0: q.x, y0: q.y, x1: q.x - rnd(110, 170), y1: GROUND - 20, t: 0, dur: .4, arc: 60, rot: 0, bounces: p.bounces - 1});
+    S.proj.push({kind: 'ricoback', dice, mult: (p.mult ?? 1) * .5, src: p.src, x0: q.x, y0: q.y, x1: q.x - rnd(110, 170), y1: GROUND - 20, t: 0, dur: .4, arc: 60, rot: 0, bounces: p.bounces - 1});
   } else {
     for (const d of dice) debrisDie(q.x, q.y, d, rnd(-80, 260), rnd(-380, -120));
   }
@@ -1377,14 +1382,16 @@ export const thornX = i => WALL_X1 + 8 + (i % 4) * 9 + Math.floor(i / 4) * 4;
 export function hitFactory(dmg, y, isRock) {
   // a raised parry shield blocks anything; a slam spends a charge and stuns
   // in turn mode a charged shield raises itself against a slam (no reflex taps)
-  if (S.shield > 0 || (opts.turns && !isRock && [...S.machines.values()].some(m => m.kind === 'parry' && m.charges > 0))) {
+  // in turn mode a fully charged shield (3) raises itself against a slam and spends it all
+  const autoParry = opts.turns && !isRock && [...S.machines.values()].some(m => m.kind === 'parry' && m.charges >= 3);
+  if (S.shield > 0 || autoParry) {
     if (opts.turns) S.shield = Math.max(S.shield, .55);
-    const pm = [...S.machines.values()].find(m => m.kind === 'parry' && m.charges > 0);
+    const pm = [...S.machines.values()].find(m => m.kind === 'parry' && m.charges >= (opts.turns ? 3 : 1));
     if (pm) {
       if (!isRock) {
-        pm.charges--;
+        pm.charges = opts.turns ? 0 : pm.charges - 1;
         S.foe.stun = 2.5; S.foe.state = 'march'; S.foe.timer = 0;
-        hurtFoe(25, {x: foeFront() + 30, y: GROUND - 150});
+        hurtFoe(opts.turns ? 15 : 25, {x: foeFront() + 30, y: GROUND - 150});
         say(WALL_X1 + 40, GROUND - 210, 'PARRY!', '#ffffff', 34);
         ring(WALL_X1, GROUND - 100, 'rgba(180,220,255,1)', 30, 200, .5);
         burst(WALL_X1 + 10, GROUND - 100, COL.blk, 40, 400, 4, 0, .6);
@@ -1420,7 +1427,7 @@ export function thornsBite() {
   const live = S.thorns.filter(t => !t.pending && t.v > 0);
   if (!live.length) return;
   let dmg = 0;
-  for (const t of live) { dmg += t.v * (t.spiky ? 1.4 : 1) * 1.5; t.v--; t.pop = 1; }
+  for (const t of live) { dmg += t.v * (t.spiky ? SPIKE : 1) * 1.5; t.v--; t.pop = 1; }
   S.thorns = S.thorns.filter(t => t.pending || t.v > 0);
   hurtFoe(Math.round(dmg), {x: foeFront() + 10, y: GROUND - 40});
   say(foeFront() + 10, GROUND - 100, 'THORNS', '#d9b8f2', 16);
@@ -1581,7 +1588,7 @@ export function targetUnit(spread) {
 export function hurtUnit(u, dmg) {
   if (!S.units.includes(u)) return;
   u.hp -= dmg; u.hit = .12;
-  if (S.curSrc) S.curSrc.turnDmg += dmg;
+  if (S.curSrc) { S.curSrc.turnDmg += dmg; S.curSrc.totalDmg = (S.curSrc.totalDmg || 0) + dmg; }
   if (dmg >= 1) say(u.x, unitY(u) - u.r - 10, String(Math.round(dmg)), '#ffd0c4', 12);
   if (u.hp > 0) return;
   S.units.splice(S.units.indexOf(u), 1);
@@ -2055,7 +2062,7 @@ export function update(rawDt, placing = false) {   // placing: the player is pla
 // line runs until every die has settled) → Foe (the foe's side moves and acts)
 // → next turn: a fresh roll. Backed-up dice and heaps carry over.
 export const FOE_TURN = 4;        // seconds of foe time per turn
-export const RUN_MAX = 30;        // a run always ends by then
+export const RUN_MAX = 12;        // a run ends by then; dice still moving carry over (no endless loops)
 
 // turn 1: no build timer; the fight is on (free play stays in practice mode)
 export function beginTurns() {
@@ -2242,5 +2249,8 @@ export function playFight({foe = 'colossus', layout = '', seed = 1, maxTurns = 2
     foeHpFrac: Math.max(0, f.hp / f.max), factoryHp: S.hp, maxHp: S.maxHp,
     dmg: Math.round(S.stats.dmg), mites: S.stats.downed, lost_dice: S.stats.lost, thrown: S.stats.thrown,
     levels: [...S.machines.values()].filter(m => !m.fixed && m.kind !== 'chute').map(m => `${m.kind}:${m.lvl}`),
+    // damage by source: machines that fired, plus poison and burn ticks and the like
+    byMachine: Object.fromEntries([...S.machines.values()].filter(m => m.totalDmg).map(m => [`${m.kind}@${m.cell.x}${m.cell.y}`, Math.round(m.totalDmg)])),
+    unattributed: Math.round(S.stats.dmg - [...S.machines.values()].reduce((a, m) => a + (m.totalDmg || 0), 0)),
   };
 }
