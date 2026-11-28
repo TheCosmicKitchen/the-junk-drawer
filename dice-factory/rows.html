@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b222a">
+<title>Dice Factory · rows</title>
+<style>
+:root{--bg:#15110d;--ink:#eaf3f5;--mute:#9fb8bf}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1280px;margin:0 auto;padding:8px 12px}
+canvas{display:block;width:min(100%, calc((100svh - 84px) * 2));aspect-ratio:2/1;height:auto;margin:0 auto;border-radius:14px;background:#1b1611;box-shadow:0 10px 40px rgba(0,0,0,.35);touch-action:none;user-select:none}
+.help{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 24px;margin:14px 4px 4px;color:var(--mute);font-size:14px}
+.help b{color:var(--ink)}
+kbd{background:#16394a;border:1px solid #2b5566;border-bottom-width:2px;border-radius:5px;padding:0 5px;font:12px ui-monospace,monospace;color:var(--ink)}
+.touchbar{display:flex;flex-wrap:wrap;gap:8px;margin:8px auto 0;max-width:min(100%, calc((100svh - 84px) * 2))}
+.touchbar button{flex:1 1 0;min-width:84px;min-height:44px;border-radius:12px;border:1px solid #2b5566;background:#16394a;color:var(--ink);font:700 15px system-ui,sans-serif;touch-action:manipulation;cursor:pointer}
+.touchbar button.on{background:#2fae92;border-color:#7fe0c6;color:#06201a}
+.touchbar button:active{transform:translateY(1px)}
+.portrait-note{display:none;margin:10px 4px 0;padding:10px 12px;border-radius:10px;background:#16394a;color:var(--mute);font-size:14px}
+@media (orientation:portrait) and (max-width:820px){.portrait-note{display:block}}
+/* Phone mode: the board is the whole screen, turned sideways if the phone is upright. */
+body.phone{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+body.phone .wrap{padding:0;max-width:none}
+body.phone .help,body.phone .touchbar,body.phone .portrait-note{display:none}
+body.phone canvas{position:fixed;margin:0;border-radius:0;box-shadow:none;aspect-ratio:auto;max-width:none;transform-origin:50% 50%}
+.start{display:none;position:fixed;inset:0;z-index:5;background:rgba(6,18,22,.94);color:var(--ink);align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:24px}
+body.phone .start.show{display:flex}
+.start h1{margin:0;font:900 30px system-ui,sans-serif;color:#ffd25e}
+.start p{margin:0;max-width:420px;color:var(--mute);font-size:15px}
+.start button{min-width:220px;min-height:56px;border-radius:16px;border:2px solid #7fe0c6;background:#2fae92;color:#06201a;font:900 19px system-ui,sans-serif;touch-action:manipulation}
+.start a{color:var(--mute);font-size:13px}
+</style>
+</head>
+<body>
+<div class="start" id="start">
+  <h1>DICE FACTORY</h1>
+  <p>Three rows of card slots; dice ride through them. Turn your phone sideways.</p>
+  <button id="start-btn" type="button">Tap to play</button>
+  <a href="?desktop">Use the desktop layout instead</a>
+</div>
+<div class="wrap">
+<canvas id="c" width="1280" height="640" aria-label="Dice factory sandbox"></canvas>
+<p class="portrait-note">Turn your phone sideways for a bigger board.</p>
+<div class="help">
+  <div><b>Rows.</b> Your factory is three habitat rows of six card slots. Each turn your roll is dealt into the rows, and the dice ride each row left to right through its cards. A modifier changes a die and passes it on; a weapon or defense card takes it.</div>
+  <div><b>Habitats.</b> Whatever reaches the end of a row does that row’s action: the <b>Armory</b> fires it at the foe (half damage), the <b>Exchange</b> turns it into gears, the <b>Masonry</b> into block. Each card in a row makes its end action 10% stronger. Cards with a coloured dot like one row and work 25% better there.</div>
+  <div><b>Flow and splitting.</b> Router cards (teal) send dice to the row above or below: tap one to flip its rule, tap its arrow corner to send the other way. The Prism halves a die across two rows, the Tri-Splitter sends a third into every row, the Crusher makes a swarm of 1s. <b>Deal</b> (top bar, or tap a row’s name, or keys <kbd>1</kbd>-<kbd>3</kbd>) pours the whole roll into one row instead of spreading it.</div>
+  <div><b>Building.</b> Pick a card below and tap a slot. Slots further right cost more. Drag a card to move it; right-click or <b>Scrap</b> removes it (full refund on turn 1, half after). Cards level up from the dice they handle (3 xp a turn at most). Block lasts until the end of the foe’s turn. A gold star marks cards that answer the current phase.</div>
+  <div><b>The foe</b> is a card too: its intent and countdown show what it will do. Slams and rocks hit your block first. The Mite Mother’s mites gnaw every turn; the Ironshell opens the turn before it slams; the Lockbox only really takes dice that show its lock face; in its Meltdown the Colossus buries slots. <kbd>Space</kbd> runs, <kbd>P</kbd> pauses. The Scrap Dummy is free play.</div>
+</div>
+</div>
+</div>
+<script type="module" src="rows/view.js"></script>
+</body>
+</html>
